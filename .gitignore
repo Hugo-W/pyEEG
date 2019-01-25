@@ -1,0 +1,8 @@
+# Binaries
+*.pyc
+
+# Folders
+.ideas/*
+
+# Misc
+*~
