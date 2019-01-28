@@ -3,6 +3,7 @@
 
 # Folders
 .ideas/*
+.vscode
 
 # Misc
 *~
