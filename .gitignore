@@ -4,6 +4,7 @@
 # Folders
 .ideas/*
 .vscode
+docs/build/
 
 # Misc
 *~
