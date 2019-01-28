@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Name of module
+Utilities
 ~~~~~~~~~~~~~~~
 
 Desctription.
@@ -21,6 +21,9 @@ Date:
 
 def main(input_txt):
     # some code for main() function
+    pass
 
 if __name__ == "__main__":
     # Here some code for main behaviour
+    pass
+    
