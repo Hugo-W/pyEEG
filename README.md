@@ -11,6 +11,7 @@ Library fo processing EEG data, from raw to temporal response functions with con
 - mne
 - pandas
 - matplotlib
+- h5py
 
 Install requirements:
 
