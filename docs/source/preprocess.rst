@@ -1,30 +1,24 @@
 .. role:: hidden
     :class: hidden-section
 
-IO module
-=========
+Preprocessing module
+====================
 
-.. automodule:: pyeeg.io
+.. automodule:: pyeeg.preprocess
     :no-members:
     :no-inherited-members:
 
 Classes
 -------
-.. currentmodule:: pyeeg.io
+.. currentmodule:: pyeeg.preprocess
 
 .. autosummary::
    :toctree: generated/
    :template: class.rst
 
-   pyeeg.io.WordLevelFeatures
-
 Functions
----------
+----------------------------------
 
 .. autosummary:: 
     :toctree: generated/
     :template: function.rst
-
-    pyeeg.io.eeglab2mne
-    pyeeg.io.load_ica_matrices
-    pyeeg.io.align_word_features

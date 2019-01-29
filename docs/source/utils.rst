@@ -1,22 +1,20 @@
 .. role:: hidden
     :class: hidden-section
 
-IO module
+Utilities
 =========
 
-.. automodule:: pyeeg.io
+.. automodule:: pyeeg.utils
     :no-members:
     :no-inherited-members:
 
 Classes
 -------
-.. currentmodule:: pyeeg.io
+.. currentmodule:: pyeeg.utils
 
 .. autosummary::
    :toctree: generated/
    :template: class.rst
-
-   pyeeg.io.WordLevelFeatures
 
 Functions
 ---------
@@ -24,7 +22,3 @@ Functions
 .. autosummary:: 
     :toctree: generated/
     :template: function.rst
-
-    pyeeg.io.eeglab2mne
-    pyeeg.io.load_ica_matrices
-    pyeeg.io.align_word_features

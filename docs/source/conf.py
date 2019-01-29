@@ -23,9 +23,9 @@ copyright = '2019, Hugo Weissbart'
 author = 'Hugo Weissbart'
 
 # The short X.Y version
-version = ''
+version = '0.1'
 # The full version, including alpha/beta/rc tags
-release = '0.1'
+release = '0.1a'
 
 
 # -- General configuration ---------------------------------------------------
@@ -79,7 +79,11 @@ pygments_style = None
 # a list of builtin themes.
 #
 #html_theme = 'alabaster'
-html_theme = 'default'
+#html_theme = 'default'
+
+import sphinx_rtd_theme
+html_theme = 'sphinx_rtd_theme'
+html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -179,6 +183,8 @@ epub_exclude_files = ['search.html']
 
 
 # -- Extension configuration -------------------------------------------------
+
+autosummary_generate = True
 
 # -- Options for todo extension ----------------------------------------------
 
