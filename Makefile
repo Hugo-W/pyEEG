@@ -36,7 +36,7 @@ test-coverage:
 test: test-code test-sphinxext test-doc
 
 trailing-spaces:
-	find sklearn -name "*.py" -exec perl -pi -e 's/[ \t]*$$//' {} \;
+	find pyeeg -name "*.py" -exec perl -pi -e 's/[ \t]*$$//' {} \;
 
 doc: inplace
 	$(MAKE) -C docs html
