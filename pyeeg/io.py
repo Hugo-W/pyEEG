@@ -1,5 +1,6 @@
 #! python
 # -*- coding: utf-8 -*-
+# pylint: disable=E1101
 """
 Input/Output
 ~~~~~~~~~~~~~~~
@@ -52,8 +53,8 @@ def load_mat(fname):
         print(".mat file is from matlab v7.3 or higher, will use HDF5 format.")
         with h5py.File(fname, mode='r') as fid:
             data = {}
-            for k, v in fid.iteritems():
-                data[k] = v.value
+            for k, val in fid.iteritems():
+                data[k] = val.value
     return data
 
 
@@ -67,16 +68,17 @@ def _loadEEGLAB_data(fname):
         srate = fid['EEG/srate'].value
 
         time = fid['EEG/times'].value
+        n_events = fid['EEG/event/latency'].shape[0]
 
-        events = np.zeros(fid['EEG/event/latency'].shape)
+        events = np.zeros((n_events,))
         event_type = []
-        for k in range(len(events)):
+        for k in range(n_events):
             events[k] = fid[fid['EEG/event/latency'][k][0]].value
-            event_type.append(''.join([chr(i) for i in fid[fid['EEG/event/type'][k][0]] ]))
+            event_type.append(''.join([chr(i) for i in fid[fid['EEG/event/type'][k][0]]]))
 
         chnames = []
         for k in range(fid['EEG/chanlocs/labels'].shape[0]):
-            chnames.append(''.join([chr(i) for i in fid[fid['EEG/chanlocs/labels'][k][0]] ]))
+            chnames.append(''.join([chr(i) for i in fid[fid['EEG/chanlocs/labels'][k][0]]]))
 
         return eeg, srate, time, events, event_type, chnames
 
@@ -159,7 +161,7 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
     See for references:
         - https://benediktehinger.de/blog/science/ica-weights-and-invweights/
         - MNE PR: https://github.com/mne-tools/mne-python/pull/5114/files
-        
+
     """
     montage_mne = mne.channels.montage.read_montage(montage)
 
@@ -167,7 +169,7 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
         raw = mne.io.read_raw_eeglab(input_fname=fname, montage=montage_mne, event_id=event_id, preload=True)
     except NotImplementedError:
         print("Version 7.3 matlab file detected, will load 'by hand'")
-        eeg, srate, _, events, etype, ch_names = _loadEEGLAB_data(fname)
+        eeg, srate, _, _, _, ch_names = _loadEEGLAB_data(fname)
         info = mne.create_info(ch_names=ch_names, sfreq=srate, ch_types='eeg', montage=montage_mne)
         raw = mne.io.RawArray(eeg.T, info)
 
@@ -182,12 +184,54 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
     else:
         return raw
 
-def get_exact_duration(fname):
-    "Extract value of speech segment duration from Praat file..."
-    with open(fname, 'r') as f:
-        headers = f.readlines(80)
-        duration = float(headers[4])
-    return duration
+class WordLevelFeatures:
+    """Gather word-level linguistic features based on old and rigid files, generated from
+    various sources (RNNLM, custom scripts for word frequencies, Forced-Alignment toolkit, ...)
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+
+    Examples
+    --------
+
+    >>> from pyeeg.io import WordLevelFeatures
+    >>> path_features = '/media/hw2512/../word_onsets.txt'
+    >>> wordfeats = WordLevelFeatures(path_features)
+    >>> wordfeats.load_onsets(path_onsets)
+    >>> wordfeats.load_surprisal(path_surprisal)
+    >>> wordfeats.df.head()
+    index   | onsets    | surprisal
+    0       | 1.12      | 3
+    ...
+
+    Notes
+    -----
+    For now, the class assumes that the data are stored in a given format that depended
+    on the processing done for the work on surprisal. However it ought to be extended to
+    be bale to generate surprisal/word frequency/word onsets/word vectors for a given audio
+    files along with its transcript.
+
+    TODO: extend the class to create word-feature of choices on-the-fly
+
+    """
+
+    def __init__(self):
+
+        self.duration = None
+        self.surprisal = None
+        self.wordvectors = None
+        self.wordfrequency = None
+        self.wordonsets = None
+
+    def _extract_duration_praat(self, fname):
+        "Extract value of speech segment duration from Praat file."
+        with open(fname, 'r') as fid:
+            headers = fid.readlines(80)
+            duration = float(headers[4])
+            self.duration = duration
 
 def get_word_onsets(filepath):
     "Simply load word lists and respective onsets for a given sound file/story parts..."
@@ -199,7 +243,7 @@ def get_wordfreq(filepath):
     csv = pd.read_csv(filepath)
     wf = csv.frequency.get_values()
     # Replace unknown by (global, form my stories) median value:
-    wf[wf==-1] = 111773390
+    wf[wf == -1] = 111773390
     # Transform into log proba, normalized by maximum count, roughly equals to total count:
     wf = -np.log(wf/3.2137e12)
     return wf
@@ -243,10 +287,10 @@ def align_word_features(word_onsets, word_feat_list, speech_duration, sr, wordon
         ntimes ~ speech_duration * sr
 
     """
-    Nsamples = int(np.ceil(sr * speech_duration)) + 1 # +1 to account for 0th sample?
+    n_samples = int(np.ceil(sr * speech_duration)) + 1 # +1 to account for 0th sample?
     nfeat = len(word_feat_list) + int(wordonset_feature)
-    feat = np.zeros((Nsamples, nfeat))
-    t_spikes = np.zeros((Nsamples,))
+    feat = np.zeros((n_samples, nfeat))
+    t_spikes = np.zeros((n_samples,))
     onset_samples = np.round(word_onsets * sr).astype(int)
     t_spikes[onset_samples] = 1.
 
@@ -254,7 +298,7 @@ def align_word_features(word_onsets, word_feat_list, speech_duration, sr, wordon
         feat[:, 0] = t_spikes
 
     for k, feat_val in enumerate(word_feat_list):
-        assert len(feat_val)==len(word_onsets), "Feature #{:d} cannot be simply aligned with word onsets... ({:d} words mismatch)".format(k, abs(len(feat_val)-len(word_onsets)))
+        assert len(feat_val) == len(word_onsets), "Feature #{:d} cannot be simply aligned with word onsets... ({:d} words mismatch)".format(k, abs(len(feat_val)-len(word_onsets)))
         if zscore_fun: # if not None
             if hasattr(zscore_fun, 'fit'): # sklearn object (which must have been fitted BEFOREHAND)
                 feat_val = zscore_fun.transform(feat_val)
