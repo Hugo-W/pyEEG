@@ -27,4 +27,3 @@ Functions
 
     pyeeg.io.eeglab2mne
     pyeeg.io.load_ica_matrices
-    pyeeg.io.align_word_features

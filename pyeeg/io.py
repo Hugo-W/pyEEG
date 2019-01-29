@@ -246,7 +246,6 @@ class WordLevelFeatures:
 
     Examples
     --------
-
     >>> from pyeeg.io import WordLevelFeatures
     >>> path_features = '/media/hw2512/../word_onsets.txt'
     >>> wordfeats = WordLevelFeatures(path_features)
