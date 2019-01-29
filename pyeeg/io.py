@@ -4,7 +4,7 @@
 Input/Output
 ~~~~~~~~~~~~~~~
 
-Desctription
+Description
 ==============
 
 Input/output of data from files:
@@ -18,6 +18,7 @@ take the data to MNE format.
 *Author: Hugo Weissbart*
 
 """
+import logging
 import numpy as np
 import pandas as pd
 import h5py # for mat file version >= 7.3
@@ -26,6 +27,9 @@ from mne.preprocessing.ica import ICA
 #import os
 #os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
 from scipy.io import loadmat
+
+logging.basicConfig(level=logging.DEBUG)
+LOGGER = logging.getLogger(__name__)
 
 def load_mat(fname):
     """
@@ -79,15 +83,38 @@ def _loadEEGLAB_data(fname):
 def load_ica_matrices(fname):
     """
     Load ICA matrices from EEGLAB structure .set file
+
+    Parameters
+    ----------
+    fname : str
+        File path to .set EEGLAB file containing ICA matrices
+
+    Returns
+    -------
+    weights : ndarray (ncomp x nchan)
+        Unmixing matrix (form _whitened_ observed data to sources)
+    weights : ndarray (nchan x ncomp)
+        Mixing matrix (form sources to _whitened_ observed data)
+    sphere : ndarray (nchan x nchan)
+        Sphering matrix
+
+    Raises
+    ------
+    IOError
+        If ICA matrices are not present in the given .set file
     """
     try:
         eeg = loadmat(fname)['EEG']
-        weights = eeg[0, 0][19]
+        idx_weights = np.where(np.asarray(eeg.dtype.names) == 'icaweights')
+        weights = eeg[0, 0][idx_weights]
+        if weights is None:
+            raise  IOError("ICA matrices not present in file!")
         winv = eeg[0, 0][17]
         sphere = eeg[0, 0][18]
 
     except NotImplementedError:
-        print("WARNING: must use hdf5 extraction of .set file info")
+        LOGGER.warning('Must use hdf5 extraction of .set file data')
+        #print("WARNING: must use hdf5 extraction of .set file data")
         with h5py.File(fname, mode='r') as fid:
             weights = fid['EEG/icaweights'].value
             winv = fid['EEG/icawinv'].value
