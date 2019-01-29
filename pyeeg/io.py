@@ -96,43 +96,43 @@ def load_ica_matrices(fname):
     return weights, winv, sphere
 
 def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
-    """
-    Get an EEGLAB dataset into a MNE Raw object.
+    """Get an EEGLAB dataset into a MNE Raw object.
 
     Parameters
-        input_fname : str
-            Path to the .set file. If the data is stored in a separate .fdt file,
-            it is expected to be in the same folder as the .set file.
-        montage : str | None | instance of montage
-            Path or instance of montage containing electrode positions.
-            If None, sensor locations are (0,0,0). See the documentation of
-            :func:`mne.channels.read_montage` for more information.
-        event_id : dict
-            Map event id (integer) to string name of corresponding event.
-            This allows to smoothly load EEGLAB event structure when overlapping
-            events (e.g. boundaries) occur.
-        load_ica : bool
-            Default to False. Load ica matrices from eeglab structure if available
-            and attempt to transfer them into the ica structure of MNE.
+    ----------
+    input_fname : str
+        Path to the .set file. If the data is stored in a separate .fdt file,
+        it is expected to be in the same folder as the .set file.
+    montage : str | None | instance of montage
+        Path or instance of montage containing electrode positions.
+        If None, sensor locations are (0,0,0). See the documentation of
+        :func:`mne.channels.read_montage` for more information.
+    event_id : dict
+        Map event id (integer) to string name of corresponding event.
+        This allows to smoothly load EEGLAB event structure when overlapping
+        events (e.g. boundaries) occur.
+    load_ica : bool
+        Default to False. Load ica matrices from eeglab structure if available
+        and attempt to transfer them into the ica structure of MNE.
 
     Returns
     -------
-    
-        raw : Instance of RawEEGLAB
-            A Raw object containing EEGLAB .set data.
-        ica : Instance of ICA
-            if load_ica True
+    raw : Instance of RawEEGLAB
+        A Raw object containing EEGLAB .set data.
+    ica : Instance of ICA
+        if load_ica True
 
     Notes
-        ICA matrices in ICA MNE object might not entirely capture the decomposition.
-        To apply projections (i.e. remove some components from observed EEG data) it
-        might be better to load directly the matrices and do it by hand, where:
-            - icawinv = pinv(icaweights * icasphere)
-            - ica_act = icaweights * icasphere * eegdata
+    -----
+    ICA matrices in ICA MNE object might not entirely capture the decomposition.
+    To apply projections (i.e. remove some components from observed EEG data) it
+    might be better to load directly the matrices and do it by hand, where:
+        - icawinv = pinv(icaweights * icasphere)
+        - ica_act = icaweights * icasphere * eegdata
 
-        See for references:
-            - https://benediktehinger.de/blog/science/ica-weights-and-invweights/
-            - MNE PR: https://github.com/mne-tools/mne-python/pull/5114/files
+    See for references:
+        - https://benediktehinger.de/blog/science/ica-weights-and-invweights/
+        - MNE PR: https://github.com/mne-tools/mne-python/pull/5114/files
     """
     montage_mne = mne.channels.montage.read_montage(montage)
 
