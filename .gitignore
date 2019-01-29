@@ -6,6 +6,7 @@
 .vscode
 docs/build/
 docs/source/_build/
+docs/source/generated/
 
 # Misc
 *~
