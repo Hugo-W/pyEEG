@@ -83,8 +83,7 @@ def _loadEEGLAB_data(fname):
         return eeg, srate, time, events, event_type, chnames
 
 def load_ica_matrices(fname):
-    """
-    Load ICA matrices from EEGLAB structure .set file
+    """Load ICA matrices from EEGLAB structure .set file
 
     Parameters
     ----------
@@ -104,6 +103,7 @@ def load_ica_matrices(fname):
     ------
     IOError
         If ICA matrices are not present in the given .set file
+
     """
     try:
         eeg = loadmat(fname)['EEG']
@@ -149,7 +149,7 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
     raw : Instance of RawEEGLAB
         A Raw object containing EEGLAB .set data.
     ica : Instance of ICA
-        if load_ica True
+        If load_ica True
 
     Note
     ----
@@ -161,7 +161,7 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
     See for references:
         - https://benediktehinger.de/blog/science/ica-weights-and-invweights/
         - MNE PR: https://github.com/mne-tools/mne-python/pull/5114/files
-
+    
     """
     montage_mne = mne.channels.montage.read_montage(montage)
 
