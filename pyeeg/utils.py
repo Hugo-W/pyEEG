@@ -6,7 +6,7 @@ Utilities
 Desctription.
 
 Usage:
-       
+
 Author: Hugo Weissbart
 Date:
 """
@@ -26,4 +26,3 @@ def main(input_txt):
 if __name__ == "__main__":
     # Here some code for main behaviour
     pass
-    

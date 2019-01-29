@@ -65,7 +65,7 @@ def _loadEEGLAB_data(fname):
     """
     with h5py.File(fname, mode='r') as fid:
         eeg = fid['EEG/data'].value
-        srate = fid['EEG/srate'].value
+        srateate = fid['EEG/srateate'].value
 
         time = fid['EEG/times'].value
         n_events = fid['EEG/event/latency'].shape[0]
@@ -80,7 +80,7 @@ def _loadEEGLAB_data(fname):
         for k in range(fid['EEG/chanlocs/labels'].shape[0]):
             chnames.append(''.join([chr(i) for i in fid[fid['EEG/chanlocs/labels'][k][0]]]))
 
-        return eeg, srate, time, events, event_type, chnames
+        return eeg, srateate, time, events, event_type, chnames
 
 def load_ica_matrices(fname):
     """Load ICA matrices from EEGLAB structure .set file
@@ -161,7 +161,7 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
     See for references:
         - https://benediktehinger.de/blog/science/ica-weights-and-invweights/
         - MNE PR: https://github.com/mne-tools/mne-python/pull/5114/files
-    
+
     """
     montage_mne = mne.channels.montage.read_montage(montage)
 
@@ -169,8 +169,8 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
         raw = mne.io.read_raw_eeglab(input_fname=fname, montage=montage_mne, event_id=event_id, preload=True)
     except NotImplementedError:
         print("Version 7.3 matlab file detected, will load 'by hand'")
-        eeg, srate, _, _, _, ch_names = _loadEEGLAB_data(fname)
-        info = mne.create_info(ch_names=ch_names, sfreq=srate, ch_types='eeg', montage=montage_mne)
+        eeg, srateate, _, _, _, ch_names = _loadEEGLAB_data(fname)
+        info = mne.create_info(ch_names=ch_names, sfreq=srateate, ch_types='eeg', montage=montage_mne)
         raw = mne.io.RawArray(eeg.T, info)
 
     if load_ica:
@@ -183,6 +183,56 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
         return raw, ica
     else:
         return raw
+
+def extract_duration_praat(fname):
+    "Extract value of speech segment duration from Praat file."
+    with open(fname, 'r') as fid:
+        headers = fid.readlines(80)
+        duration = float(headers[4])
+        return duration
+
+def load_surprisal_values(filepath, eps=1e-12):
+    "Load surprisal values from the given file."
+    if filepath is None:
+        return None
+    dataframe = pd.read_csv(filepath, delim_whitespace=True, usecols=[0, 1, 2, 3, 4])
+    surprisal = dataframe.loc[np.logical_and(dataframe.Word != '</s>', dataframe.Word != '\''), 'P(NET)'].get_values()
+    return -np.log(surprisal + eps)
+
+def load_wordfreq_values(filepath, unkval=111773390, normfactor=3.2137e12):
+    "Load word frequency, and returns -log of it (scaled by median value)"
+    csv = pd.read_csv(filepath)
+    wordfreq = csv.frequency.get_values()
+    # Replace unknown by (global, form my stories) median value:
+    wordfreq[wordfreq == -1] = unkval
+    # Transform into log proba, normalized by maximum count, roughly equals to total count:
+    wordfreq = -np.log(wordfreq/normfactor)
+    return wordfreq
+
+def get_word_onsets(filepath):
+    """Simply load word lists and respective onsets for a given sound file/story parts...
+
+    Parameters
+    ----------
+    filepath : str
+        path to .csv file that contains entry for onset/offset time of words along with
+        word string themselves
+
+    Returns
+    -------
+    list
+        Onset time of each words
+    list
+        Actual word list
+
+    Note
+    ----
+    Here we expect the file to be a comma separayted file with a named column for *onset* and for
+    *word* respectively.
+
+    """
+    csv = pd.read_csv(filepath)
+    return csv.word.get_values(), csv.onset.get_values()
 
 class WordLevelFeatures:
     """Gather word-level linguistic features based on old and rigid files, generated from
@@ -207,103 +257,124 @@ class WordLevelFeatures:
     0       | 1.12      | 3
     ...
 
-    Notes
-    -----
+    Note
+    ----
     For now, the class assumes that the data are stored in a given format that depended
     on the processing done for the work on surprisal. However it ought to be extended to
     be bale to generate surprisal/word frequency/word onsets/word vectors for a given audio
     files along with its transcript.
 
-    TODO: extend the class to create word-feature of choices on-the-fly
+    TODO
+    ----
+    Extend the class to create word-feature of choices on-the-fly
 
     """
 
-    def __init__(self):
+    def __init__(self, path_praat_env=None, path_surprisal=None, path_wordvectors=None,
+                 path_wordfrequency=None, path_wordonsets=None, path_transcript=None,
+                 rnnlm_model=None, path_audio=None):
 
-        self.duration = None
-        self.surprisal = None
+        if path_praat_env is not None:
+            self.duration = extract_duration_praat(path_praat_env)
+        self.surprisal = load_surprisal_values(path_surprisal)
+        self.wordfrequency = load_wordfreq_values(path_wordfrequency)
+        self.wordonsets, self.wordlist = get_word_onsets(path_wordonsets)
+        self.audio = path_audio
+        self.rnnlm = rnnlm_model
+        self.transcript = None
+        if path_transcript is not None:
+            with open(path_transcript, 'r') as fid:
+                raw = fid.read()
+            self.transcript = raw
+
         self.wordvectors = None
-        self.wordfrequency = None
-        self.wordonsets = None
+        self.vectordim = 0
 
-    def _extract_duration_praat(self, fname):
-        "Extract value of speech segment duration from Praat file."
-        with open(fname, 'r') as fid:
-            headers = fid.readlines(80)
-            duration = float(headers[4])
-            self.duration = duration
 
-def get_word_onsets(filepath):
-    "Simply load word lists and respective onsets for a given sound file/story parts..."
-    csv = pd.read_csv(filepath)
-    return csv.word.get_values(), csv.onset.get_values()
 
-def get_wordfreq(filepath):
-    "Simply load word lists and respective onsets for a given sound file/story parts..."
-    csv = pd.read_csv(filepath)
-    wf = csv.frequency.get_values()
-    # Replace unknown by (global, form my stories) median value:
-    wf[wf == -1] = 111773390
-    # Transform into log proba, normalized by maximum count, roughly equals to total count:
-    wf = -np.log(wf/3.2137e12)
-    return wf
+    def align_word_features(self, srate, wordonset_feature=True, surprisal=True,
+                            wordfreq=True, wordvect=False, zscore_fun=None, custom_wordfeats=None):
+        """Check that we have the correct number of elements for each features
+        Will output a time series with spike for each word features.
+        For that reason, we need the duration and sampling rate as inputs.
 
-def get_surprisal(filepath, eps=1e-12):
-    "Simply load word lists and respective onsets for a given sound file/story parts..."
-    df = pd.read_csv(filepath, delim_whitespace=True, usecols=[0, 1, 2, 3, 4])
-    surprisal = df.loc[np.logical_and(df.Word != '</s>', df.Word != '\''), 'P(NET)'].get_values()
-    return -np.log(surprisal + eps)
+        Parameters
+        ----------
+        srate : float
+            Sampling rate at which to compute spike-like features
+        wordonset_feature : boolean
+            Whether to use word onset (always "on" feature) in the
+            feature array (Default: True).
+        zscore_fun : function or sklearn.preprocessing.StandardScaler-like instance
+            Whether to scale and center the word feature values before
+            assigning them to onset sample-time. If method (function) is given, will
+            simply apply the function to the data on the fly. If StandardScaler-like
+            instance is given, then we assume the object has been fitted beforehand to
+            the data and contains mean and variance, thus will use the 'transform'
+            method of the instance to scale data. If None, leave as it is. (Default: None)
+        custom_wordfeats : ndarray-like (nfeat x nwords)
+            Other word-level features that are not embeded in the class instance.
+            The only requirement is that the number of words must be the same as
+            for the list of word onsets.
 
-def align_word_features(word_onsets, word_feat_list, speech_duration, sr, wordonset_feature=True, zscore_fun=None):
-    """Check that we have the correct number of elements for each features
-    Will output a time series with spike for each word features.
-    For that reason, we need the duration and sampling rate as inputs.
+        Returns
+        -------
+        feat : array (ntimes, nfeat)
+            Array of spikes, with the word feature value at word onsets.
+            ntimes ~ speech_duration * srate
 
-    Parameters
-    ----------
-    word_onsers : array-like
-        List of word onset in seconds.
-    word_feat_list : List or array (nfeat, nwords)
-        List of word level features arrays.
-    speech_duration : float
-        Duration of speech utterance for this list of words.
-    sr : float
-        Sampling rate at which to compute spike-like features
-    wordonset_feature : boolean
-        Whether to use word onset (always "on" feature) in the
-        feature array (Default: True).
-    zscore_fun : function or sklearn.preprocessing.StandardScaler-like instance
-        Whether to scale and center the word feature values before
-        assigning them to onset sample-time. If method (function) is given, will
-        simply apply the function to the data on the fly. If StandardScaler-like
-        instance is given, then we assume the object has been fitted beforehand to
-        the data and contains mean and variance, thus will use the 'transform'
-        method of the instance to scale data. If None, leave as it is. (Default: None)
+        Raises
+        ------
+        AssertionError
+            If the duration of speech part has not been extracted or if custom word features have
+            wrong length.
 
-    Returns
-    -------
-    feat : array (ntimes, nfeat)
-        Array of spikes, with the word feature value at word onsets.
-        ntimes ~ speech_duration * sr
+        TODO
+        ----
+        Add entropy and word vectors!!
 
-    """
-    n_samples = int(np.ceil(sr * speech_duration)) + 1 # +1 to account for 0th sample?
-    nfeat = len(word_feat_list) + int(wordonset_feature)
-    feat = np.zeros((n_samples, nfeat))
-    t_spikes = np.zeros((n_samples,))
-    onset_samples = np.round(word_onsets * sr).astype(int)
-    t_spikes[onset_samples] = 1.
+        """
+        assert (hasattr(self, 'duration') and hasattr(self, 'surprisal') and hasattr(self, 'wordonsets')), "Must load word features values and onset first!"
+        if custom_wordfeats is not None:
+            assert custom_wordfeats.shape[1] == len(self.wordonsets), "Please supply a list of word features that match the number of word onsets!"
+        else:
+            custom_wordfeats = [] # such that len() of it is defined and is 0
 
-    if wordonset_feature:
-        feat[:, 0] = t_spikes
+        n_samples = int(np.ceil(srate * self.duration)) + 1 # +1 to account for 0th sample?
+        nfeat = wordonset_feature + surprisal + wordfreq + wordvect * self.vectordim + len(custom_wordfeats)
+        feat = np.zeros((n_samples, nfeat))
+        t_spikes = np.zeros((n_samples,))
+        onset_samples = np.round(self.wordonsets * srate).astype(int)
+        t_spikes[onset_samples] = 1.
 
-    for k, feat_val in enumerate(word_feat_list):
-        assert len(feat_val) == len(word_onsets), "Feature #{:d} cannot be simply aligned with word onsets... ({:d} words mismatch)".format(k, abs(len(feat_val)-len(word_onsets)))
-        if zscore_fun: # if not None
-            if hasattr(zscore_fun, 'fit'): # sklearn object (which must have been fitted BEFOREHAND)
-                feat_val = zscore_fun.transform(feat_val)
-            else:
-                feat_val = zscore_fun(feat_val)
-        feat[onset_samples, k + int(wordonset_feature)] = feat_val
+        if wordonset_feature:
+            feat[:, 0] = t_spikes
 
-    return feat
+        for k, feat_val in enumerate(custom_wordfeats):
+            assert len(feat_val) == len(self.wordonsets), "Feature #{:d} cannot be simply aligned with word onsets... ({:d} words mismatch)".format(k, abs(len(feat_val)-len(self.wordonsets)))
+            if zscore_fun: # if not None
+                if hasattr(zscore_fun, 'fit'): # sklearn object (which must have been fitted BEFOREHAND)
+                    feat_val = zscore_fun.transform(feat_val)
+                else:
+                    feat_val = zscore_fun(feat_val)
+            feat[onset_samples, k + int(wordonset_feature)] = feat_val
+
+
+        feat_to_use = []
+        if wordfreq:
+            feat_to_use.append(self.wordfrequency)
+        if surprisal:
+            feat_to_use.append(self.surprisal)
+
+        current_idx = len(custom_wordfeats) + int(wordonset_feature)
+        for feat_val in feat_to_use:
+            assert len(feat_val) == len(self.wordonsets), "Feature #{:d} cannot be simply aligned with word onsets... ({:d} words mismatch)".format(k, abs(len(feat_val)-len(self.wordonsets)))
+            if zscore_fun: # if not None
+                if hasattr(zscore_fun, 'fit'): # sklearn object (which must have been fitted BEFOREHAND)
+                    feat_val = zscore_fun.transform(feat_val)
+                else:
+                    feat_val = zscore_fun(feat_val)
+            feat[onset_samples, current_idx] = feat_val
+            current_idx += 1
+
+        return feat
