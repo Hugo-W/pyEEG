@@ -122,17 +122,17 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
     ica : Instance of ICA
         if load_ica True
 
-    Notes
-    -----
+    Note
+    ----
     ICA matrices in ICA MNE object might not entirely capture the decomposition.
     To apply projections (i.e. remove some components from observed EEG data) it
     might be better to load directly the matrices and do it by hand, where:
         - icawinv = pinv(icaweights * icasphere)
         - ica_act = icaweights * icasphere * eegdata
-
     See for references:
         - https://benediktehinger.de/blog/science/ica-weights-and-invweights/
         - MNE PR: https://github.com/mne-tools/mne-python/pull/5114/files
+        
     """
     montage_mne = mne.channels.montage.read_montage(montage)
 
