@@ -40,8 +40,9 @@ trailing-spaces:
 
 doc: inplace
 	$(MAKE) -C docs html
-	$(MAKE) -C docs latexpdf
 
+docpdf: inplace doc
+	$(MAKE) -C docs latexpdf
 
 code-analysis:
 	flake8 sklearn | grep -v __init__ | grep -v external
