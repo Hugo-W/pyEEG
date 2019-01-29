@@ -13,9 +13,6 @@ pyeeg.io
 Functions
 ----------------------------------
 
-:hidden:`eeglab2mne`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 .. autosummary:: 
     :toctree: generated/
     :template: function.rst
