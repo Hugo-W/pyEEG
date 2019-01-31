@@ -13,6 +13,12 @@ help:
 
 .PHONY: help Makefile
 
+clean:
+	echo Removing build directoried and auto-generated files from source/generated/ ...
+	rm source/generated/*
+	rm -r source/_build
+	rm -r build
+
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
 %: Makefile
