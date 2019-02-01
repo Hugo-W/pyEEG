@@ -22,3 +22,7 @@ Functions
 .. autosummary:: 
     :toctree: generated/
     :template: function.rst
+
+    pyeeg.utils.lag_matrix
+    pyeeg.utils.lag_span
+    pyeeg.utils.lag_sparse
