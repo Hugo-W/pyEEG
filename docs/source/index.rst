@@ -16,7 +16,9 @@ pyEEG is a wrapper around some common tooloboxes and algorithm for EEG processin
 
    io
    preprocess
+   models
    utils
+   vizu
    about
 
 Indices and tables

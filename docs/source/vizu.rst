@@ -1,28 +1,27 @@
 .. role:: hidden
     :class: hidden-section
 
-Preprocessing module
-====================
+Plotting stuff
+==============
 
-.. automodule:: pyeeg.preprocess
+.. automodule:: pyeeg.vizu
     :no-members:
     :no-inherited-members:
 
 Classes
 -------
-.. currentmodule:: pyeeg.preprocess
+.. currentmodule:: pyeeg.vizu
 
 .. autosummary::
    :toctree: generated/
    :template: class.rst
 
 Functions
-----------------------------------
+---------
 
 .. autosummary:: 
     :toctree: generated/
     :template: function.rst
 
-    pyeeg.preprocess.create_filterbank
-    pyeeg.preprocess.apply_filterbank
-    pyeeg.preprocess.get_power
+    pyeeg.vizu.plot_filterbank
+    pyeeg.vizu.plot_filterbank_output
