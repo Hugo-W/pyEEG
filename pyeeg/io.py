@@ -2,9 +2,6 @@
 # -*- coding: utf-8 -*-
 # pylint: disable=E1101
 """
-Input/Output
-~~~~~~~~~~~~~~~
-
 Description
 ==============
 

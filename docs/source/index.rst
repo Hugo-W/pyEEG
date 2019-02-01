@@ -11,8 +11,16 @@ Welcome to pyEEG's documentation!
 pyEEG is a wrapper around some common tooloboxes and algorithm for EEG processing with speech data.
 
 .. toctree::
-   :maxdepth: 5
-   :caption: Contents:
+   :maxdepth: 3
+   :caption: To get started
+
+   install
+   tutorials
+
+
+.. toctree::
+   :maxdepth: 3
+   :caption: Contents
 
    io
    preprocess

@@ -5,7 +5,7 @@ from distutils.core import setup
 
 setup(
     name='pyEEG',
-    version='0.1',
+    version='0.2',
     packages=['pyeeg'],
     install_requires=['numpy', 'scipy', 'scikit-learn'],
     url='https://github.com/Hugo-W/pyEEG',
