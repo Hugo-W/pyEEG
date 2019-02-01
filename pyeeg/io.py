@@ -188,8 +188,7 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
         ica.mixing_matrix_ = np.linalg.pinv(ica.unmixing_matrix_)
 
         return raw, ica
-    else:
-        return raw
+    return raw
 
 def extract_duration_praat(fname):
     "Extract value of speech segment duration from Praat file."
@@ -248,7 +247,7 @@ class WordLevelFeatures:
     Parameters
     ----------
     path_praat_env : str
-        Path to Praat file for envelopes (.Env files in 
+        Path to Praat file for envelopes (.Env files in
         `Katerina_experiment/story-parts/alignment_data/`)
     path_surprisal : str
         Path to file containing surprisal values, as extracted with RNNLM toolkit.
@@ -300,7 +299,7 @@ class WordLevelFeatures:
     >>> list_env_files = [os.path.join(env_path, s, s + '_125Hz.Env') for s in list_stories]
     >>> surp_path = os.path.join(surprisal_path, list_surprisal_files[1])
     >>> wf_path = os.path.join(wordfreq_path, list_wordfreq_files[1])
-    >>> dur_path = os.path.join(env_path, list_env_files[1])    
+    >>> dur_path = os.path.join(env_path, list_env_files[1])
     >>> wo_path = os.path.join(wordfreq_path, list_wordfreq_files[1])
     >>> wfeats = WordLevelFeatures(path_praat_env=dur_path, path_wordonsets=wo_path, path_surprisal=surp_path, path_wordfrequency=wf_path)
     >>> wf
@@ -362,7 +361,7 @@ class WordLevelFeatures:
         "Print a short summary for each variables contained in the instance"
         dataframe = pd.DataFrame(dict(surprisal=self.surprisal, wordfreq=self.wordfrequency,
                                       words=self.wordlist, onsets=self.wordfrequency))
-        
+
         print(dataframe.head())
         print("\nSummary statistics:")
         print(dataframe.describe())
@@ -427,7 +426,7 @@ class WordLevelFeatures:
             assert custom_wordfeats.shape[1] == len(self.wordonsets), "Please supply a list of word features that match the number of word onsets!"
         else:
             custom_wordfeats = [] # such that len() of it is defined and is 0
-        
+
         # Are we adding word vectors:
         use_w2v = 'wordvectors' in features
         if use_w2v:

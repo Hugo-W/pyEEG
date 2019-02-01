@@ -19,7 +19,8 @@ Date:
 # My libraries
 
 
-def main(input_txt):
+def main():
+    "Main"
     # some code for main() function
     pass
 
