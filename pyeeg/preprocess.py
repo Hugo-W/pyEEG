@@ -1,29 +1,60 @@
 # -*- coding: utf-8 -*-
 """
 Preprocessing
-~~~~~~~~~~~~~~~
+-------------
 
-Desctription.
+Desctription
+~~~~~~~~~~~~
 
-Usage:
+Module containing some preprocessing helper and function to be applied to EEG...
 
-Author: Hugo Weissbart
-Date:
 """
 
 #### Libraries
 # Standard library
-#import numpy as np
+import numpy as np
+from scipy import signal
+from joblib import Parallel, delayed
 #import matplotlib.pyplot as plt
 
 # My libraries
 
 
-def main():
-    "Main"
-    # some code for main() function
-    pass
+def create_filterbank(freqs, srate, filtertype=signal.cheby2, **kwargs):
+    """Creates a filter bank, by default of chebychev type 2 filters.
+    Parameters of filter are to be defined as name value pair arguments.
+    Frequency bands are defined with boundaries instead of center frequencies.
+    """
+    normalized_freqs = np.asarray(freqs)/(srate/2.) # create normalized frequencies specifications
+    return [filtertype(**kwargs, Wn=ff) for ff in normalized_freqs]
 
-if __name__ == "__main__":
-    # Here some code for main behaviour
-    pass
+def apply_filterbank(data, fbank, filt_func=signal.lfilter, n_jobs=-1, axis=-1):
+    """Applies a filterbank to a given multi-channel signal.
+
+    Parameters
+    ----------
+    data : ndarray (samples, nchannels)
+    fb : list
+        list of (b,a) tuples, where b and a specify a digital filter
+
+    Returns
+    -------
+        y : ndarray (nfilters, samples, nchannels)
+    """
+    return np.asarray(Parallel(n_jobs=n_jobs)(delayed(filt_func)(b, a, data, axis=axis) for b, a in fbank))
+
+def get_power(signals, decibels=False, win=125, axis=-1, n_jobs=-1):
+    """
+    #TODO: write docstring
+    """
+    if axis != -1:
+        signals = np.moveaxis(signals, axis, -1)
+    nfreqs, nchans, _ = signals.shape
+    out = np.zeros_like(signals)
+    for k in range(nfreqs):
+        feat = np.array(Parallel(n_jobs=n_jobs)(delayed(signal.convolve)(signals[k, i, :]**2, signal.windows.boxcar(win), 'same') for i in range(nchans)))
+        if decibels:
+            feat = np.log(feat + 1e-16)
+        out[k, :, :] = feat
+
+    return out
