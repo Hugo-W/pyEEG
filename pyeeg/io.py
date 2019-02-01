@@ -65,7 +65,7 @@ def load_mat(fname):
     return data
 
 
-def _loadEEGLAB_data(fname):
+def _load_eeglab_data(fname):
     """"
     Load eeglab structure and returns data, channel names,
     sampling frequency and other useful data...
@@ -176,7 +176,7 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
         raw = mne.io.read_raw_eeglab(input_fname=fname, montage=montage_mne, event_id=event_id, preload=True)
     except NotImplementedError:
         print("Version 7.3 matlab file detected, will load 'by hand'")
-        eeg, srateate, _, _, _, ch_names = _loadEEGLAB_data(fname)
+        eeg, srateate, _, _, _, ch_names = _load_eeglab_data(fname)
         info = mne.create_info(ch_names=ch_names, sfreq=srateate, ch_types='eeg', montage=montage_mne)
         raw = mne.io.RawArray(eeg.T, info)
 
@@ -380,7 +380,7 @@ class WordLevelFeatures:
         return short_repr + other_repr
 
 
-    def align_word_features(self, srate, wordonset_feature=True, features=['surprisal',], zscore_fun=None, custom_wordfeats=None):
+    def align_word_features(self, srate, wordonset_feature=True, features=('surprisal',), zscore_fun=None, custom_wordfeats=None):
         """Check that we have the correct number of elements for each features
         Will output a time series with spike for each word features at times from :attr:`self.wordonsets`.
         The duration of the output signal is determined from :attr:`self.duration`.
@@ -451,7 +451,7 @@ class WordLevelFeatures:
 
         current_idx = len(custom_wordfeats) + int(wordonset_feature)
         for k, feat_name in enumerate(features):
-            assert len(getattr(self, feat_name)) == len(self.wordonsets), "Feature #{:d} cannot be simply aligned with word onsets... ({:d} words mismatch)".format(k, abs(len(feat_val)-len(self.wordonsets)))
+            assert len(getattr(self, feat_name)) == len(self.wordonsets), "Feat #{:d} cannot be simply aligned with onsets ({:d} words mismatch)".format(k, abs(len(feat_val)-len(self.wordonsets)))
             feat_val = getattr(self, feat_name)
             if zscore_fun: # if not None
                 if hasattr(zscore_fun, 'fit'): # sklearn object (which must have been fitted BEFOREHAND)
