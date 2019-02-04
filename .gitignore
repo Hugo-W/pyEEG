@@ -8,5 +8,8 @@ docs/build/
 docs/source/_build/
 docs/source/generated/
 
+# Build from setup tool
+./pyEEG.egg-info
+
 # Misc
 *~
