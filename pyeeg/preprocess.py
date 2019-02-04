@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Desctription
-~~~~~~~~~~~~
-
 Module containing some preprocessing helper and function to be applied to EEG...
 
 """

@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Desctription
-~~~~~~~~~~~~
-
 This module contains some utilities functions for data manipulation in general,
 signal processing or/and text processing.
 For instance function to create a matrix of lagged-time series for input to our

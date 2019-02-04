@@ -2,9 +2,6 @@
 # -*- coding: utf-8 -*-
 # pylint: disable=E1101
 """
-Description
-==============
-
 Input/output of data from files:
      - import EEG data from .set files or raw files
      - import features (word onsets, envelopes, etc.)

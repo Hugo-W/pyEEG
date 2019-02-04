@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Desctription
-~~~~~~~~~~~~
-
 Here are gathered all plotting functions.
 Simply.
 

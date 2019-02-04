@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 # pylint: disable=invalid-name
 """
-Desctription
-~~~~~~~~~~~~
-
 In this module, we can find different method to model the relationship
 between stimulus and (EEG) response. Namely there are wrapper functions
 implementing:
@@ -41,21 +38,21 @@ def _svd_regress(x, y, alpha=0.):
     -------
     betas : ndarray (nfeats, nchans)
         Coefficients
-    
+
     Raises
     ------
     ValueError
         If alpha < 0 (coefficient of L2 - regularization)
     NotImplementedError
         If len(alpha) > 1 (later will do several fits)
-    
+
     Notes
     -----
     A warning is shown in the case where nfeats > nsamples, if so the user
     should rather use partial regression.
     """
-    try
-        assert len(alpha) == 1, "Alpha cannot be an array"        
+    try:
+        assert len(alpha) == 1, "Alpha cannot be an array"
     except AssertionError:
         raise NotImplementedError
     try:
@@ -65,7 +62,7 @@ def _svd_regress(x, y, alpha=0.):
 
     [U, s, V] = np.linalg.svd(x, full_matrices=False)
     Uty = U.T @ y
-    Vsreg = V @ np.diag(s/(s**2 + self.alpha))
+    Vsreg = V @ np.diag(s/(s**2 + alpha))
     betas = Vsreg @ Uty
     return betas
 
@@ -73,7 +70,7 @@ class TRFEstimator(BaseEstimator):
     """TODO: fill in docstring
     """
 
-    def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1., 
+    def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
                  alpha=0., fit_intercept=True):
 
         if tmin and tmax:
@@ -83,7 +80,7 @@ class TRFEstimator(BaseEstimator):
         else:
             self.lags = lag_sparse(times, srate)
             self.times = np.asarray(times)
-        
+
         self.srate = srate
         self.alpha = alpha
         self.use_regularisation = alpha > 0.
