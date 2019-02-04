@@ -29,6 +29,46 @@ from .utils import lag_matrix, lag_span, lag_sparse
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
 
+def _svd_regress(x, y, alpha=0.):
+    """Linear regression using svd.
+
+    Parameters
+    ----------
+    x : ndarray (nsamples, nfeats)
+    y : ndarray (nsamples, nchans)
+
+    Returns
+    -------
+    betas : ndarray (nfeats, nchans)
+        Coefficients
+    
+    Raises
+    ------
+    ValueError
+        If alpha < 0 (coefficient of L2 - regularization)
+    NotImplementedError
+        If len(alpha) > 1 (later will do several fits)
+    
+    Notes
+    -----
+    A warning is shown in the case where nfeats > nsamples, if so the user
+    should rather use partial regression.
+    """
+    try
+        assert len(alpha) == 1, "Alpha cannot be an array"        
+    except AssertionError:
+        raise NotImplementedError
+    try:
+        assert alpha >= 0, "Alpha must be positive"
+    except AssertionError:
+        raise ValueError
+
+    [U, s, V] = np.linalg.svd(x, full_matrices=False)
+    Uty = U.T @ y
+    Vsreg = V @ np.diag(s/(s**2 + self.alpha))
+    betas = Vsreg @ Uty
+    return betas
+
 class TRFEstimator(BaseEstimator):
     """TODO: fill in docstring
     """
@@ -86,10 +126,7 @@ class TRFEstimator(BaseEstimator):
 
         if self.use_regularisation:
             # svd method:
-            [U, s, V] = np.linalg.svd(X, full_matrices=False)
-            Uty = U.T @ y
-            Vsreg = V @ np.diag(s/(s**2 + self.alpha))
-            betas = Vsreg @ Uty
+            betas = _svd_regress(X, y, self.alpha)
         else:
             betas = np.linalg.lstsq(X, y)
 
