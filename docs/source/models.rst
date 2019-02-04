@@ -16,9 +16,13 @@ Classes
    :toctree: generated/
    :template: class.rst
 
+   pyeeg.models.TRFEstimator
+
 Functions
 ---------
 
 .. autosummary:: 
     :toctree: generated/
     :template: function.rst
+
+    pyeeg.models._svd_regress
