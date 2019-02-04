@@ -201,6 +201,8 @@ def load_surprisal_values(filepath, eps=1e-12):
 
 def load_wordfreq_values(filepath, unkval=111773390, normfactor=3.2137e12):
     "Load word frequency, and returns -log of it (scaled by median value)"
+    if filepath is None:
+        return None
     csv = pd.read_csv(filepath)
     wordfreq = csv.frequency.get_values()
     # Replace unknown by (global, form my stories) median value:
