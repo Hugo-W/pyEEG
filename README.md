@@ -23,7 +23,7 @@ Install requirements:
 pip install requirements.txt
 ```
 
-To generate the doc, Python package `sphinx` (>= 1.1.0) is required.
+To generate the doc, Python package `sphinx` (>= 1.1.0) and `sphinx_rtd_theme` are required (the former is installable from `conda` and the latter from `pip`).
 
 ### User Installation
 
@@ -38,9 +38,15 @@ $ python setup.py install
 
 ## Basic Examples
 
+See files in `examples/`.
+
 ### Computing Envelope TRF and spatial map from CCA
 
+TBC
+
 ### Computing Word-feature TRF
+
+See [examples/TRF_wordonsets.ipynb](examples/TRF_wprdonsets.ipynb)
 
 ## Docs
 
@@ -48,23 +54,34 @@ To generate the documentation you will need `sphinx` to be installed in your Pyt
 
 ```bash
 conda install sphinx
+pip install sphinx_rtd_theme
 ```
+
 or
+
 ```bash
-pip install sphinx
+pip install sphinx sphinx_rtd_theme
 ```
 
 You can access the doc as HTML or PDF format.
-To generate the documentation pages, type in a terminal (does not work Windows!):
+To generate the documentation HTML pages, type in a terminal (does not work Windows!):
 
 ```bash
 make doc
+```
+
+And for PDF version:
+
+```bash
+make docpdf
 ```
 
 Then you can open the `docs/build/html/index.html` page in your favourite browser or open `docs/build/latex/pyEEG.pdf` in a PDF viewer.
 
 **The PDF documentation can only be generated if `latex` and `latxmk` are present on the machine**
 
-## About
+To clean files created during build process:
 
-Author: Hugo Weissbart
+```bash
+make clean
+```
