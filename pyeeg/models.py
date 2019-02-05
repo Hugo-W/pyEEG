@@ -109,9 +109,12 @@ class TRFEstimator(BaseEstimator):
         """
         self.n_feats_ = X.shape[1]
         self.n_chans_ = y.shape[1]
+
+        # Creating lag-matrix droping NaN values if necessary
         if drop:
             X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
-            # Droping rows of NaN values
+            
+            # Droping rows of NaN values in y
             if any(np.asarray(self.lags) < 0):
                 drop_top = abs(min(self.lags))
                 y = y[drop_top:, :]
@@ -121,15 +124,21 @@ class TRFEstimator(BaseEstimator):
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
 
+        # Adding intercept feature:
+        if self.fit_intercept:
+            X = np.hstack([np.ones((len(X), 1)), X])
+
+        # Solving with svd or least square:
         if self.use_regularisation:
             # svd method:
             betas = _svd_regress(X, y, self.alpha)
         else:
-            betas = np.linalg.lstsq(X, y)
+            betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
 
+        # Reshaping and getting coefficients
         if self.fit_intercept:
             self.intercept_ = betas[0, :]
             betas = betas[1:, :]
 
-        self.coef_ = np.reshape(betas, len(self.lags), self.n_feats_)
+        self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
         self.fitted = True

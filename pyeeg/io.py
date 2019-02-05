@@ -375,6 +375,28 @@ class WordLevelFeatures:
             other_repr += "\nWord vectors loaded (ndim: {:d})".format(self.vectordim)
         return short_repr + other_repr
 
+    def samples_from_onset(self, onset_segment, srate):
+        """Load the corresponding indices of samples as found in EEG for the given speech segment.
+        Will use duration of current segment and the onset time of the speech segment from the EEG experiment.
+
+        Parameters
+        ----------
+        onset_segment : float
+            Onset time of the current speech segment (story) in second.
+        srate : float
+            Sampling rate of EEG
+
+        Returns
+        -------
+        to_keep : array-like
+            Indices to keep in the EEG that matches the speech segment of this class instance.
+
+        """
+        dt = 1./srate
+        onset_sample = int(onset_segment * srate)
+        times = np.arange(0., self.duration + dt, dt)
+        return np.arange(onset_sample, onset_sample + len(times))
+
 
     def align_word_features(self, srate, wordonset_feature=True, features=('surprisal',), zscore_fun=None, custom_wordfeats=None):
         """Check that we have the correct number of elements for each features
@@ -417,7 +439,7 @@ class WordLevelFeatures:
             wrong length.
 
         """
-        assert (hasattr(self, 'duration') and hasattr(self, 'surprisal') and hasattr(self, 'wordonsets')), "Must load word features values and onset first!"
+        assert getattr(self, 'duration') and np.all(getattr(self, 'wordonsets')), "Must load speech duration and word onsets first!"
         if custom_wordfeats is not None:
             assert custom_wordfeats.shape[1] == len(self.wordonsets), "Please supply a list of word features that match the number of word onsets!"
         else:
