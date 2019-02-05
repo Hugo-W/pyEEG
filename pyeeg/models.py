@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name,wrong-import-position
 """
 In this module, we can find different method to model the relationship
 between stimulus and (EEG) response. Namely there are wrapper functions
@@ -20,6 +20,7 @@ and we would have in `__init__.py` an entry to load all architectures.
 
 import logging
 import numpy as np
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
 from .utils import lag_matrix, lag_span, lag_sparse
