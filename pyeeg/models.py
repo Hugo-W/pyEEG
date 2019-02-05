@@ -20,6 +20,7 @@ and we would have in `__init__.py` an entry to load all architectures.
 
 import logging
 import numpy as np
+import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
 from .utils import lag_matrix, lag_span, lag_sparse
 
@@ -67,7 +68,46 @@ def _svd_regress(x, y, alpha=0.):
     return betas
 
 class TRFEstimator(BaseEstimator):
-    """TODO: fill in docstring
+    """Temporal Response Function (TRF) Estimator Class.
+
+    This class allows to estimate TRF from a set of feature signals and an EEG dataset in the same fashion
+    than ReceptiveFieldEstimator does in MNE.
+    However, an arbitrary set of lags can be given. Namely, it can be used in two ways:
+        - calling with `tmin` and tmax` arguments will compute lags spanning from `tmin` to `tmax`
+        - with the `times` argument, one can request an arbitrary set of time lags at which to compute
+        the coefficients of the TRF
+
+    Attributes
+    ----------
+    lags : 1d-array
+        Array of `int`, corresponding to lag in samples at which the TRF coefficients are computed
+    times : 1d-array
+        Array of `float`, corresponding to lag in seconds at which the TRF coefficients are computed
+    srate : float
+        Sampling rate
+    use_reularisation : bool
+        Whether ot not the Ridge regularisation is used to compute the TRF
+    fit_intercept : bool
+        Whether a column of ones should be added to the design matrix to fit an intercept
+    fitted : bool
+        True once the TRF has been fitted on EEG data
+    intercept_ : 1d array (nchans, )
+        Intercepts
+    coef_ : ndarray (nlags, nfeats, nchans)
+        Actual TRF coefficients
+    n_feats_ : int
+        Number of word level features in TRF
+    n_chans_: int
+        Number of EEG channels in TRF
+    feat_names_ : list
+        Names of each word level features
+
+    Notes
+    -----
+    Attributes with a `_` suffix are only set once the TRF has been fitted on EEG data (i.e. after
+    the method :meth:`TRFEstimator.fit` has been called).
+
+    #TODO: add example
     """
 
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
@@ -91,8 +131,9 @@ class TRFEstimator(BaseEstimator):
         self.coef_ = None
         self.n_feats_ = None
         self.n_chans_ = None
+        self.feat_names_ = None
 
-    def fit(self, X, y, drop=True):
+    def fit(self, X, y, drop=True, feat_names=()):
         """Fit the TRF model.
 
         Parameters
@@ -109,11 +150,13 @@ class TRFEstimator(BaseEstimator):
         """
         self.n_feats_ = X.shape[1]
         self.n_chans_ = y.shape[1]
+        if feat_names:
+            self.feat_names_ = feat_names
 
         # Creating lag-matrix droping NaN values if necessary
         if drop:
             X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
-            
+
             # Droping rows of NaN values in y
             if any(np.asarray(self.lags) < 0):
                 drop_top = abs(min(self.lags))
@@ -142,3 +185,16 @@ class TRFEstimator(BaseEstimator):
 
         self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
         self.fitted = True
+
+    def plot_single_feature(self, feat_id):
+        """Plot the TRF of the feature requested as a *butterfly* plot.
+
+        Parameter
+        ---------
+        feat_id : int
+            Index of the feature requested
+        """
+        assert self.fitted, "Fit the model first!"
+        plt.plot(self.times, self.coef_[:, feat_id, :])
+        if self.feat_names_:
+            plt.title('TRF for {:s}'.format(self.feat_names_[feat_id]))

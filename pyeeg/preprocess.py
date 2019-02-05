@@ -33,13 +33,30 @@ def apply_filterbank(data, fbank, filt_func=signal.lfilter, n_jobs=-1, axis=-1):
 
     Returns
     -------
-        y : ndarray (nfilters, samples, nchannels)
+    y : ndarray (nfilters, samples, nchannels)
     """
     return np.asarray(Parallel(n_jobs=n_jobs)(delayed(filt_func)(b, a, data, axis=axis) for b, a in fbank))
 
 def get_power(signals, decibels=False, win=125, axis=-1, n_jobs=-1):
     """
-    #TODO: write docstring
+    Compute the (log) power modulation of a signal by taking the smooth moving average of its square values.
+
+    Parameters
+    ----------
+    signals : ndarray (nsamples, nchans)
+        Input signals
+    decibels : bool
+        If True, will take the log power (default False).
+    win : int
+        Length of smoothing window for moving average (default 125) in samples.
+    axis : int
+        Axis on which to apply the transform
+    n_jobs : int
+        Number of cores to be used (Parrallel job).
+
+    Returns
+    -------
+    out : ndarray (nsamples, nchans)
     """
     if axis != -1:
         signals = np.moveaxis(signals, axis, -1)
