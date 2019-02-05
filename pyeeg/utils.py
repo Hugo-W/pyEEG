@@ -54,7 +54,8 @@ def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False)
 
     cols = []
     for lag in lag_samples:
-        cols.append(dframe.shift(-lag))
+        #cols.append(dframe.shift(-lag))
+        cols.append(dframe.shift(lag))
 
     dframe = pd.concat(cols, axis=1)
     dframe.fillna(filling, inplace=True)
@@ -62,6 +63,7 @@ def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False)
         dframe.dropna(inplace=True)
 
     return dframe.get_values()
+    #return dframe.loc[:, ::-1].get_values()
 
 def lag_span(tmin, tmax, srate=125):
     """Create an array of lags spanning the time window [tmin, tmax].
@@ -82,6 +84,8 @@ def lag_span(tmin, tmax, srate=125):
     """
     sample_min, sample_max = int(np.ceil(tmin * srate)), int(np.ceil(tmax * srate))
     return np.arange(sample_min, sample_max)
+    #sample_min, sample_max = int(np.ceil(-tmax * srate)), int(np.ceil(-tmin * srate))
+    #return np.arange(sample_max, sample_min, -1)
 
 def lag_sparse(times, srate=125):
     """Create an array of lags for the requested time point in `times`.
