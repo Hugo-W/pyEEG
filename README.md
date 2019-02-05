@@ -46,7 +46,7 @@ TBC
 
 ### Computing Word-feature TRF
 
-See [examples/TRF_wordonsets.ipynb](examples/TRF_wprdonsets.ipynb)
+See [examples/TRF_wordonsets.ipynb](examples/TRF_wordonsets.ipynb)
 
 ## Docs
 
