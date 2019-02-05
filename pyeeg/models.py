@@ -188,10 +188,10 @@ class TRFEstimator(BaseEstimator):
         self.fitted = True
 
     def plot_single_feature(self, feat_id):
-        """Plot the TRF of the feature requested as a *butterfly* plot.
+        """Plot the TRF of the feature requested as a _butterfly_ plot.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         feat_id : int
             Index of the feature requested
         """
