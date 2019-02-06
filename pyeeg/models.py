@@ -64,7 +64,7 @@ def _svd_regress(x, y, alpha=0.):
 
     [U, s, V] = np.linalg.svd(x, full_matrices=False)
     Uty = U.T @ y
-    Vsreg = V @ np.diag(s/(s**2 + alpha))
+    Vsreg = V.T @ np.diag(s/(s**2 + alpha))
     betas = Vsreg @ Uty
     return betas
 
@@ -184,11 +184,7 @@ class TRFEstimator(BaseEstimator):
             self.intercept_ = betas[0, :]
             betas = betas[1:, :]
 
-        if self.use_regularisation:
-            self.coef_ = np.reshape(betas, (len(self.lags), self.n_chans_, self.n_feats_), order='F')
-            self.coef_ = self.coef_.swapaxes(1, 2)
-        else:
-            self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
+        self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
         self.fitted = True
 
     def plot_single_feature(self, feat_id, **kwargs):
