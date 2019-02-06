@@ -13,3 +13,4 @@ pyEEG.egg-info/*
 
 # Misc
 *~
+examples/.*/
