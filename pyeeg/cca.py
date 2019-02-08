@@ -211,3 +211,17 @@ class CCA_Estimator(BaseEstimator):
         plt.colorbar(im)
         mne.viz.tight_layout()
         
+    def plot_activation_map(self, X, y, pos, n_comp=1):
+        s_hat = y @ self.coefResponse_
+        sigma_eeg = y.T @ y
+        sigma_reconstr = s_hat.T @ s_hat
+        a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
+        _, ax = plt.subplots(nrows=1, ncols=n_comp, figsize=(12,8))
+        for c in range(n_comp):
+            im, _ = mne.viz.plot_topomap(a_map[:, c], pos, axes=ax[c], show=False)
+            ax[c].set(title=r"CC #{:d}".format(c + 1))
+
+        
+        
+        
+        
