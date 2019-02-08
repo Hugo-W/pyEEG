@@ -107,8 +107,8 @@ class CCA_Estimator(BaseEstimator):
         self.y = 0
         # All following attributes are only defined once fitted (hence the "_" suffix)
         self.intercept_ = None
-        self.coefA_ = None
-        self.coefB_ = None
+        self.coefStim_ = None
+        self.coefResponse_ = None
         self.score_ = None
         self.n_feats_ = None
         self.n_chans_ = None
@@ -160,8 +160,8 @@ class CCA_Estimator(BaseEstimator):
             self.intercept_ = A[0, :]
             A = A[1:, :]
             
-        self.coefA_ = A
-        self.coefB_ = B
+        self.coefStim_ = A
+        self.coefResponse_ = B
         self.score_ = R
         
     def plot_time_filter(self, n_comp=1, feat_id=0):
@@ -171,7 +171,7 @@ class CCA_Estimator(BaseEstimator):
         feat_id : int
             Index of the feature requested
         """
-        plt.plot(self.times, self.coefA_[:, :n_comp])
+        plt.plot(self.times, self.coefStim_[:, :n_comp])
         if self.feat_names_:
             plt.title('TRF for {:s}'.format(self.feat_names_[feat_id]))
             
@@ -182,15 +182,15 @@ class CCA_Estimator(BaseEstimator):
         feat_id : int
             Index of the feature requested
         """
-        mne.viz.plot_topomap(self.coefB_[:, comp], pos)
+        mne.viz.plot_topomap(self.coefResponse_[:, comp], pos)
         
     def plot_corr(self, X, y, pos, comp=0):
         """Plot the correlation between the EEG component wavefor and the EEG channel waveform.
         Parameters
         ----------
         """   
-        eeg_proj = y.dot(self.coefB_[:,comp])
-        env_proj = X.dot(self.coefA_[:, comp])
+        eeg_proj = y.dot(self.coefResponse_[:,comp])
+        env_proj = X.dot(self.coefStim_[:, comp])
         
         r = np.zeros(64)
         for i in range(64):
