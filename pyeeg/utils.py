@@ -114,6 +114,20 @@ def _is_1d(arr):
     "Short utility function to check if an array is vector-like"
     return np.product(arr.shape) == max(arr.shape)
 
+def is_pos_def(A):
+    """Check if matrix is positive definite
+    
+    Ref: https://stackoverflow.com/a/44287862/5303618
+    """
+    if np.array_equal(A, A.conj().T):
+        try:
+            np.linalg.cholesky(A)
+            return True
+        except np.linalg.LinAlgError:
+            return False
+    else:
+        return False
+
 def shift_array(arr, win=2, overlap=0, padding=False, axis=0):
     """Returns segments of an array (overlapping moving windows)
     using the `as_strided` function from NumPy.
