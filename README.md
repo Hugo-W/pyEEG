@@ -2,6 +2,8 @@
 
 pyEEG is a library fo processing EEG data build mostly on top of MNE-py and scikit-learn. It allows anlaysis of raw data and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level features).
 
+If on the netwrok of Imperial College, you can access the documentation here: [pyeeg-docs](http://pyeeg-docs).
+
 ## Installation
 
 ### Dependencies
@@ -48,7 +50,16 @@ TBC
 
 See [examples/TRF_wordonsets.ipynb](examples/TRF_wordonsets.ipynb)
 
-## Docs
+### Working with Word vectors
+
+See [examples/import_WordVectors.ipynb](examples/importWordVectors.ipynb)
+
+## Documentation
+
+The simplest way is to access it from Imperial College Network (or via VPN) [here](http://pyeeg-docs).
+But you can also generate an _offline_ version, or a PDF file of all the docs by following the following instructions.
+
+### Generate the documentation
 
 To generate the documentation you will need `sphinx` to be installed in your Python environment. If it is not installed, install it with:
 

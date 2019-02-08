@@ -103,6 +103,8 @@ class CCA_Estimator(BaseEstimator):
         self.srate = srate
         self.fit_intercept = fit_intercept
         self.fitted = False
+        self.X = 0
+        self.y = 0
         # All following attributes are only defined once fitted (hence the "_" suffix)
         self.intercept_ = None
         self.coefA_ = None
@@ -144,16 +146,18 @@ class CCA_Estimator(BaseEstimator):
                 y = y[:-drop_bottom, :]
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
-
+        self.X = X
+        self.y = y
+        
         # Adding intercept feature:
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])          
-            
+        
         A1, A2, A, B, R = cca_nt(X, y, thresh)
         
         # Reshaping and getting coefficients
         if self.fit_intercept:
-            self.interceptA_ = A[0, :]
+            self.intercept_ = A[0, :]
             A = A[1:, :]
             
         self.coefA_ = A
@@ -171,12 +175,31 @@ class CCA_Estimator(BaseEstimator):
         if self.feat_names_:
             plt.title('TRF for {:s}'.format(self.feat_names_[feat_id]))
             
-    def plot_spatial_filter(self, pos, n_comp=1, feat_id=0):
+    def plot_spatial_filter(self, pos, comp=0, feat_id=0):
         """Plot the topo of the feature requested.
         Parameters
         ----------
         feat_id : int
             Index of the feature requested
         """
-        mne.viz.plot_topomap(self.coefB_[:, n_comp], pos)
+        mne.viz.plot_topomap(self.coefB_[:, comp], pos)
+        
+    def plot_corr(self, X, y, pos, comp=0):
+        """Plot the correlation between the EEG component wavefor and the EEG channel waveform.
+        Parameters
+        ----------
+        """   
+        eeg_proj = y.dot(self.coefB_[:,comp])
+        env_proj = X.dot(self.coefA_[:, comp])
+        
+        r = np.zeros(64)
+        for i in range(64):
+            r[i] = np.corrcoef(y[:,i], eeg_proj)[0,1]
+    
+        cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
+        fig, ax = plt.subplots()
+        im, _ = mne.viz.plot_topomap(r, pos, axes=ax, show=False)
+        ax.set(title=r"CC #{:d} ($\rho$={:.3f})".format(comp+1, cc_corr))
+        plt.colorbar(im)
+        mne.viz.tight_layout()
         

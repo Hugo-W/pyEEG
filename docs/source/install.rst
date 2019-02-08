@@ -6,21 +6,23 @@ Install pyEEG
 
 From the folder containing `setup.py`:
 
-```bash
-python setup.py install
-```
+.. code-block:: bash
+    
+    python setup.py install
+
 
 Generate documentation
 ----------------------
 
 - On Windows:
 
-```cmd
-.\make.bat html
-```
+.. code-block:: bat
+    
+    .\make.bat html
+
 
 - On Linux/Mac:
 
-```bash
-make doc
-``` 
+.. code-block:: bash
+    
+    make doc

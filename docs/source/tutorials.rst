@@ -17,4 +17,7 @@ Examples
    :maxdepth: 1
    :caption: Some Jupyter Notebooks
 
-.. include:: ../../examples/TRF_wordonsets.rst
+   examples/TRF_wordonsets
+   examples/import_WordVectors
+
+.. .. include:: ../../examples/TRF_wordonsets.rst

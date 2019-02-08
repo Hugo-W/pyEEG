@@ -38,6 +38,9 @@ test: test-code test-sphinxext test-doc
 trailing-spaces:
 	find pyeeg -name "*.py" -exec perl -pi -e 's/[ \t]*$$//' {} \;
 
+convert-notebooks:
+	find examples -maxdepth 1 -name "*.ipynb" -exec jupyter-nbconvert {} --to rst \;
+
 doc: inplace
 	$(MAKE) -C docs html
 
