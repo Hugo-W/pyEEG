@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
 
 
-def cca_nt(x, y, thresh, knee_point):
+def cca_nt(x, y, threshs, knee_point):
     # A, B: transform matrices
     # R: r scores
     # can normalise the data
@@ -29,7 +29,7 @@ def cca_nt(x, y, thresh, knee_point):
     # PCA on X.T X to get sphering matrix A1 and on Y.T*Y for A2
     As = []
     Eigvals = []
-    for C_temp in [C[:m, :m], C[m:, m:]]:
+    for idx, C_temp in enumerate([C[:m, :m], C[m:, m:]]):
         Val, Vec = np.linalg.eigh(C_temp)               # get eigval & eigvec
         if not is_pos_def(C_temp):
             discard = np.argwhere(Val < 0)
@@ -38,9 +38,8 @@ def cca_nt(x, y, thresh, knee_point):
         Val, Vec = Val[::-1], Vec[:, ::-1]
         if knee_point is not None:
             find_knee_point()
-            print('knee_point used')
-            
-        keep = np.cumsum(Val)/sum(Val) <= thresh   # only keep components over certain percentage of variance
+            print('knee_point used')    
+        keep = np.cumsum(Val)/sum(Val) <= threshs[idx]   # only keep components over certain percentage of variance
         topcs = Vec[:, keep]                        # corresponding vecs
         Val = Val[keep]
         exp = 1-1e-12
@@ -125,7 +124,7 @@ class CCA_Estimator(BaseEstimator):
         self.feat_names_ = None
         
     
-    def fit(self, X, y, thresh, knee_point=None, drop=True, feat_names=()):
+    def fit(self, X, y, thresh_x=None, thresh_y=None, knee_point=None, drop=True, feat_names=()):
         """ Fit CCA model.
         
         X : ndarray (nsamples x nfeats)
@@ -162,8 +161,17 @@ class CCA_Estimator(BaseEstimator):
         # Adding intercept feature:
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])          
+        if thresh_x is None:
+            if thresh_y is None:
+                thresh_x = 0.999
+                thresh_y = 0.999
+            else:
+                thresh_x = thresh_y
+        if thresh_y is None:
+            thresh_y = thresh_x
+        threshs = np.asarray([thresh_x, thresh_y])
         
-        A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, thresh, knee_point)
+        A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, threshs, knee_point)
         
         # Reshaping and getting coefficients
         if self.fit_intercept:
