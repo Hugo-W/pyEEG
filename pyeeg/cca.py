@@ -10,7 +10,7 @@ import mne
 import numpy as np
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 from mne.decoding import BaseEstimator
-from pyeeg.utils import lag_matrix, lag_span, lag_sparse
+from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def
 import matplotlib.pyplot as plt
 
 logging.basicConfig(level=logging.DEBUG)
@@ -31,6 +31,10 @@ def cca_nt(x, y, thresh):
     Eigvals = []
     for C_temp in [C[:m, :m], C[m:, m:]]:
         Val, Vec = np.linalg.eigh(C_temp)               # get eigval & eigvec
+        if not is_pos_def(C_temp):
+            discard = np.argwhere(Val < 0)
+            Val = Val[max(discard)[0]+1:]
+            Vec = Vec[:,max(discard)[0]+1:]
         Val, Vec = Val[::-1], Vec[:, ::-1]
         keep = np.cumsum(Val)/sum(Val) <= thresh   # only keep components over certain percentage of variance
         topcs = Vec[:, keep]                        # corresponding vecs
@@ -43,9 +47,9 @@ def cca_nt(x, y, thresh):
     eigvals_x, eigvals_y = Eigvals 
     
     # create new C = Amix.T*C*Amix
-    AA = np.zeros((np.size(A1,0) + np.size(A2,0), np.size(A1,1) + np.size(A2,1)))
-    AA[:np.size(A1,0), :np.size(A1,1)] = A1
-    AA[np.size(A1,0):, np.size(A1,1):] = A2
+    AA = np.zeros((A1.shape[0] + A2.shape[0], A1.shape[1] + A2.shape[1]))
+    AA[:A1.shape[0], :A1.shape[1]] = A1
+    AA[A1.shape[0]:, A1.shape[1]:] = A2
     C = AA.T @ C @ AA
     
     N = np.min((np.size(A1,1), np.size(A2,1)))    # number of canonical components
