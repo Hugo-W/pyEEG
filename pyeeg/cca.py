@@ -28,6 +28,7 @@ def cca_nt(x, y, thresh):
     
     # PCA on X.T X to get sphering matrix A1 and on Y.T*Y for A2
     As = []
+    Eigvals = []
     for C_temp in [C[:m, :m], C[m:, m:]]:
         Val, Vec = np.linalg.eigh(C_temp)               # get eigval & eigvec
         Val, Vec = Val[::-1], Vec[:, ::-1]
@@ -37,7 +38,9 @@ def cca_nt(x, y, thresh):
         exp = 1-1e-12
         Val = Val**exp
         As.append(topcs @ np.diag(np.sqrt(1/Val)))
+        Eigvals.append(Val)
     A1, A2 = As
+    eigvals_x, eigvals_y = Eigvals 
     
     # create new C = Amix.T*C*Amix
     AA = np.zeros((np.size(A1,0) + np.size(A2,0), np.size(A1,1) + np.size(A2,1)))
@@ -48,17 +51,14 @@ def cca_nt(x, y, thresh):
     N = np.min((np.size(A1,1), np.size(A2,1)))    # number of canonical components
     
     # PCA on Cnew
-    Val, Vec = np.linalg.eig(C)
-    Val = np.real(Val)                  
-    sorted_Val = Val[Val.argsort()[::-1]]      # sort eig vals
-    Vec = np.real(Vec)
-    Vec = Vec[:, Val.argsort()[::-1]]
+    Val, Vec = np.linalg.eigh(C)
+    Val, Vec = Val[::-1], Vec[:, ::-1]
     
     A = A1 @ Vec[:np.size(A1,1),:N]*np.sqrt(2)      # keeping only N first PCs
     B = A2 @ Vec[np.size(A1,1):,:N]*np.sqrt(2)
-    R = sorted_Val[:N] - 1
+    R = Val[:N] - 1
     
-    return A1, A2, A, B, R
+    return A1, A2, A, B, R, eigvals_x, eigvals_y
 
 class CCA_Estimator(BaseEstimator):
     
@@ -110,6 +110,8 @@ class CCA_Estimator(BaseEstimator):
         self.coefStim_ = None
         self.coefResponse_ = None
         self.score_ = None
+        self.eigvals_x = None
+        self.eigvals_y = None
         self.n_feats_ = None
         self.n_chans_ = None
         self.feat_names_ = None
@@ -153,7 +155,7 @@ class CCA_Estimator(BaseEstimator):
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])          
         
-        A1, A2, A, B, R = cca_nt(X, y, thresh)
+        A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, thresh)
         
         # Reshaping and getting coefficients
         if self.fit_intercept:
@@ -163,6 +165,8 @@ class CCA_Estimator(BaseEstimator):
         self.coefStim_ = A
         self.coefResponse_ = B
         self.score_ = R
+        self.eigvals_x = eigvals_x
+        self.eigvals_y =eigvals_y
         
     def plot_time_filter(self, n_comp=1, feat_id=0):
         """Plot the TRF of the feature requested.
