@@ -23,6 +23,9 @@ from mne.preprocessing.ica import ICA
 #os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
 from scipy.io import loadmat
 
+logging.getLogger('summarizer').setLevel(logging.WARNING)
+logging.getLogger('gensim').setLevel(logging.WARNING)
+logging.getLogger('smart_open').setLevel(logging.WARNING)
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
 
@@ -195,7 +198,11 @@ def load_surprisal_values(filepath, eps=1e-12):
     "Load surprisal values from the given file."
     if filepath is None:
         return None
-    dataframe = pd.read_csv(filepath, delim_whitespace=True, usecols=[0, 1, 2, 3, 4])
+    try:
+        dataframe = pd.read_csv(filepath, delim_whitespace=True, usecols=[0, 1, 2, 3, 4])
+    except pd.errors.ParserError as err:
+        LOGGER.error("Wrong file format, please check the path used and that file exists.")
+        raise
     surprisal = dataframe.loc[np.logical_and(dataframe.Word != '</s>', dataframe.Word != '\''), 'P(NET)'].get_values()
     return -np.log(surprisal + eps)
 
@@ -236,6 +243,43 @@ def get_word_onsets(filepath):
     csv = pd.read_csv(filepath)
     return csv.word.get_values(), csv.onset.get_values()
 
+def get_word_vectors(wordlist, wordvectors, unk='skip'):
+    """Get the word vectors for each word in the list supplied.
+    Words that do not appear in the Word Vector model can be either skipped or assign a random
+    value, or try to process them to find a close relative.
+
+    Parameters
+    ----------
+    wordlist : list
+        List word for which we should find the corresponding vectors
+    wordvectors : gensim.models.KeyedVectors
+        Gensim's word embedding model
+    unk : str ({'skip', 'rdm', 'closest'})
+        Method used for words that do not appear in the word embedding vocabulary
+
+    Returns
+    -------
+    wordvecs : ndarray (nwords, ndims)
+    """
+    wordvecs = np.zeros((len(wordlist), wordvectors.vector_size))
+    for k, word in enumerate(wordlist):
+        try:
+            wordvecs[k, :] = wordvectors[word.lower()]
+        except KeyError:
+            LOGGER.info("Word {:s} not in word embedding model; will use {:s} instead".format(word, unk))
+            if unk == 'skip':
+                continue
+            elif unk == 'rdm':
+                vect = np.random.randn(wordvectors.vector_size,)
+                vect /= np.linalg.norm(vect)
+                wordvecs[k, :] = vect
+            elif unk == 'closest':
+                raise NotImplementedError
+            else:
+                raise ValueError("Please select a method between: {skip, rdm, closest}")
+    return wordvecs
+
+
 class WordLevelFeatures:
     """Gather word-level linguistic features based on old and rigid files, generated from
     various sources (RNNLM, custom scripts for word frequencies, Forced-Alignment toolkit, ...)
@@ -261,6 +305,11 @@ class WordLevelFeatures:
         Path to audio file
     rnnlm_model : str
         Path to RNNLM toolkit to compute surprisal and entropy values from a text.
+    keep_vectors : bool (default: False)
+        If true, will keep the full matrix of all word vectors in memory along with vocabulary
+        (see :attr:`self.wordvectors_matrix`)
+    unk_wv : str {'skip, 'rdm', 'closest'}
+        See parameter `unk` in :func:'get_word_vectors'
 
 
     Attributes
@@ -276,9 +325,13 @@ class WordLevelFeatures:
     wordlist : list[str]
         List of words from which each feature is being measured
     wordvectors : array-like (nwords x ndimension)
-        Matric of word vectors, i.e. concatenation of word vector correpsonding to words in the text
+        Matrix of word vectors, i.e. concatenation of word vector correpsonding to words in the text
     vectordim : int
         Number of dimensions in the word embedding currently loaded.
+    wordvectors_matrix : ndarray (nvocab x ndims)
+        All word vectors (only if :param:`keep_vectors` is True)
+    wordvectors_vocab : dict
+        Vocabulary associated with word vectors (only if full matrix loaded)
 
 
     Examples
@@ -325,7 +378,7 @@ class WordLevelFeatures:
 
     def __init__(self, path_praat_env=None, path_surprisal=None, path_wordvectors=None,
                  path_wordfrequency=None, path_wordonsets=None, path_transcript=None,
-                 rnnlm_model=None, path_audio=None):
+                 rnnlm_model=None, path_audio=None, keep_vectors=False, unk_wv='rdm'):
 
         if path_praat_env is not None:
             self.duration = extract_duration_praat(path_praat_env)
@@ -350,8 +403,12 @@ class WordLevelFeatures:
         self.wordvectors = None
         self.vectordim = 0
         if GENSIM_IMPORTED and path_wordvectors is not None:
-            self.wordvectors = gensim.models.KeyedVectors.load_word2vec_format(path_wordvectors, binary=False, limit=30000).syn0
-            self.vectordim = self.wordvectors.shape[1]
+            wordvectors_gensim = gensim.models.KeyedVectors.load_word2vec_format(path_wordvectors, binary=False, limit=30000)
+            if keep_vectors:
+                self.wordvectors_matrix = wordvectors_gensim.syn0
+                self.wordvectors_vocab = wordvectors_gensim.vocab
+            self.vectordim = wordvectors_gensim.vector_size
+            self.wordvectors = get_word_vectors(self.wordlist, wordvectors_gensim, unk=unk_wv)
 
     def summary(self):
         "Print a short summary for each variables contained in the instance"
@@ -459,7 +516,7 @@ class WordLevelFeatures:
             feat[onset_samples, 0] = 1.
 
         for k, feat_val in enumerate(custom_wordfeats):
-            assert len(feat_val) == len(self.wordonsets), "Feature #{:d} cannot be simply aligned with word onsets... ({:d} words mismatch)".format(k, abs(len(feat_val)-len(self.wordonsets)))
+            assert len(feat_val) == len(self.wordonsets), "Custom Feature #{:d} cannot be simply aligned with word onsets... ({:d} words mismatch)".format(k, abs(len(feat_val)-len(self.wordonsets)))
             if zscore_fun: # if not None
                 if hasattr(zscore_fun, 'fit'): # sklearn object (which must have been fitted BEFOREHAND)
                     feat_val = zscore_fun.transform(feat_val)
@@ -469,7 +526,8 @@ class WordLevelFeatures:
 
         current_idx = len(custom_wordfeats) + int(wordonset_feature)
         for k, feat_name in enumerate(features):
-            assert len(getattr(self, feat_name)) == len(self.wordonsets), "Feat #{:d} cannot be simply aligned with onsets ({:d} words mismatch)".format(k, abs(len(feat_val)-len(self.wordonsets)))
+            LOGGER.info("Adding feature {:s}".format(feat_name))
+            assert len(getattr(self, feat_name)) == len(self.wordonsets), "Feat #{:d} ({:s}) cannot be simply aligned with onsets ({:d} words mismatch)".format(k, feat_name, abs(len(getattr(self, feat_name))-len(self.wordonsets)))
             feat_val = getattr(self, feat_name)
             if zscore_fun: # if not None
                 if hasattr(zscore_fun, 'fit'): # sklearn object (which must have been fitted BEFOREHAND)
@@ -478,5 +536,8 @@ class WordLevelFeatures:
                     feat_val = zscore_fun(feat_val)
             feat[onset_samples, current_idx] = feat_val
             current_idx += 1
+
+        if use_w2v:
+            feat[onset_samples, current_idx:] = self.wordvectors
 
         return feat

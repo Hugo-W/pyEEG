@@ -54,7 +54,7 @@ def _svd_regress(x, y, alpha=0.):
     should rather use partial regression.
     """
     try:
-        assert len(alpha) == 1, "Alpha cannot be an array"
+        assert np.size(alpha) == 1, "Alpha cannot be an array"
     except AssertionError:
         raise NotImplementedError
     try:
@@ -64,7 +64,7 @@ def _svd_regress(x, y, alpha=0.):
 
     [U, s, V] = np.linalg.svd(x, full_matrices=False)
     Uty = U.T @ y
-    Vsreg = V @ np.diag(s/(s**2 + alpha))
+    Vsreg = V.T @ np.diag(s/(s**2 + alpha))
     betas = Vsreg @ Uty
     return betas
 
@@ -187,7 +187,7 @@ class TRFEstimator(BaseEstimator):
         self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
         self.fitted = True
 
-    def plot_single_feature(self, feat_id):
+    def plot_single_feature(self, feat_id, **kwargs):
         """Plot the TRF of the feature requested as a _butterfly_ plot.
 
         Parameters
@@ -196,6 +196,10 @@ class TRFEstimator(BaseEstimator):
             Index of the feature requested
         """
         assert self.fitted, "Fit the model first!"
-        plt.plot(self.times, self.coef_[:, feat_id, :])
-        if self.feat_names_:
-            plt.title('TRF for {:s}'.format(self.feat_names_[feat_id]))
+
+        _, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), squeeze=False, **kwargs)
+
+        for k, feat in enumerate(list(feat_id)):
+            ax[0, k].plot(self.times, self.coef_[:, feat, :])
+            if self.feat_names_:
+                ax[0, k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))
