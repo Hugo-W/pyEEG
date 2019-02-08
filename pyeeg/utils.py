@@ -219,3 +219,6 @@ def chunk_data(data, window_size, overlap_size=0, padding=False, win_as_samples=
 
     return ret
     
+def find_knee_point():
+    ""
+    pass
