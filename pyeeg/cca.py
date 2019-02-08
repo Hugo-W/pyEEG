@@ -10,14 +10,14 @@ import mne
 import numpy as np
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 from mne.decoding import BaseEstimator
-from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def
+from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def, find_knee_point
 import matplotlib.pyplot as plt
 
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
 
 
-def cca_nt(x, y, thresh):
+def cca_nt(x, y, thresh, knee_point):
     # A, B: transform matrices
     # R: r scores
     # can normalise the data
@@ -36,6 +36,10 @@ def cca_nt(x, y, thresh):
             Val = Val[max(discard)[0]+1:]
             Vec = Vec[:,max(discard)[0]+1:]
         Val, Vec = Val[::-1], Vec[:, ::-1]
+        if knee_point is not None:
+            find_knee_point()
+            print('knee_point used')
+            
         keep = np.cumsum(Val)/sum(Val) <= thresh   # only keep components over certain percentage of variance
         topcs = Vec[:, keep]                        # corresponding vecs
         Val = Val[keep]
@@ -121,7 +125,7 @@ class CCA_Estimator(BaseEstimator):
         self.feat_names_ = None
         
     
-    def fit(self, X, y, thresh, drop=True, feat_names=()):
+    def fit(self, X, y, thresh, knee_point=None, drop=True, feat_names=()):
         """ Fit CCA model.
         
         X : ndarray (nsamples x nfeats)
@@ -159,7 +163,7 @@ class CCA_Estimator(BaseEstimator):
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])          
         
-        A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, thresh)
+        A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, thresh, knee_point)
         
         # Reshaping and getting coefficients
         if self.fit_intercept:
