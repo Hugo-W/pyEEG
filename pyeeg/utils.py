@@ -12,6 +12,7 @@ wiht the NumPy **side trick** see `the Python Cookbook recipee`_ for more detail
 """
 
 #### Libraries
+import psutil
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 import pandas as pd
@@ -222,3 +223,18 @@ def chunk_data(data, window_size, overlap_size=0, padding=False, win_as_samples=
 def find_knee_point():
     ""
     pass
+
+def mem_check(units='Gb'):
+    "Get available RAM"
+    stats = psutil.virtual_memory()
+    units = units.lower()
+    if units == 'gb':
+        factor = 1./1024**3
+    elif units == 'mb':
+        factor = 1./1024**2
+    elif units == 'kb':
+        factor = 1./1024
+    else:
+        factor = 1.
+        print("Did not get what unit you want, will memory return in bytes")
+    return stats.available * factor
