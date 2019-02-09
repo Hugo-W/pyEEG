@@ -13,6 +13,6 @@ pyEEG.egg-info/*
 
 # Misc
 *~
-docs/source/example/.ipynb_checkpoints/
+docs/source/examples/.ipynb_checkpoints/
 examples/.*/
 docs/source/examples/.ipynb_checkpoints/TRF_wordonsets-checkpoint.ipynb
