@@ -200,9 +200,9 @@ def load_surprisal_values(filepath, eps=1e-12):
         return None
     try:
         dataframe = pd.read_csv(filepath, delim_whitespace=True, usecols=[0, 1, 2, 3, 4])
-    except pd.errors.ParserError as err:
+    except pd.errors.ParserError:
         LOGGER.error("Wrong file format, please check the path used and that file exists.")
-        raise
+        raise pd.errors.ParserError
     surprisal = dataframe.loc[np.logical_and(dataframe.Word != '</s>', dataframe.Word != '\''), 'P(NET)'].get_values()
     return -np.log(surprisal + eps)
 
