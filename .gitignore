@@ -16,3 +16,4 @@ pyEEG.egg-info/*
 docs/source/examples/.ipynb_checkpoints/
 examples/.*/
 docs/source/examples/.ipynb_checkpoints/TRF_wordonsets-checkpoint.ipynb
+
