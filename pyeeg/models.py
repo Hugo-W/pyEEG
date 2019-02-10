@@ -124,11 +124,11 @@ class TRFEstimator(BaseEstimator):
 
         if tmin and tmax:
             LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
-            self.lags = lag_span(tmin, tmax, srate=srate)
+            self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
             self.times = self.lags / srate
         else:
-            self.lags = lag_sparse(times, srate)
             self.times = np.asarray(times)
+            self.lags = lag_sparse(-self.times, srate)
 
         self.srate = srate
         self.alpha = alpha
@@ -200,6 +200,7 @@ class TRFEstimator(BaseEstimator):
             betas = betas[1:, :]
 
         self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
+        self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
         self.fitted = True
 
     def plot_single_feature(self, feat_id, **kwargs):
