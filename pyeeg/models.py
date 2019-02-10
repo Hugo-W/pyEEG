@@ -55,7 +55,7 @@ def _svd_regress(x, y, alpha=0.):
     should rather use partial regression.
     """
     try:
-        assert np.size(alpha) == 1, "Alpha cannot be an array"
+        assert np.size(alpha) == 1, "Alpha cannot be an array (in the future yes)"
     except AssertionError:
         raise NotImplementedError
     try:
@@ -65,7 +65,7 @@ def _svd_regress(x, y, alpha=0.):
 
     [U, s, V] = np.linalg.svd(x, full_matrices=False)
     if np.ndim(y) == 3:
-        Uty = np.zeros((U.shape[1], y.shape[1]))
+        Uty = np.zeros((U.shape[1], y.shape[2]))
         for Y in y:
             Uty += U.T @ Y
         Uty /= len(y)
@@ -157,12 +157,14 @@ class TRFEstimator(BaseEstimator):
         coef_ : ndarray (nlags x nfeats)
         intercept_ : ndarray (nfeats x 1)
         """
-        estimated_mem_usage = X.nbytes * len(self.lags) + y.nbytes
+        y = np.asarray(y)
+        y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
+        estimated_mem_usage = X.nbytes * len(self.lags) + y_memory
         if estimated_mem_usage/1024.**3 > mem_check():
             raise MemoryError("Not enough RAM available!")
 
         self.n_feats_ = X.shape[1]
-        self.n_chans_ = y.shape[1]
+        self.n_chans_ = y.shape[1] if y.ndim == 2 else y.shape[2]
         if feat_names:
             self.feat_names_ = feat_names
 
@@ -173,10 +175,10 @@ class TRFEstimator(BaseEstimator):
             # Droping rows of NaN values in y
             if any(np.asarray(self.lags) < 0):
                 drop_top = abs(min(self.lags))
-                y = y[drop_top:, :]
+                y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
             if any(np.asarray(self.lags) > 0):
                 drop_bottom = abs(max(self.lags))
-                y = y[:-drop_bottom, :]
+                y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
 
