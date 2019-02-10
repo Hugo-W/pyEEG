@@ -17,13 +17,12 @@ Modules for each modelling architecture will then be implemented within the subp
 and we would have in `__init__.py` an entry to load all architectures.
 
 """
-
 import logging
 import numpy as np
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
-from .utils import lag_matrix, lag_span, lag_sparse
+from .utils import lag_matrix, lag_span, lag_sparse, mem_check
 
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
@@ -34,7 +33,9 @@ def _svd_regress(x, y, alpha=0.):
     Parameters
     ----------
     x : ndarray (nsamples, nfeats)
-    y : ndarray (nsamples, nchans)
+    y : ndarray (nsamples, nchans) or list of such
+        If a list of such arrays is given, each element of the
+        list is treated as an individual subject
 
     Returns
     -------
@@ -63,7 +64,13 @@ def _svd_regress(x, y, alpha=0.):
         raise ValueError
 
     [U, s, V] = np.linalg.svd(x, full_matrices=False)
-    Uty = U.T @ y
+    if np.ndim(y) == 3:
+        Uty = np.zeros((U.shape[1], y.shape[1]))
+        for Y in y:
+            Uty += U.T @ Y
+        Uty /= len(y)
+    else:
+        Uty = U.T @ y
     Vsreg = V.T @ np.diag(s/(s**2 + alpha))
     betas = Vsreg @ Uty
     return betas
@@ -143,12 +150,17 @@ class TRFEstimator(BaseEstimator):
             Array of features (time-lagged)
         y : ndarray (nsamples x nchans)
             EEG data
+            
 
         Returns
         -------
         coef_ : ndarray (nlags x nfeats)
         intercept_ : ndarray (nfeats x 1)
         """
+        estimated_mem_usage = X.nbytes * len(self.lags) + y.nbytes
+        if estimated_mem_usage/1024.**3 > mem_check():
+            raise MemoryError("Not enough RAM available!")
+
         self.n_feats_ = X.shape[1]
         self.n_chans_ = y.shape[1]
         if feat_names:
@@ -173,7 +185,7 @@ class TRFEstimator(BaseEstimator):
             X = np.hstack([np.ones((len(X), 1)), X])
 
         # Solving with svd or least square:
-        if self.use_regularisation:
+        if self.use_regularisation or np.ndim(y) == 3:
             # svd method:
             betas = _svd_regress(X, y, self.alpha)
         else:

@@ -221,7 +221,7 @@ def chunk_data(data, window_size, overlap_size=0, padding=False, win_as_samples=
     return ret
     
 def find_knee_point():
-    ""
+    "fin knee pount"
     pass
 
 def mem_check(units='Gb'):
@@ -238,3 +238,4 @@ def mem_check(units='Gb'):
         factor = 1.
         print("Did not get what unit you want, will memory return in bytes")
     return stats.available * factor
+    
