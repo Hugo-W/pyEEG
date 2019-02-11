@@ -123,6 +123,7 @@ class CCA_Estimator(BaseEstimator):
         self.n_feats_ = None
         self.n_chans_ = None
         self.feat_names_ = None
+        self.sklearn_TRF_ = None
         
     
     def fit(self, X, y, cca_implementation='nt', thresh_x=None, thresh_y=None, n_comp=2, knee_point=None, drop=True, feat_names=()):
@@ -196,6 +197,7 @@ class CCA_Estimator(BaseEstimator):
             self.coefResponse_ = cca_skl.y_rotations_
             score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
             self.score_ = score
+            self.sklearn_TRF_ = cca_skl.coef_
             
         
     def plot_time_filter(self, n_comp=1, feat_id=0):
@@ -233,11 +235,17 @@ class CCA_Estimator(BaseEstimator):
         cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
         fig, ax = plt.subplots()
         im, _ = mne.viz.plot_topomap(r, pos, axes=ax, show=False)
-        ax.set(title=r"CC #{:d} ($\rho$={:.3f})".format(comp+1, cc_corr))
+        ax.set(title=r"CC #{:d} ($\rho$={:.3f})".format(comp+1, self.score_[comp]))
         plt.colorbar(im)
         mne.viz.tight_layout()
         
     def plot_activation_map(self, pos, n_comp=1):
+        """Plot the activation map from the spatial filter.
+        Parameters
+        ----------
+        """   
+        if n_comp <= 0:
+            print('Invalid number of components, must be a positive integer.')
         s_hat = self.y @ self.coefResponse_
         sigma_eeg = self.y.T @ self.y
         sigma_reconstr = s_hat.T @ s_hat
