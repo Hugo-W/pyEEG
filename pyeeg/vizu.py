@@ -7,6 +7,7 @@ Simply.
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
+import mne
 
 PROP_CYCLE = plt.rcParams['axes.prop_cycle']
 COLORS = PROP_CYCLE.by_key()['color']
@@ -36,3 +37,15 @@ def plot_filterbank_output(signals, spacing=None, axis=-1):
         if axis == -1:
             filtered = filtered.T
         plt.plot(filtered + k*spacing*2)
+def topoplot_array(data, pos, n_topos=1, titles=None):
+    """
+    Plotting topographic plot from spatial filters.
+    """
+    fig = plt.figure(figsize=(12, 10), constrained_layout=False)
+    outer_grid = fig.add_gridspec(5, 5, wspace=0.0, hspace=0.25)
+    for c in range(n_topos):
+        inner_grid = outer_grid[c].subgridspec(1, 1)
+        ax = plt.Subplot(fig, inner_grid[0])
+        im, _ = mne.viz.plot_topomap(data[:,c], pos, axes=ax, show=False)
+        ax.set(title="CC #{:d}".format(c+1))
+        fig.add_subplot(ax)

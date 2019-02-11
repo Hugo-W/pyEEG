@@ -12,6 +12,7 @@ logging.getLogger('matplotlib').setLevel(logging.WARNING)
 from mne.decoding import BaseEstimator
 from sklearn.cross_decomposition import CCA
 from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def, find_knee_point
+from pyeeg.vizu import topoplot_array
 import matplotlib.pyplot as plt
 
 logging.basicConfig(level=logging.DEBUG)
@@ -211,32 +212,31 @@ class CCA_Estimator(BaseEstimator):
         if self.feat_names_:
             plt.title('TRF for {:s}'.format(self.feat_names_[feat_id]))
             
-    def plot_spatial_filter(self, pos, comp=0, feat_id=0):
+    def plot_spatial_filter(self, pos, n_comp=1, feat_id=0):
         """Plot the topo of the feature requested.
         Parameters
         ----------
         feat_id : int
             Index of the feature requested
         """
-        mne.viz.plot_topomap(self.coefResponse_[:, comp], pos)
+        topoplot_array(self.coefResponse_, pos, n_topos=n_comp)
+        mne.viz.tight_layout()
         
-    def plot_corr(self, pos, comp=0):
+        
+    def plot_corr(self, pos, n_comp=1):
         """Plot the correlation between the EEG component waveform and the EEG channel waveform.
         Parameters
         ----------
-        """   
-        eeg_proj = self.y @ self.coefResponse_[:,comp]
-        env_proj = self.X @ self.coefStim_[:, comp]
-        
-        r = np.zeros(64)
-        for i in range(64):
-            r[i] = np.corrcoef(self.y[:,i], eeg_proj)[0,1]
-    
-        cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
-        fig, ax = plt.subplots()
-        im, _ = mne.viz.plot_topomap(r, pos, axes=ax, show=False)
-        ax.set(title=r"CC #{:d} ($\rho$={:.3f})".format(comp+1, self.score_[comp]))
-        plt.colorbar(im)
+        """ 
+        r = np.zeros((64,n_comp))
+        for c in range(n_comp):
+            eeg_proj = self.y @ self.coefResponse_[:,c]
+            env_proj = self.X @ self.coefStim_[:, c]
+            for i in range(64):
+                r[i,c] = np.corrcoef(self.y[:,i], eeg_proj)[0,1]
+            cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
+          
+        topoplot_array(r, pos, n_topos=n_comp)
         mne.viz.tight_layout()
         
     def plot_activation_map(self, pos, n_comp=1):
@@ -250,14 +250,8 @@ class CCA_Estimator(BaseEstimator):
         sigma_eeg = self.y.T @ self.y
         sigma_reconstr = s_hat.T @ s_hat
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
-        fig = plt.figure(figsize=(12, 10), constrained_layout=False)
-        outer_grid = fig.add_gridspec(5, 5, wspace=0.0, hspace=0.25)
-        for c in range(n_comp):
-            inner_grid = outer_grid[c].subgridspec(1, 1)
-            ax = plt.Subplot(fig, inner_grid[0])
-            im, _ = mne.viz.plot_topomap(a_map[:,c], pos, axes=ax, show=False)
-            ax.set(title=r"CC #{:d}".format(c + 1))
-            fig.add_subplot(ax)
+        
+        topoplot_array(a_map, pos, n_topos=n_comp)
         mne.viz.tight_layout()
 
         
