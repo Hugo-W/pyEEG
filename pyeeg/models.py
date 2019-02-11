@@ -151,7 +151,7 @@ class TRFEstimator(BaseEstimator):
             Array of features (time-lagged)
         y : ndarray (nsamples x nchans)
             EEG data
-            
+
 
         Returns
         -------
@@ -203,7 +203,9 @@ class TRFEstimator(BaseEstimator):
         self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
         self.fitted = True
 
-    def plot_single_feature(self, feat_id, **kwargs):
+        return self
+
+    def plot(self, feat_id=0, **kwargs):
         """Plot the TRF of the feature requested as a _butterfly_ plot.
 
         Parameters
@@ -212,6 +214,7 @@ class TRFEstimator(BaseEstimator):
             Index of the feature requested
         """
         assert self.fitted, "Fit the model first!"
+        assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), "Feat ids not in range"
 
         _, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), squeeze=False, **kwargs)
 
