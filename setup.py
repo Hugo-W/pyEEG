@@ -1,12 +1,15 @@
 """
 Setup file
 """
-#from distutils.core import setup
 from setuptools import setup
+
+version = {}
+with open("...pyeeg/version.py") as fp:
+    exec(fp.read(), version)
 
 setup(
     name='pyEEG',
-    version='0.2',
+    version=version['__version__'],
     packages=['pyeeg'],
     install_requires=['numpy', 'scipy', 'scikit-learn'],
     url='https://github.com/Hugo-W/pyEEG',

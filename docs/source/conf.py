@@ -22,10 +22,14 @@ project = 'pyEEG'
 copyright = '2019, Hugo Weissbart'
 author = 'Hugo Weissbart'
 
+version = {}
+with open("...pyeeg/version.py") as fp:
+    exec(fp.read(), version)
+
 # The short X.Y version
-version = '0.2'
+version = version['__version__']
 # The full version, including alpha/beta/rc tags
-release = '0.2a'
+release = version + 'a'
 
 
 # -- General configuration ---------------------------------------------------
