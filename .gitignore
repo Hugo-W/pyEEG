@@ -16,4 +16,5 @@ pyEEG.egg-info/*
 docs/source/examples/.ipynb_checkpoints/
 examples/.*/
 docs/source/examples/.ipynb_checkpoints/TRF_wordonsets-checkpoint.ipynb
-
+docs/source/examples/.ipynb_checkpoints/CCA_wordvectors-checkpoint.ipynb
+docs/source/examples/.ipynb_checkpoints/CCA_envelope-checkpoint.ipynb
