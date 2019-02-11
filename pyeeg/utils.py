@@ -160,7 +160,7 @@ def shift_array(arr, win=2, overlap=0, padding=False, axis=0):
     Maybe `.copy()` the result if needed.
     This is the way for 2d array with overlap (i.e. step size != 1, which was the easy way):
 
-    .. code-blocks::
+    .. code-block:: python
 
         as_strided(a, (num_windows, win_size, n_features), (size_onelement * hop_size * n_feats, original_strides))
     """

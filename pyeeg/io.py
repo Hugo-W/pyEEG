@@ -329,7 +329,7 @@ class WordLevelFeatures:
     vectordim : int
         Number of dimensions in the word embedding currently loaded.
     wordvectors_matrix : ndarray (nvocab x ndims)
-        All word vectors (only if :param:`keep_vectors` is True)
+        All word vectors (only if :data:`keep_vectors` is True)
     wordvectors_vocab : dict
         Vocabulary associated with word vectors (only if full matrix loaded)
 

@@ -10,14 +10,17 @@ Preprocessing module
 
 Classes
 -------
-.. currentmodule:: pyeeg.preprocess
+.. currentmodule:: pyeeg.mcca
 
 .. autosummary::
    :toctree: generated/
    :template: class.rst
 
+   pyeeg.mcca.mCCA
+
 Functions
 ----------------------------------
+.. currentmodule:: pyeeg.preprocess
 
 .. autosummary:: 
     :toctree: generated/

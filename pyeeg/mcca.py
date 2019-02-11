@@ -34,8 +34,8 @@ class mCCA(BaseEstimator):
         fit_transform
         transform
 
-    Reference:
-    ----------
+    Reference
+    ---------
         De Cheveigné et. al, MCCA of brain signals, 2018, biorXiv
     """
     def __init__(self, n_components=None):
@@ -43,8 +43,8 @@ class mCCA(BaseEstimator):
 
     def fit(self, X):
         """
-        Parameters:
-        -----------
+        Parameters
+        ----------
             X : list of array-like (Time x channels) or array-like (subj x time x channels)
         """
         self.n_datasets_ = len(X)

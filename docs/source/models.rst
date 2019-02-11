@@ -17,6 +17,7 @@ Classes
    :template: class.rst
 
    pyeeg.models.TRFEstimator
+   pyeeg.cca.CCA
 
 Functions
 ---------
