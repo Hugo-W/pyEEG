@@ -17,10 +17,18 @@ Classes
    :template: class.rst
 
    pyeeg.models.TRFEstimator
-   pyeeg.cca.CCA
+   
+.. currentmodule:: pyeeg.cca
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+   
+   pyeeg.cca.CCA_Estimator
 
 Functions
 ---------
+.. currentmodule:: pyeeg.models
 
 .. autosummary:: 
     :toctree: generated/

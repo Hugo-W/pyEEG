@@ -19,5 +19,7 @@ Examples
 
    examples/TRF_wordonsets
    examples/import_WordVectors
+   examples/CCA_envelope
+   examples/CCA_wordvectors
 
 .. .. include:: ../../examples/TRF_wordonsets.rst

@@ -82,11 +82,11 @@ class TRFEstimator(BaseEstimator):
     This class allows to estimate TRF from a set of feature signals and an EEG dataset in the same fashion
     than ReceptiveFieldEstimator does in MNE.
     However, an arbitrary set of lags can be given. Namely, it can be used in two ways:
-    
+
     - calling with `tmin` and tmax` arguments will compute lags spanning from `tmin` to `tmax`
     - with the `times` argument, one can request an arbitrary set of time lags at which to compute
     the coefficients of the TRF
-    
+
     Attributes
     ----------
     lags : 1d-array
