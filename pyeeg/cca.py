@@ -228,25 +228,15 @@ class CCA_Estimator(BaseEstimator):
         sigma_eeg = y.T @ y
         sigma_reconstr = s_hat.T @ s_hat
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
-        n_comp = 7
-        if n_comp > 5:
-            n_rows = np.ceil(n_comp / 5).astype(int)
-            n_cols = 5
-        else:
-            n_rows = 1
-            n_cols = n_comp
-        _, ax = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(12,8))
+        fig = plt.figure(figsize=(12, 10), constrained_layout=False)
+        outer_grid = fig.add_gridspec(5, 5, wspace=0.0, hspace=0.25)
         for c in range(n_comp):
-            if c > 5:
-                row_idx = np.ceil(c / 5).astype(int) - 1
-                col_idx = c % 5 - 1
-            else:
-                row_idx = 0
-                if c == 0:
-                    col_idx = 0
-                col_idx = c
-            im, _ = mne.viz.plot_topomap(a_map[:, c], pos, axes=ax[c], show=False)
-            ax[c].set(title=r"CC #{:d}".format(c + 1))
+            inner_grid = outer_grid[c].subgridspec(1, 1)
+            ax = plt.Subplot(fig, inner_grid[0])
+            im, _ = mne.viz.plot_topomap(a_map[:,c], pos, axes=ax, show=False)
+            ax.set(title=r"CC #{:d}".format(c + 1))
+            fig.add_subplot(ax)
+        mne.viz.tight_layout()
 
         
         
