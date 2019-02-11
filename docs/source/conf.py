@@ -23,7 +23,7 @@ copyright = '2019, Hugo Weissbart'
 author = 'Hugo Weissbart'
 
 version = {}
-with open("...pyeeg/version.py") as fp:
+with open("../../pyeeg/version.py") as fp:
     exec(fp.read(), version)
 
 # The short X.Y version

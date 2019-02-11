@@ -4,7 +4,7 @@ Setup file
 from setuptools import setup
 
 version = {}
-with open("...pyeeg/version.py") as fp:
+with open("./pyeeg/version.py") as fp:
     exec(fp.read(), version)
 
 setup(
