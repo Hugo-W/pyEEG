@@ -187,7 +187,12 @@ class CCA_Estimator(BaseEstimator):
         if cca_implementation == 'sklearn':
             cca_skl = CCA(n_components=n_comp)
             cca_skl.fit(X, y)
-            self.coefStim_ = cca_skl.x_rotations_
+            A = cca_skl.x_rotations_
+            if self.fit_intercept:
+                self.intercept_ = A[0, :]
+                A = A[1:, :]
+                
+            self.coefStim_ = A
             self.coefResponse_ = cca_skl.y_rotations_
             score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
             self.score_ = score
@@ -213,17 +218,17 @@ class CCA_Estimator(BaseEstimator):
         """
         mne.viz.plot_topomap(self.coefResponse_[:, comp], pos)
         
-    def plot_corr(self, X, y, pos, comp=0):
-        """Plot the correlation between the EEG component wavefor and the EEG channel waveform.
+    def plot_corr(self, pos, comp=0):
+        """Plot the correlation between the EEG component waveform and the EEG channel waveform.
         Parameters
         ----------
         """   
-        eeg_proj = y.dot(self.coefResponse_[:,comp])
-        env_proj = X.dot(self.coefStim_[:, comp])
+        eeg_proj = self.y @ self.coefResponse_[:,comp]
+        env_proj = self.X @ self.coefStim_[:, comp]
         
         r = np.zeros(64)
         for i in range(64):
-            r[i] = np.corrcoef(y[:,i], eeg_proj)[0,1]
+            r[i] = np.corrcoef(self.y[:,i], eeg_proj)[0,1]
     
         cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
         fig, ax = plt.subplots()
@@ -232,9 +237,9 @@ class CCA_Estimator(BaseEstimator):
         plt.colorbar(im)
         mne.viz.tight_layout()
         
-    def plot_activation_map(self, X, y, pos, n_comp=1):
-        s_hat = y @ self.coefResponse_
-        sigma_eeg = y.T @ y
+    def plot_activation_map(self, pos, n_comp=1):
+        s_hat = self.y @ self.coefResponse_
+        sigma_eeg = self.y.T @ self.y
         sigma_reconstr = s_hat.T @ s_hat
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
         fig = plt.figure(figsize=(12, 10), constrained_layout=False)
