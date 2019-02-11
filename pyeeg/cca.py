@@ -10,6 +10,7 @@ import mne
 import numpy as np
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 from mne.decoding import BaseEstimator
+from sklearn.cross_decomposition import CCA
 from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def, find_knee_point
 import matplotlib.pyplot as plt
 
@@ -124,7 +125,7 @@ class CCA_Estimator(BaseEstimator):
         self.feat_names_ = None
         
     
-    def fit(self, X, y, thresh_x=None, thresh_y=None, knee_point=None, drop=True, feat_names=()):
+    def fit(self, X, y, cca_implementation='nt', thresh_x=None, thresh_y=None, n_comp=2, knee_point=None, drop=True, feat_names=()):
         """ Fit CCA model.
         
         X : ndarray (nsamples x nfeats)
@@ -170,19 +171,27 @@ class CCA_Estimator(BaseEstimator):
         if thresh_y is None:
             thresh_y = thresh_x
         threshs = np.asarray([thresh_x, thresh_y])
-        
-        A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, threshs, knee_point)
-        
-        # Reshaping and getting coefficients
-        if self.fit_intercept:
-            self.intercept_ = A[0, :]
-            A = A[1:, :]
+        if cca_implementation == 'nt':
+            A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, threshs, knee_point)
+            # Reshaping and getting coefficients
+            if self.fit_intercept:
+                self.intercept_ = A[0, :]
+                A = A[1:, :]
+
+            self.coefStim_ = A
+            self.coefResponse_ = B
+            self.score_ = R
+            self.eigvals_x = eigvals_x
+            self.eigvals_y =eigvals_y
             
-        self.coefStim_ = A
-        self.coefResponse_ = B
-        self.score_ = R
-        self.eigvals_x = eigvals_x
-        self.eigvals_y =eigvals_y
+        if cca_implementation == 'sklearn':
+            cca_skl = CCA(n_components=n_comp)
+            cca_skl.fit(X, y)
+            self.coefStim_ = cca_skl.x_rotations_
+            self.coefResponse_ = cca_skl.y_rotations_
+            score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
+            self.score_ = score
+            
         
     def plot_time_filter(self, n_comp=1, feat_id=0):
         """Plot the TRF of the feature requested.
