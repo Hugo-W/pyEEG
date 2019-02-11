@@ -2,7 +2,7 @@
 
 pyEEG is a library fo processing EEG data build mostly on top of MNE-py and scikit-learn. It allows anlaysis of raw data and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level features).
 
-If on the netwrok of Imperial College, you can access the documentation here: [pyeeg-docs](http://pyeeg-docs).
+If on the netwrok of Imperial College, you can access the documentation here: [pyeeg-docs](http://bg-hw2512.bg.ic.ac.uk).
 
 ## Installation
 
