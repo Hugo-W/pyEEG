@@ -118,7 +118,7 @@ def _is_1d(arr):
 
 def is_pos_def(A):
     """Check if matrix is positive definite
-    
+
     Ref: https://stackoverflow.com/a/44287862/5303618
     """
     if np.array_equal(A, A.conj().T):
@@ -220,12 +220,12 @@ def chunk_data(data, window_size, overlap_size=0, padding=False, win_as_samples=
                          strides=(data.strides[0], size_item * (window_size - overlap_size) * data.shape[1], data.strides[1]))
 
     return ret
-    
+
 def find_knee_point(x, y, tol=0.95, plot=False):
     """Function to find elbow or knee point (minimum local curvature) in a curve.
     To do so we look at the angles between adacent segments formed by triplet of
     points.
-    
+
     Parameters
     ----------
     x : 1darray

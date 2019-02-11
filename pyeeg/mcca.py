@@ -11,36 +11,36 @@ from sklearn.base import BaseEstimator
 class mCCA(BaseEstimator):
     """
     Class to support mCCA computation on a set of data matrices.
-    Typically N data matrices, with SAME number of samples (observations) but possibly 
+    Typically N data matrices, with SAME number of samples (observations) but possibly
     different number of channels (features).
     A typical use case would be to find common source of activity within each matrix, for instance
     where they carry EEG data for individual subject, and one wants to denoise the EEG data by projecting
     each subject's EEG into a space where they share a common response. The projection matrices will be per
     individual.
-    
+
     Parameters
     ----------
         ncomponents : int
             number of compoenents to keep
-    
+
     Attributes
     ----------
         n_components: int
         mixing : list
-        
+
     Methods
     -------
         fit
         fit_transform
         transform
-        
+
     Reference:
     ----------
         De Cheveigné et. al, MCCA of brain signals, 2018, biorXiv
     """
     def __init__(self, n_components=None):
         self.n_components = n_components
-        
+
     def fit(self, X):
         """
         Parameters:
@@ -48,7 +48,7 @@ class mCCA(BaseEstimator):
             X : list of array-like (Time x channels) or array-like (subj x time x channels)
         """
         self.n_datasets_ = len(X)
-        
+
         pca1 = []
         X_whiten = []
         print("First PCAs for whitening individual datasets...")
@@ -57,13 +57,13 @@ class mCCA(BaseEstimator):
             pca = PCA(whiten=True, n_components=self.n_components)
             X_whiten.append(pca.fit_transform(x))
             pca1.append((pca.components_, pca.explained_variance_))
-            
+
         print("Second PCA on concatenated whitened datasets...")
         pca = PCA()
         Y = pca.fit_transform(np.concatenate(X_whiten, axis=1))
         self.SCs_ = Y
         self.SC_variances = pca.explained_variance_
-        
+
         print("Computing individual transform matrices...")
         self.individual_transforms_ = []
         D = 0
@@ -76,11 +76,11 @@ class mCCA(BaseEstimator):
             #V = np.dot(V_pca2, np.dot(sigma, V_pca1))
             V = np.dot(V_pca2, V_pca1).T
             self.individual_transforms_.append(V)
-            
+
     def canonical_correlate_single(self, X, idx):
         "Project one single dataset into its canonical correlate components."
         return np.dot(X, self.individual_transforms_[idx].T)
-    
+
     def plot_summary_components_variance(self, normalize=False, axis=None):
         if axis is None:
             fig = plt.figure()
@@ -91,7 +91,7 @@ class mCCA(BaseEstimator):
             axis.stem(self.SC_variances)
         axis.set_xlabel('Summary Comp. #')
         axis.set_ylabel('Variance')
-        
+
     def denoise(self, X, num_comps, idx):
         #D = np.dot(self.individual_transforms_[idx][:,:num_comps], pinv(self.individual_transforms_[idx])[:num_comps])
         #proj = self.individual_transforms_[idx][:num_comps].T
