@@ -34,8 +34,8 @@ class mCCA(BaseEstimator):
         fit_transform
         transform
 
-    Reference
-    ---------
+    References
+    ----------
         De Cheveigné et. al, MCCA of brain signals, 2018, biorXiv
     """
     def __init__(self, n_components=None):

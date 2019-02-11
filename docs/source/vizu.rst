@@ -25,3 +25,4 @@ Functions
 
     pyeeg.vizu.plot_filterbank
     pyeeg.vizu.plot_filterbank_output
+    pyeeg.vizu.topoplot_array

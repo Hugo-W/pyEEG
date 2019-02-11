@@ -37,6 +37,7 @@ def plot_filterbank_output(signals, spacing=None, axis=-1):
         if axis == -1:
             filtered = filtered.T
         plt.plot(filtered + k*spacing*2)
+        
 def topoplot_array(data, pos, n_topos=1, titles=None):
     """
     Plotting topographic plot from spatial filters.
