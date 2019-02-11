@@ -17,13 +17,13 @@ Modules for each modelling architecture will then be implemented within the subp
 and we would have in `__init__.py` an entry to load all architectures.
 
 """
-
 import logging
 import numpy as np
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
-from .utils import lag_matrix, lag_span, lag_sparse
+from .utils import lag_matrix, lag_span, lag_sparse, mem_check
+from .mcca import mCCA
 
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
@@ -34,7 +34,9 @@ def _svd_regress(x, y, alpha=0.):
     Parameters
     ----------
     x : ndarray (nsamples, nfeats)
-    y : ndarray (nsamples, nchans)
+    y : ndarray (nsamples, nchans) or list of such
+        If a list of such arrays is given, each element of the
+        list is treated as an individual subject
 
     Returns
     -------
@@ -54,7 +56,7 @@ def _svd_regress(x, y, alpha=0.):
     should rather use partial regression.
     """
     try:
-        assert np.size(alpha) == 1, "Alpha cannot be an array"
+        assert np.size(alpha) == 1, "Alpha cannot be an array (in the future yes)"
     except AssertionError:
         raise NotImplementedError
     try:
@@ -63,7 +65,13 @@ def _svd_regress(x, y, alpha=0.):
         raise ValueError
 
     [U, s, V] = np.linalg.svd(x, full_matrices=False)
-    Uty = U.T @ y
+    if np.ndim(y) == 3:
+        Uty = np.zeros((U.shape[1], y.shape[2]))
+        for Y in y:
+            Uty += U.T @ Y
+        Uty /= len(y)
+    else:
+        Uty = U.T @ y
     Vsreg = V.T @ np.diag(s/(s**2 + alpha))
     betas = Vsreg @ Uty
     return betas
@@ -116,11 +124,11 @@ class TRFEstimator(BaseEstimator):
 
         if tmin and tmax:
             LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
-            self.lags = lag_span(tmin, tmax, srate=srate)
+            self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
             self.times = self.lags / srate
         else:
-            self.lags = lag_sparse(times, srate)
             self.times = np.asarray(times)
+            self.lags = lag_sparse(-self.times, srate)
 
         self.srate = srate
         self.alpha = alpha
@@ -143,14 +151,21 @@ class TRFEstimator(BaseEstimator):
             Array of features (time-lagged)
         y : ndarray (nsamples x nchans)
             EEG data
+            
 
         Returns
         -------
         coef_ : ndarray (nlags x nfeats)
         intercept_ : ndarray (nfeats x 1)
         """
+        y = np.asarray(y)
+        y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
+        estimated_mem_usage = X.nbytes * len(self.lags) + y_memory
+        if estimated_mem_usage/1024.**3 > mem_check():
+            raise MemoryError("Not enough RAM available!")
+
         self.n_feats_ = X.shape[1]
-        self.n_chans_ = y.shape[1]
+        self.n_chans_ = y.shape[1] if y.ndim == 2 else y.shape[2]
         if feat_names:
             self.feat_names_ = feat_names
 
@@ -161,10 +176,10 @@ class TRFEstimator(BaseEstimator):
             # Droping rows of NaN values in y
             if any(np.asarray(self.lags) < 0):
                 drop_top = abs(min(self.lags))
-                y = y[drop_top:, :]
+                y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
             if any(np.asarray(self.lags) > 0):
                 drop_bottom = abs(max(self.lags))
-                y = y[:-drop_bottom, :]
+                y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
 
@@ -173,7 +188,7 @@ class TRFEstimator(BaseEstimator):
             X = np.hstack([np.ones((len(X), 1)), X])
 
         # Solving with svd or least square:
-        if self.use_regularisation:
+        if self.use_regularisation or np.ndim(y) == 3:
             # svd method:
             betas = _svd_regress(X, y, self.alpha)
         else:
@@ -185,6 +200,7 @@ class TRFEstimator(BaseEstimator):
             betas = betas[1:, :]
 
         self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
+        self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
         self.fitted = True
 
     def plot_single_feature(self, feat_id, **kwargs):

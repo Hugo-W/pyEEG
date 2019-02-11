@@ -12,10 +12,12 @@ wiht the NumPy **side trick** see `the Python Cookbook recipee`_ for more detail
 """
 
 #### Libraries
+import psutil
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
+from sklearn.preprocessing import minmax_scale
 import pandas as pd
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False):
     """Helper function to create a matrix of lagged time series.
@@ -219,6 +221,58 @@ def chunk_data(data, window_size, overlap_size=0, padding=False, win_as_samples=
 
     return ret
     
-def find_knee_point():
-    ""
-    pass
+def find_knee_point(x, y, tol=0.95, plot=False):
+    """Function to find elbow or knee point (minimum local curvature) in a curve.
+    To do so we look at the angles between adacent segments formed by triplet of
+    points.
+    
+    Parameters
+    ----------
+    x : 1darray
+        x- coordinate of the curve
+    y : 1darray
+        y- coordinate of the curve
+    plot : bool (default: False)
+        Whether to plot the result
+
+    Returns
+    -------
+    float
+        The x-value of the point of maximum curvature
+
+    Notes
+    -----
+    The function only works well on smooth curves.
+    """
+    y = np.asarray(y).copy()
+    y -= y.min()
+    y /= y.max()
+    coords = np.asarray([x,y]).T
+    local_angle = lambda v1, v2: np.arctan2(v2[1], v2[0]) - np.arctan2(v1[1], v1[0])
+    angles = []
+    for k, coord in enumerate(coords[1:-1]):
+        v1 = coords[k] - coord
+        v2 = coords[k+2] - coord
+        angles.append(local_angle(v1, v2))
+
+    if plot:
+        plt.plot(x[1:-1], minmax_scale(np.asarray(angles)/np.pi), marker='o')
+        plt.hlines(tol, xmin=x[0], xmax=x[-1])
+        plt.vlines(x[np.argmin(minmax_scale(np.asarray(angles)/np.pi)<=tol) + 1], ymin=0, ymax=1., linestyles='--')
+
+    return x[np.argmin(minmax_scale(np.asarray(angles)/np.pi)<=tol) + 1]
+
+def mem_check(units='Gb'):
+    "Get available RAM"
+    stats = psutil.virtual_memory()
+    units = units.lower()
+    if units == 'gb':
+        factor = 1./1024**3
+    elif units == 'mb':
+        factor = 1./1024**2
+    elif units == 'kb':
+        factor = 1./1024
+    else:
+        factor = 1.
+        print("Did not get what unit you want, will memory return in bytes")
+    return stats.available * factor
