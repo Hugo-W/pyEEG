@@ -26,3 +26,9 @@ Functions
     pyeeg.utils.lag_matrix
     pyeeg.utils.lag_span
     pyeeg.utils.lag_sparse
+    pyeeg.utils.mem_check
+    pyeeg.utils.chunk_data
+    pyeeg.utils.shift_array
+    pyeeg.utils.is_pos_def
+    pyeeg.utils.find_knee_point
+    pyeeg.utils._is_1d

@@ -16,6 +16,8 @@ Classes
    :toctree: generated/
    :template: class.rst
 
+   pyeeg.models.mCCA
+
 Functions
 ----------------------------------
 
