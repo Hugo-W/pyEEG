@@ -22,6 +22,7 @@ from mne.preprocessing.ica import ICA
 #import os
 #os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
 from scipy.io import loadmat
+from scipy.io.wavfile import read as wavread
 
 logging.getLogger('summarizer').setLevel(logging.WARNING)
 logging.getLogger('gensim').setLevel(logging.WARNING)
@@ -279,8 +280,71 @@ def get_word_vectors(wordlist, wordvectors, unk='skip'):
                 raise ValueError("Please select a method between: {skip, rdm, closest}")
     return wordvecs
 
+def extract_duration_audio(filepath):
+    """Function to get the duration of an audio file
 
-class WordLevelFeatures:
+    Parameters
+    ----------
+    filepath : str
+        Path of audio file
+
+    Returns
+    -------
+    dur : float
+        Duration of audio
+    """
+    rate, snd = wavread(filepath)
+    return len(snd)/rate
+
+class AlignedSpeech:
+    """Generic class to describe features corresponding to a speech segment
+    aligned with EEG data.
+    The alignment itself is encoded simply by storing the value of onset of
+    the speech segment with respect to the EEG data as it occurred during the
+    actual experiment.
+
+    Attributes
+    ----------
+
+    Parameters
+    ----------
+
+    """
+    def __init__(self, onset, srate, path_audio=None):
+        self.onset_list = [onset] # a list of onset for each speech segment
+        self.srate = srate
+        if path_audio:
+            self.path_audio = path_audio
+            self.duration = extract_duration_audio(path_audio)
+            self.indices = self.samples_from_onset(onset, srate)
+
+
+
+    def samples_from_onset(self, onset_segment, srate):
+        """Load the corresponding indices of samples as found in EEG for the given speech segment.
+        Will use duration of current segment and the onset time of the speech segment from the EEG experiment.
+
+        Parameters
+        ----------
+        onset_segment : float
+            Onset time of the current speech segment (story) in second.
+        srate : float
+            Sampling rate of EEG
+
+        Returns
+        -------
+        to_keep : array-like
+            Indices to keep in the EEG that matches the speech segment of this class instance.
+
+        """
+        dt = 1./srate
+        onset_sample = int(onset_segment * srate)
+        times = np.arange(0., self.duration + dt, dt)
+        return np.arange(onset_sample, onset_sample + len(times))
+
+
+
+class WordLevelFeatures(AlignedSpeech):
     """Gather word-level linguistic features based on old and rigid files, generated from
     various sources (RNNLM, custom scripts for word frequencies, Forced-Alignment toolkit, ...)
 
@@ -431,29 +495,6 @@ class WordLevelFeatures:
         if self.vectordim > 0:
             other_repr += "\nWord vectors loaded (ndim: {:d})".format(self.vectordim)
         return short_repr + other_repr
-
-    def samples_from_onset(self, onset_segment, srate):
-        """Load the corresponding indices of samples as found in EEG for the given speech segment.
-        Will use duration of current segment and the onset time of the speech segment from the EEG experiment.
-
-        Parameters
-        ----------
-        onset_segment : float
-            Onset time of the current speech segment (story) in second.
-        srate : float
-            Sampling rate of EEG
-
-        Returns
-        -------
-        to_keep : array-like
-            Indices to keep in the EEG that matches the speech segment of this class instance.
-
-        """
-        dt = 1./srate
-        onset_sample = int(onset_segment * srate)
-        times = np.arange(0., self.duration + dt, dt)
-        return np.arange(onset_sample, onset_sample + len(times))
-
 
     def align_word_features(self, srate, wordonset_feature=True, features=('surprisal',), zscore_fun=None, custom_wordfeats=None):
         """Check that we have the correct number of elements for each features
