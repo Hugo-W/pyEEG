@@ -179,8 +179,7 @@ class CCA_Estimator(BaseEstimator):
             if self.fit_intercept:
                 self.intercept_ = A[0, :]
                 A = A[1:, :]
-            
-            self.coefStim_ = A  
+             
             self.coefResponse_ = B
             self.score_ = R
             self.eigvals_x = eigvals_x
@@ -193,14 +192,13 @@ class CCA_Estimator(BaseEstimator):
             if self.fit_intercept:
                 self.intercept_ = A[0, :]
                 A = A[1:, :]
-            self.coefStim_ = A    
+            
             self.coefResponse_ = cca_skl.y_rotations_
             score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
             self.score_ = score
             self.sklearn_TRF_ = cca_skl.coef_
         
-        #self.coefStim_ = np.reshape(A, (len(self.lags), self.n_feats_, self.coefResponse_.shape[1]))
-        #self.coefStim_ = np.reshape(A, (self.n_feats_, len(self.lags), self.coefResponse_.shape[1])) # if it's the other way
+        self.coefStim_ = np.reshape(A, (len(self.lags), self.n_feats_, self.coefResponse_.shape[1]))
             
         
     def plot_time_filter(self, n_comp=1, feat_id=0):
