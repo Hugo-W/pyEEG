@@ -179,8 +179,8 @@ class CCA_Estimator(BaseEstimator):
             if self.fit_intercept:
                 self.intercept_ = A[0, :]
                 A = A[1:, :]
-
-            self.coefStim_ = A
+            
+            self.coefStim_ = A  
             self.coefResponse_ = B
             self.score_ = R
             self.eigvals_x = eigvals_x
@@ -193,12 +193,14 @@ class CCA_Estimator(BaseEstimator):
             if self.fit_intercept:
                 self.intercept_ = A[0, :]
                 A = A[1:, :]
-                
-            self.coefStim_ = A
+            self.coefStim_ = A    
             self.coefResponse_ = cca_skl.y_rotations_
             score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
             self.score_ = score
             self.sklearn_TRF_ = cca_skl.coef_
+        
+        #self.coefStim_ = np.reshape(A, (len(self.lags), self.n_feats_, self.coefResponse_.shape[1]))
+        #self.coefStim_ = np.reshape(A, (self.n_feats_, len(self.lags), self.coefResponse_.shape[1])) # if it's the other way
             
         
     def plot_time_filter(self, n_comp=1, feat_id=0):
@@ -208,9 +210,9 @@ class CCA_Estimator(BaseEstimator):
         feat_id : int
             Index of the feature requested
         """
-        plt.plot(self.times, self.coefStim_[:, :n_comp])
+        plt.plot(self.times, self.coefStim_[:, feat_id, :n_comp])
         if self.feat_names_:
-            plt.title('TRF for {:s}'.format(self.feat_names_[feat_id]))
+            plt.title('TRF for {:s}'.format(self.feat_names_[0]))
             
     def plot_spatial_filter(self, pos, n_comp=1, feat_id=0):
         """Plot the topo of the feature requested.
@@ -223,15 +225,15 @@ class CCA_Estimator(BaseEstimator):
         mne.viz.tight_layout()
         
         
-    def plot_corr(self, pos, n_comp=1):
+    def plot_corr(self, pos, n_comp=1, feat_id=0):
         """Plot the correlation between the EEG component waveform and the EEG channel waveform.
         Parameters
         ----------
         """ 
         r = np.zeros((64,n_comp))
         for c in range(n_comp):
-            eeg_proj = self.y @ self.coefResponse_[:,c]
-            env_proj = self.X @ self.coefStim_[:, c]
+            eeg_proj = self.y @ self.coefResponse_[:, c]
+            env_proj = self.X @ self.coefStim_[:, feat_id, c]
             for i in range(64):
                 r[i,c] = np.corrcoef(self.y[:,i], eeg_proj)[0,1]
             cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
