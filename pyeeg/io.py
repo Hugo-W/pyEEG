@@ -13,22 +13,32 @@ take the data to MNE format.
 *Author: Hugo Weissbart*
 
 """
+# Standard library for Python >= 3.3
 import logging
+import shutil
+import psutil
+# Installed library
 import numpy as np
 import pandas as pd
 import h5py # for mat file version >= 7.3
+from scipy.io import loadmat
+from scipy.io.wavfile import read as wavread
+# MNE:
 import mne
 from mne.preprocessing.ica import ICA
 #import os
 #os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
-from scipy.io import loadmat
-from scipy.io.wavfile import read as wavread
+# PyEEG:
+from .utils import signal_envelope
 
 logging.getLogger('summarizer').setLevel(logging.WARNING)
 logging.getLogger('gensim').setLevel(logging.WARNING)
 logging.getLogger('smart_open').setLevel(logging.WARNING)
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
+
+# Is sox library installed (also this will probably is False anyway on Windows):
+SOXI_PRESENT = shutil.which('soxi') is not None
 
 try:
     import gensim
@@ -195,6 +205,25 @@ def extract_duration_praat(fname):
         duration = float(headers[4])
         return duration
 
+def extract_duration_audio(filepath):
+    """Function to get the duration of an audio file
+
+    Parameters
+    ----------
+    filepath : str
+        Path of audio file
+
+    Returns
+    -------
+    dur : float
+        Duration of audio
+    """
+    if SOXI_PRESENT:
+        return float(psutil.subprocess.check_output(['soxi', '-D', filepath]))
+    else:
+        rate, snd = wavread(filepath)
+        return (len(snd)-1)/rate
+
 def load_surprisal_values(filepath, eps=1e-12):
     "Load surprisal values from the given file."
     if filepath is None:
@@ -280,22 +309,6 @@ def get_word_vectors(wordlist, wordvectors, unk='skip'):
                 raise ValueError("Please select a method between: {skip, rdm, closest}")
     return wordvecs
 
-def extract_duration_audio(filepath):
-    """Function to get the duration of an audio file
-
-    Parameters
-    ----------
-    filepath : str
-        Path of audio file
-
-    Returns
-    -------
-    dur : float
-        Duration of audio
-    """
-    rate, snd = wavread(filepath)
-    return len(snd)/rate
-
 class AlignedSpeech:
     """Generic class to describe features corresponding to a speech segment
     aligned with EEG data.
@@ -311,14 +324,29 @@ class AlignedSpeech:
 
     """
     def __init__(self, onset, srate, path_audio=None):
+        
         self.onset_list = [onset] # a list of onset for each speech segment
         self.srate = srate
+        
         if path_audio:
             self.path_audio = path_audio
             self.duration = extract_duration_audio(path_audio)
             self.indices = self.samples_from_onset(onset, srate)
+        
+        self.feats = pd.DataFrame()
+        self.feat_names = []
 
+    def add_feature(self, feat, name):
+        """Add some signal as an aligned speech feature.
 
+        Parameters
+        ----------
+        feat : ndarray
+            The fetaure signal
+        name : str
+            Name of feature being added
+        """
+        self.feats = pd.concat([self.feats, pd.DataFrame({name: feat})], join='inner')
 
     def samples_from_onset(self, onset_segment, srate):
         """Load the corresponding indices of samples as found in EEG for the given speech segment.
@@ -337,14 +365,30 @@ class AlignedSpeech:
             Indices to keep in the EEG that matches the speech segment of this class instance.
 
         """
-        dt = 1./srate
+        deltat = 1./srate
         onset_sample = int(onset_segment * srate)
-        times = np.arange(0., self.duration + dt, dt)
+        times = np.arange(0., self.duration + deltat, deltat)
         return np.arange(onset_sample, onset_sample + len(times))
 
+    def get_envelope(self):
+        """Extract envelope from sound associated with this instance
+        """
+        if self.path_audio:
+            srate, snd = wavread(self.path_audio)
+            env = signal_envelope(snd, srate, method='rectify', resample=self.srate)
+        else:
+            raise AttributeError("Must set the audio path first")
+        self.add_feature(env, 'envelope')
+        return env
+
+    def add_word_level_features():
+        """Test
+        """
+        pass
 
 
-class WordLevelFeatures(AlignedSpeech):
+
+class WordLevelFeatures:
     """Gather word-level linguistic features based on old and rigid files, generated from
     various sources (RNNLM, custom scripts for word frequencies, Forced-Alignment toolkit, ...)
 

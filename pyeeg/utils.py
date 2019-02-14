@@ -15,6 +15,8 @@ wiht the NumPy **side trick** see `the Python Cookbook recipee`_ for more detail
 import psutil
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
+from scipy import signal as scisig
+#from numba import jit
 from sklearn.preprocessing import minmax_scale
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -111,6 +113,125 @@ def lag_sparse(times, srate=125):
 
     """
     return np.asarray([int(np.ceil(t * srate)) for t in times])
+
+def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./3, resample=125):
+    """Compute the broadband envelope of the input signal.
+    Several methods are available:
+
+        - Hilbert -> abs -> low-pass (-> resample)
+        - Rectify -> low-pass (-> resample)
+        - subenvelopes -> sum
+
+    The envelope can also be compressed by raising to a certain power factor.
+
+    Parameters
+    ----------
+    signal : ndarray (nsamples,)
+        1-dimensional input signal
+    srate : float
+        Original sampling rate of the signal
+    cutoff : float (default 20Hz)
+        Cutoff frequency (transition will be 10 Hz)
+        In Hz
+    method : str {'hilbert', 'rectify', 'subs'}
+        Method to be used
+    comp_factor : float (default 1/3)
+        Compression factor (final envelope = env**comp_factor)
+    resample : float (default 125Hz)
+        New sampling rate of envelope (must be 2*cutoff < .. <= srate)
+        Explicitly set to False or None to skip resampling
+
+    Returns
+    -------
+    env : ndarray (nsamples_env,)
+        Envelope
+    
+    """
+    print("Computing envelope...")
+    if method.lower() == 'subs':
+        raise NotImplementedError
+    else:
+        if method.lower() == 'hilbert':
+            # Get modulus of hilbert transform
+            out = abs(scisig.hilbert(signal))
+        elif method.lower() == 'rectify':
+            # Rectify signal
+            out = abs(signal)
+        else:
+            raise ValueError("Method can only be 'hilbert', 'rectify' or 'subs'.")
+
+        # Non linear compression before filtering to avoid NaN
+        out = np.power(out, comp_factor)
+        # Design low-pass filter
+        ntaps = fir_order(10, srate, ripples=1e-3)  # + 1 -> using odd ntaps for Type I filter,
+                                                    # so I have an integer group delay (instead of half)
+        b = scisig.firwin(ntaps, cutoff, fs=srate)
+        # Filter with convolution
+        out = scisig.convolve(np.pad(out, (len(b) // 2, len(b) // 2), mode='edge'),
+                            b, mode='valid')
+        #out = scisig.filtfilt(b, [1.0], signal) # This attenuates twice as much
+        #out = scisig.lfilter(b, [1.0], pad(signal, (0, len(b)//2), mode=edge))[len(b)//2:]  # slower than scipy.signal.convolve method
+
+        # Resample
+        if resample:
+            if not 2*cutoff < resample < srate:
+                raise ValueError("Chose resampling rate more carefully, must be > %.1f Hz"%(cutoff))
+            if srate//resample == srate/resample:
+                env = scisig.resample_poly(out, 1, srate//resample)
+            else:
+                dur = (len(signal)-1)/srate
+                new_n = int(np.ceil(resample * dur))
+                env = scisig.resample(out, new_n)
+    
+    # Scale output between 0 and 1:
+    return minmax_scale(env)
+
+def fir_order(tbw, srate, atten=60, ripples=None):
+    """Estimate FIR Type II filter order (order will be odd).
+
+    If ripple is given will use rule:
+
+    .. math ::
+    
+        N = \\frac{2}{3} \log_{10}\\frac{1}{10\delta_ripp\delta_att} \\frac{Fs}{TBW}
+
+    Else:
+
+    .. math ::
+
+        N = \\frac{Atten*Fs}{22*TBW} - 1
+
+    Parameters
+    ----------
+    tbw : float
+        Transition bandwidth in Hertz
+    srate : float
+        Sampling rate (Fs) in Hertz
+    atten : float (default 60.0)
+        Attenuation in StopBand in dB
+    ripples : float (default None, optional)
+        Maximum ripples height (in relative to peak)
+
+    Returns
+    -------
+    order : int
+        Filter order (i.e. 1+numtaps)
+
+    Notes
+    -----
+    Rule of thumbs from :ref:`here_`.
+
+    .. here_ : https://dsp.stackexchange.com/a/31077/28372
+    """
+    if ripples:
+        atten = 10**(-abs(atten)/10.)
+        order = 2./3.*np.log10(1./10/ripples/atten) * srate / tbw
+    else:
+        order = (atten * srate) / (22. * tbw)
+        
+    order = int(order)
+    # be sure to return odd order
+    return order + (order%2-1)
 
 def _is_1d(arr):
     "Short utility function to check if an array is vector-like"
