@@ -323,21 +323,39 @@ class AlignedSpeech:
     ----------
 
     """
-    def __init__(self, onset, srate, path_audio=None):
+    def __init__(self, onset, srate, path_audio=None, doing_copy=False):
         
         self.onset_list = [onset] # a list of onset for each speech segment
         self.srate = srate
         
         if path_audio:
-            self.path_audio = path_audio
-            self.duration = extract_duration_audio(path_audio)
-            self.indices = self.samples_from_onset(onset, srate)
+            self._load_audio(path_audio)
+        elif not doing_copy:
+            LOGGER.warning("Audio path not supplied, cannot get duration and indices, hence cannot add features!\nLoad audio fields before continuing...")
         
-        self.feats = pd.DataFrame()
-        self.feat_names = []
+        self.feats = pd.DataFrame(index=self.indices) if hasattr(self, 'indices') else pd.DataFrame()
+        self.wordlevel = None
+
+    def _get_feat(self, id):
+        """
+        Returns the feature corresponding to requested name or index.
+        """
+        if isinstance(id, int):
+            name = self.feats.columns[id]
+        else:
+            name = id
+        return self.feats[name].get_values()
+
+
+    def _load_audio(self, path_audio):
+        "Load audio related fields"
+        self.path_audio = path_audio
+        self.duration = extract_duration_audio(path_audio)
+        self.indices = self.samples_from_onset(self.onset_list[0], self.srate)        
 
     def add_feature(self, feat, name):
-        """Add some signal as an aligned speech feature.
+        """Add some signal as an aligned speech feature for current story part (i.e. 
+        add feature as a new column of the pandas DataFrame).
 
         Parameters
         ----------
@@ -346,7 +364,9 @@ class AlignedSpeech:
         name : str
             Name of feature being added
         """
-        self.feats = pd.concat([self.feats, pd.DataFrame({name: feat})], join='inner')
+        assert hasattr(self, 'indices'), "Cannot add features if indices are not defnied! Load them with path to audio..."
+        self.feats = pd.concat([self.feats, pd.DataFrame({name: feat}, index=self.indices)],
+                               join='inner', axis=1, sort=False)
 
     def samples_from_onset(self, onset_segment, srate):
         """Load the corresponding indices of samples as found in EEG for the given speech segment.
@@ -366,12 +386,12 @@ class AlignedSpeech:
 
         """
         deltat = 1./srate
-        onset_sample = int(onset_segment * srate)
-        times = np.arange(0., self.duration + deltat, deltat)
+        onset_sample = int(np.round(onset_segment * srate))
+        times = np.arange(0., self.duration, deltat)
         return np.arange(onset_sample, onset_sample + len(times))
 
     def get_envelope(self):
-        """Extract envelope from sound associated with this instance
+        """Extract envelope from sound associated with this instance and add to it as a feature.
         """
         if self.path_audio:
             srate, snd = wavread(self.path_audio)
@@ -381,11 +401,59 @@ class AlignedSpeech:
         self.add_feature(env, 'envelope')
         return env
 
-    def add_word_level_features():
-        """Test
+    def add_word_level_features(self, word_feats, use_wordonsets=False):
+        """Add an existing word level feature instance to this :class:`AlignedSpeech` instance,
+        but not simply as an object here, but actually add the aligned features...
         """
-        pass
+        names = ['surprisal', 'wordfrequency', 'entropy', 'wordvectors']
+        if use_wordonsets:
+            names = ['wordonsets'] + names
+        for feat_name in names:
+            if getattr(word_feats, feat_name, None) is not None:
+                if feat_name == 'wordonsets':
+                    feat_to_add = word_feats.align_word_features(self.srate, wordonset_feature=True, features=[])
+                else:
+                    feat_to_add = word_feats.align_word_features(self.srate, wordonset_feature=False, features=[feat_name])
+                assert len(feat_to_add) == len(self.feats), "Length of arrays mismatch, are you aligning features from the same story part?"
+                self.add_feature(feat_to_add[:, -1], feat_name)
+        return self
 
+    def create_word_level_features(self, path_wordonsets, path_surprisal=None, path_wordvectors=None,
+                                   path_wordfrequency=None):
+        """Create a new word level feature object attached to this...
+        """
+        self.add_word_level_features(WordLevelFeatures(path_wordonsets=path_wordonsets, path_surprisal=path_surprisal,
+                                                        path_wordfrequency=path_wordfrequency, path_wordvectors=path_wordvectors,
+                                                        path_audio=self.path_audio))
+        return self
+
+    def __add__(self, aligned_speech):
+        """Overwriting built-in add to be able to simply add instances of :class:`AlignedSpeech`.
+        This results in appending the DataFrames, in the order given (so `sort=False` will be used).
+        The indices are also appended, and the onsets will form a list of onsets.
+        """
+        # Create a new instance (result of addition)
+        new_instance = AlignedSpeech(self.onset_list[0], self.srate, doing_copy=True)
+        new_instance.feats = self.feats.copy(deep=True)
+        new_instance.duration = self.duration
+        new_instance.indices = self.indices.copy()
+
+        # Fill with new aligned_speech appended values
+        new_instance.feats = new_instance.feats.append(aligned_speech.feats, ignore_index=False, sort=False)
+        new_instance.onset_list += aligned_speech.onset_list
+        new_instance.indices = np.concatenate([self.indices, aligned_speech.indices])
+        other_dur = aligned_speech.duration if isinstance(aligned_speech.duration, list) else [aligned_speech.duration]
+        if isinstance(new_instance.duration, float):
+            new_instance.duration = [new_instance.duration] + other_dur
+        else:
+            new_instance.duration += other_dur
+        return new_instance
+
+    def __repr__(self):
+        return self.feats.__repr__()
+
+    def __len__(self):
+        return len(self.indices)
 
 
 class WordLevelFeatures:
@@ -488,8 +556,10 @@ class WordLevelFeatures:
                  path_wordfrequency=None, path_wordonsets=None, path_transcript=None,
                  rnnlm_model=None, path_audio=None, keep_vectors=False, unk_wv='rdm'):
 
-        if path_praat_env is not None:
+        if path_praat_env:
             self.duration = extract_duration_praat(path_praat_env)
+        elif path_audio:
+            self.duration = extract_duration_audio(path_audio)
 
         try:
             self.wordlist, self.wordonsets = get_word_onsets(path_wordonsets)
@@ -592,7 +662,9 @@ class WordLevelFeatures:
         if use_w2v:
             features.remove('wordvectors')
 
-        n_samples = int(np.ceil(srate * self.duration)) + 1 # +1 to account for 0th sample?
+        n_samples = int(np.ceil(srate * self.duration)) # +1 to account for 0th sample? /!\ No more + 1, since
+                                                        # in duration nowm I estimate correct the latter with (len(sound)-1)/srate
+                                                        # Indeed if sound is two samples, the duraiton id 1/srate, not 2/srate
         nfeat = wordonset_feature + len(features) + use_w2v * self.vectordim + len(custom_wordfeats)
         feat = np.zeros((n_samples, nfeat))
         onset_samples = np.round(self.wordonsets * srate).astype(int)
