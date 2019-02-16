@@ -251,6 +251,19 @@ def is_pos_def(A):
     else:
         return False
 
+def rolling_func(func, data, winsize=2, overlap=1, padding=True):
+    """Apply a function on a rolling window on the data
+    """
+    #TODO: check when Parallel()(delayed(func)(x) for x in rolled_array)
+    # becomes advantageous, because for now it seemed actually slower...
+    # (tesed only with np.cov on 15min of 64 EEG at 125Hx, list comprehension still faster)
+    return [func(x) for x in chunk_data(data, win_as_samples=True, window_size=winsize, overlap_size=overlap, padding=True).swapaxes(1, 2)]
+
+def moving_average(data, winsize=2):
+    """#TODO: pad before calling chunk_data?
+    """
+    return chunk_data(data, window_size=winsize, overlap_size=(winsize-1)).mean(1)
+
 def shift_array(arr, win=2, overlap=0, padding=False, axis=0):
     """Returns segments of an array (overlapping moving windows)
     using the `as_strided` function from NumPy.
@@ -273,6 +286,10 @@ def shift_array(arr, win=2, overlap=0, padding=False, axis=0):
     shiftarr : ndarray
         Shifted copies of array segments
 
+    See Also
+    --------
+    :func:`pyeeg.utils.chunk_data`
+
     Notes
     -----
     Using the `as_strided` function trick from Numpy means the returned
@@ -286,12 +303,12 @@ def shift_array(arr, win=2, overlap=0, padding=False, axis=0):
         as_strided(a, (num_windows, win_size, n_features), (size_onelement * hop_size * n_feats, original_strides))
     """
     n_samples = len(arr)
-    if not (win > 1 and win < n_samples):
+    if not (1 < win < n_samples):
         raise ValueError("window size must be greater than 1 and smaller than len(input)")
     if overlap < 0 or overlap > win:
         raise ValueError("Overlap size must be a positive integer smaller than window size")
 
-    if not padding:
+    if padding:
         raise NotImplementedError("As a workaround, please pad array beforehand...")
 
     if not _is_1d(arr):
@@ -308,6 +325,8 @@ def chunk_data(data, window_size, overlap_size=0, padding=False, win_as_samples=
     -----
     Please note that we expect first dim as our axis on which to apply
     the rolling window.
+    Calling `mean(axis=0)` works if :param:`win_as_samples` is set to `False`,
+    otherwise use `mean(axis=1)`.
 
     """
     assert data.ndim <= 2, "Data must be 2D at most!"
@@ -344,7 +363,7 @@ def chunk_data(data, window_size, overlap_size=0, padding=False, win_as_samples=
 
 def find_knee_point(x, y, tol=0.95, plot=False):
     """Function to find elbow or knee point (minimum local curvature) in a curve.
-    To do so we look at the angles between adacent segments formed by triplet of
+    To do so we look at the angles between adjacent segments formed by triplet of
     points.
 
     Parameters

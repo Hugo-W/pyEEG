@@ -16,6 +16,7 @@ Classes
    :toctree: generated/
    :template: class.rst
 
+   pyeeg.io.AlignedSpeech
    pyeeg.io.WordLevelFeatures
 
 Functions
@@ -28,7 +29,9 @@ Functions
     pyeeg.io.eeglab2mne
     pyeeg.io.load_mat
     pyeeg.io.load_ica_matrices
+    pyeeg.io.extract_duration_audio
     pyeeg.io.extract_duration_praat
     pyeeg.io.load_surprisal_values
     pyeeg.io.load_wordfreq_values
     pyeeg.io.get_word_onsets
+    pyeeg.io.get_word_vectors

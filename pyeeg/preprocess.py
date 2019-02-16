@@ -10,9 +10,79 @@ import numpy as np
 from scipy import signal
 from joblib import Parallel, delayed
 #import matplotlib.pyplot as plt
+from sklearn.covariance import oas, ledoit_wolf, fast_mcd, empirical_covariance
 
 # My libraries
 
+# Mapping different estimator on the sklearn toolbox
+def _lwf(X):
+    """Wrapper for sklearn ledoit wolf covariance estimator"""
+    C, _ = ledoit_wolf(X.T)
+    return C
+
+
+def _oas(X):
+    """Wrapper for sklearn oas covariance estimator"""
+    C, _ = oas(X.T)
+    return C
+
+
+def _scm(X):
+    """Wrapper for sklearn sample covariance estimator"""
+    return empirical_covariance(X.T)
+
+
+def _mcd(X):
+    """Wrapper for sklearn mcd covariance estimator"""
+    _, C, _, _ = fast_mcd(X.T)
+    return C
+
+
+def _check_est(est):
+    """Check if a given estimator is valid"""
+
+    # Check estimator exist and return the correct function
+    estimators = {
+        'cov': np.cov,
+        'scm': _scm,
+        'lwf': _lwf,
+        'oas': _oas,
+        'mcd': _mcd,
+        'corr': np.corrcoef
+    }
+
+    if callable(est):
+        # All good (cross your fingers)
+        pass
+    elif est in estimators.keys():
+        # Map the corresponding estimator
+        est = estimators[est]
+    else:
+        # raise an error
+        raise ValueError(
+            """%s is not an valid estimator ! Valid estimators are : %s or a
+             callable function""" % (est, (' , ').join(estimators.keys())))
+    return est
+
+def covariances(X, estimator='cov'):
+    """Estimation of covariance matrix."""
+    est = _check_est(estimator)
+    Nt, Ne, Ns = X.shape
+    covmats = np.zeros((Nt, Ne, Ne))
+    for i in range(Nt):
+        covmats[i, :, :] = est(X[i, :, :])
+    return covmats
+
+
+def covariances_extended(X, P, estimator='cov'):
+    """Special form covariance matrix where data are appended with another set."""
+    est = _check_est(estimator)
+    Nt, Ne, Ns = X.shape
+    Np, Ns = P.shape
+    covmats = numpy.zeros((Nt, Ne + Np, Ne + Np))
+    for i in range(Nt):
+        covmats[i, :, :] = est(np.concatenate((P, X[i, :, :]), axis=0))
+    return covmats
 
 def create_filterbank(freqs, srate, filtertype=signal.cheby2, **kwargs):
     """Creates a filter bank, by default of chebychev type 2 filters.

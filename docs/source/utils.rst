@@ -26,7 +26,11 @@ Functions
     pyeeg.utils.lag_matrix
     pyeeg.utils.lag_span
     pyeeg.utils.lag_sparse
+    pyeeg.utils.fir_order
     pyeeg.utils.mem_check
+    pyeeg.utils.rolling_func
+    pyeeg.utils.moving_average
+    pyeeg.utils.signal_envelope
     pyeeg.utils.chunk_data
     pyeeg.utils.shift_array
     pyeeg.utils.is_pos_def

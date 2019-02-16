@@ -29,3 +29,5 @@ Functions
     pyeeg.preprocess.create_filterbank
     pyeeg.preprocess.apply_filterbank
     pyeeg.preprocess.get_power
+    pyeeg.preprocess.covariances
+    pyeeg.preprocess.covariances_extended
