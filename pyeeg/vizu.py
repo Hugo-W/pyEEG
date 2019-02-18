@@ -48,5 +48,5 @@ def topoplot_array(data, pos, n_topos=1, titles=None):
         inner_grid = outer_grid[c].subgridspec(1, 1)
         ax = plt.Subplot(fig, inner_grid[0])
         im, _ = mne.viz.plot_topomap(data[:,c], pos, axes=ax, show=False)
-        ax.set(title="CC #{:d}".format(c+1))
+        ax.set(title=r"CC #{:d}, $\rho:$ {:.3f} ".format(c+1, titles[c]))
         fig.add_subplot(ax)
