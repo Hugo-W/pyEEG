@@ -267,6 +267,10 @@ class CCA_Estimator(BaseEstimator):
         
         topoplot_array(a_map, pos, n_topos=n_comp, titles=self.score_)
         mne.viz.tight_layout()
+        
+    def plot_spect(self, n_comp=2, feat_id=0):
+        plt.imshow(self.coefStim_[:, :n_comp, feat_id].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
+        plt.colorbar()
 
         
         
