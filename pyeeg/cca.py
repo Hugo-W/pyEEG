@@ -141,10 +141,6 @@ class CCA_Estimator(BaseEstimator):
         coef_ : ndarray (nlags x nfeats)
         intercept_ : ndarray (nfeats x 1)
         """
-        # zscore both X and y
-        if normalise:
-            X = zscore(X)
-            y = zscore(y)
         
         self.n_feats_ = X.shape[1]
         self.n_chans_ = y.shape[1]
@@ -216,15 +212,16 @@ class CCA_Estimator(BaseEstimator):
         """
         if n_comp < 6:
             for c in range(n_comp):
-                plt.plot(self.times, self.coefStim_[:,4,c],label='CC #%s' % (c+1))
+                plt.plot(self.times, self.coefStim_[:,feat_id,c],label='CC #%s' % (c+1))
         else:
             for c in range(5):
-                plt.plot(self.times, self.coefStim_[:,4,c],label='CC #%s' % (c+1))
+                plt.plot(self.times, self.coefStim_[:,feat_id,c],label='CC #%s' % (c+1))
             for c in range(5,n_comp):
-                plt.plot(self.times, self.coefStim_[:,4,c])
+                plt.plot(self.times, self.coefStim_[:,feat_id,c])
         if self.feat_names_:
             plt.title('Time filter for {:s}'.format(self.feat_names_[0]))
         plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.ylim([-max(np.abs(self.coefStim_[:,feat_id,:n_comp].flatten())), max(np.abs(self.coefStim_[:,feat_id,:n_comp].flatten()))]);
             
     def plot_spatial_filter(self, pos, n_comp=1, feat_id=0):
         """Plot the topo of the feature requested.
@@ -269,7 +266,7 @@ class CCA_Estimator(BaseEstimator):
         mne.viz.tight_layout()
         
     def plot_spect(self, n_comp=2, feat_id=0):
-        plt.imshow(self.coefStim_[:, :n_comp, feat_id].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
+        plt.imshow(self.coefStim_[:, feat_id, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
         plt.colorbar()
 
         
