@@ -17,38 +17,45 @@ from sklearn.covariance import oas, ledoit_wolf, fast_mcd, empirical_covariance
 # Mapping different estimator on the sklearn toolbox
 def _lwf(X):
     """Wrapper for sklearn ledoit wolf covariance estimator"""
-    C, _ = ledoit_wolf(X.T)
+    C, _ = ledoit_wolf(X)
     return C
 
 
 def _oas(X):
     """Wrapper for sklearn oas covariance estimator"""
-    C, _ = oas(X.T)
+    C, _ = oas(X)
     return C
 
 
 def _scm(X):
     """Wrapper for sklearn sample covariance estimator"""
-    return empirical_covariance(X.T)
+    return empirical_covariance(X)
 
 
 def _mcd(X):
     """Wrapper for sklearn mcd covariance estimator"""
-    _, C, _, _ = fast_mcd(X.T)
+    _, C, _, _ = fast_mcd(X)
     return C
 
+def _cov(X):
+    "Wrapper for numpy cov estimator"
+    return np.cov(X, rowvar=False)
+
+def _corr(X):
+    "Wrapper for numpy cov estimator"
+    return np.corrcoef(X, rowvar=False)
 
 def _check_est(est):
     """Check if a given estimator is valid"""
 
     # Check estimator exist and return the correct function
     estimators = {
-        'cov': np.cov,
+        'cov': _cov,
         'scm': _scm,
         'lwf': _lwf,
         'oas': _oas,
         'mcd': _mcd,
-        'corr': np.corrcoef
+        'corr': _corr
     }
 
     if callable(est):
@@ -67,9 +74,9 @@ def _check_est(est):
 def covariances(X, estimator='cov'):
     """Estimation of covariance matrix."""
     est = _check_est(estimator)
-    Nt, Ne, Ns = X.shape
-    covmats = np.zeros((Nt, Ne, Ne))
-    for i in range(Nt):
+    Ntrials, Nsamples, Nchans = X.shape
+    covmats = np.zeros((Ntrials, Nchans, Nchans))
+    for i in range(Ntrials):
         covmats[i, :, :] = est(X[i, :, :])
     return covmats
 
@@ -77,10 +84,10 @@ def covariances(X, estimator='cov'):
 def covariances_extended(X, P, estimator='cov'):
     """Special form covariance matrix where data are appended with another set."""
     est = _check_est(estimator)
-    Nt, Ne, Ns = X.shape
-    Np, Ns = P.shape
-    covmats = numpy.zeros((Nt, Ne + Np, Ne + Np))
-    for i in range(Nt):
+    Ntrials, Nsamples, Nchans = X.shape
+    Nsamples, Np = P.shape
+    covmats = np.zeros((Ntrials, Nchans + Np, Nchans + Np))
+    for i in range(Ntrials):
         covmats[i, :, :] = est(np.concatenate((P, X[i, :, :]), axis=0))
     return covmats
 
