@@ -14,6 +14,7 @@ from sklearn.cross_decomposition import CCA
 from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def, find_knee_point
 from pyeeg.vizu import topoplot_array
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import normalize as zscore
 
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
@@ -127,7 +128,7 @@ class CCA_Estimator(BaseEstimator):
         self.sklearn_TRF_ = None
         
     
-    def fit(self, X, y, cca_implementation='nt', thresh_x=None, thresh_y=None, n_comp=2, knee_point=None, drop=True, feat_names=()):
+    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, feat_names=()):
         """ Fit CCA model.
         
         X : ndarray (nsamples x nfeats)
@@ -140,6 +141,11 @@ class CCA_Estimator(BaseEstimator):
         coef_ : ndarray (nlags x nfeats)
         intercept_ : ndarray (nfeats x 1)
         """
+        # zscore both X and y
+        if normalise:
+            X = zscore(X)
+            y = zscore(y)
+        
         self.n_feats_ = X.shape[1]
         self.n_chans_ = y.shape[1]
         if feat_names:
