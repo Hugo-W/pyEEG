@@ -206,6 +206,23 @@ class TRFEstimator(BaseEstimator):
 
         return self
 
+    def predict(self, X):
+        """Compute output based on fitted coefficients and some feature matrix X
+        """
+        assert self.fitted, "Fit model first!"
+        betas = np.reshape(self.coef_, (self.lags * self.n_feats_, self.n_chans_))
+        if self.fit_intercept:
+            betas = np.r_[self.intercept_, betas]
+
+        return X.dot(betas)
+
+    def score(self, Xtest, ytrue, scoring="corr"):
+        "Return score"
+        yhat = self.predict(Xtest)
+        if scoring == 'corr':
+            return np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
+        
+
     def plot(self, feat_id=0, **kwargs):
         """Plot the TRF of the feature requested as a _butterfly_ plot.
 

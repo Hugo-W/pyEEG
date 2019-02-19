@@ -161,7 +161,7 @@ def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./
             raise ValueError("Method can only be 'hilbert', 'rectify' or 'subs'.")
 
         # Non linear compression before filtering to avoid NaN
-        out = np.power(out, comp_factor)
+        out = np.power(out + np.finfo(float).eps, comp_factor)
         # Design low-pass filter
         ntaps = fir_order(10, srate, ripples=1e-3)  # + 1 -> using odd ntaps for Type I filter,
                                                     # so I have an integer group delay (instead of half)

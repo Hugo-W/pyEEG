@@ -230,10 +230,14 @@ def load_surprisal_values(filepath, eps=1e-12):
         return None
     try:
         dataframe = pd.read_csv(filepath, delim_whitespace=True, usecols=[0, 1, 2, 3, 4])
+        surprisal = dataframe.loc[np.logical_and(dataframe.Word != '</s>', dataframe.Word != '\''), 'P(NET)'].get_values()
     except pd.errors.ParserError:
         LOGGER.error("Wrong file format, please check the path used and that file exists.")
-        raise pd.errors.ParserError
-    surprisal = dataframe.loc[np.logical_and(dataframe.Word != '</s>', dataframe.Word != '\''), 'P(NET)'].get_values()
+        raise pd.errors.ParserError    
+    except ValueError:
+        LOGGER.info("Suspecting a different file format, will try loading as a csv file as for 'timed files'")
+        dataframe = pd.read_csv(filepath)
+        surprisal = dataframe.proba
     return -np.log(surprisal + eps)
 
 def load_wordfreq_values(filepath, unkval=111773390, normfactor=3.2137e12):
@@ -271,6 +275,7 @@ def get_word_onsets(filepath):
 
     """
     csv = pd.read_csv(filepath)
+    csv.columns = [x.lower() for x in csv] # lower column namesb
     return csv.word.get_values(), csv.onset.get_values()
 
 def get_word_vectors(wordlist, wordvectors, unk='skip'):
