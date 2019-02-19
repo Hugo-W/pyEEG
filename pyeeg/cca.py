@@ -8,6 +8,7 @@ Created on Thu Jan 24 15:09:24 2019
 import logging
 import mne
 import numpy as np
+import sys
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 from mne.decoding import BaseEstimator
 from sklearn.cross_decomposition import CCA
@@ -160,6 +161,13 @@ class CCA_Estimator(BaseEstimator):
                 y = y[:-drop_bottom, :]
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
+        
+        # save the matrix X and y to pickle to save memory
+        if sys.platform.startswith("win"):
+            tmpdir = os.environ["TEMP"]
+        else:
+            tmpdir = os.environ["TMPDIR"]
+        
         self.X = np.reshape(X, (X.shape[0],len(self.lags), self.n_feats_))
         self.y = y
         
