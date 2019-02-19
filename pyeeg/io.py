@@ -80,7 +80,7 @@ def _load_eeglab_data(fname):
     """
     with h5py.File(fname, mode='r') as fid:
         eeg = fid['EEG/data'].value
-        srateate = fid['EEG/srateate'].value
+        srate = fid['EEG/srate'].value
 
         time = fid['EEG/times'].value
         n_events = fid['EEG/event/latency'].shape[0]
@@ -95,7 +95,7 @@ def _load_eeglab_data(fname):
         for k in range(fid['EEG/chanlocs/labels'].shape[0]):
             chnames.append(''.join([chr(i) for i in fid[fid['EEG/chanlocs/labels'][k][0]]]))
 
-        return eeg, srateate, time, events, event_type, chnames
+        return eeg, srate, time, events, event_type, chnames
 
 def load_ica_matrices(fname):
     """Load ICA matrices from EEGLAB structure .set file

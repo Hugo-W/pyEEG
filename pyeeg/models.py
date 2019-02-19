@@ -210,7 +210,7 @@ class TRFEstimator(BaseEstimator):
         """Compute output based on fitted coefficients and some feature matrix X
         """
         assert self.fitted, "Fit model first!"
-        betas = np.reshape(self.coef_, (self.lags * self.n_feats_, self.n_chans_))
+        betas = np.reshape(self.coef_, (len(self.lags) * self.n_feats_, self.n_chans_))
         if self.fit_intercept:
             betas = np.r_[self.intercept_, betas]
 
