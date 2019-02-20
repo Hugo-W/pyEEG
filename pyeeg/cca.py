@@ -9,6 +9,7 @@ import logging
 import mne
 import numpy as np
 import sys
+import os
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 from mne.decoding import BaseEstimator
 from sklearn.cross_decomposition import CCA
@@ -114,8 +115,6 @@ class CCA_Estimator(BaseEstimator):
         self.srate = srate
         self.fit_intercept = fit_intercept
         self.fitted = False
-        self.X = 0
-        self.y = 0
         # All following attributes are only defined once fitted (hence the "_" suffix)
         self.intercept_ = None
         self.coefStim_ = None
@@ -162,14 +161,8 @@ class CCA_Estimator(BaseEstimator):
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
         
-        # save the matrix X and y to pickle to save memory
-        if sys.platform.startswith("win"):
-            tmpdir = os.environ["TEMP"]
-        else:
-            tmpdir = os.environ["TMPDIR"]
-        
-        self.X = np.reshape(X, (X.shape[0],len(self.lags), self.n_feats_))
-        self.y = y
+#         self.X = np.reshape(X, (X.shape[0],len(self.lags), self.n_feats_))
+#         self.y = y
         
         # Adding intercept feature:
         if self.fit_intercept:
@@ -207,6 +200,18 @@ class CCA_Estimator(BaseEstimator):
             score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
             self.score_ = score
             self.sklearn_TRF_ = cca_skl.coef_
+
+        # save the matrix X and y to save memory
+        if self.fit_intercept:
+            X = np.reshape(X[:,1:], (X.shape[0],len(self.lags), self.n_feats_))
+        else:
+            X = np.reshape(X, (X.shape[0],len(self.lags), self.n_feats_))
+        if sys.platform.startswith("win"):
+            tmpdir = os.environ["TEMP"]
+        else:
+            tmpdir = os.environ["TMPDIR"]
+        np.save(os.path.join(tmpdir,'temp_X'), X)
+        np.save(os.path.join(tmpdir,'temp_y'), y)
         
         self.coefStim_ = np.reshape(A, (len(self.lags), self.n_feats_, self.coefResponse_.shape[1]))
             
@@ -246,13 +251,19 @@ class CCA_Estimator(BaseEstimator):
         """Plot the correlation between the EEG component waveform and the EEG channel waveform.
         Parameters
         ----------
-        """ 
+        """
+        if sys.platform.startswith("win"):
+            tmpdir = os.environ["TEMP"]
+        else:
+            tmpdir = os.environ["TMPDIR"]
+        X = np.load(os.path.join(tmpdir,'temp_X.npy'))
+        y = np.load(os.path.join(tmpdir,'temp_y.npy'))
         r = np.zeros((64,n_comp))
         for c in range(n_comp):
-            eeg_proj = self.y @ self.coefResponse_[:, c]
-            env_proj = self.X[:,:,feat_id] @ self.coefStim_[:, feat_id, c]
+            eeg_proj = y @ self.coefResponse_[:, c]
+            env_proj = X[:,:,feat_id] @ self.coefStim_[:, feat_id, c]
             for i in range(64):
-                r[i,c] = np.corrcoef(self.y[:,i], eeg_proj)[0,1]
+                r[i,c] = np.corrcoef(y[:,i], eeg_proj)[0,1]
             cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
           
         topoplot_array(r, pos, n_topos=n_comp, titles=self.score_)
@@ -263,10 +274,16 @@ class CCA_Estimator(BaseEstimator):
         Parameters
         ----------
         """   
+        if sys.platform.startswith("win"):
+            tmpdir = os.environ["TEMP"]
+        else:
+            tmpdir = os.environ["TMPDIR"]
+        y = np.load(os.path.join(tmpdir,'temp_y.npy'))
+        
         if n_comp <= 0:
             print('Invalid number of components, must be a positive integer.')
-        s_hat = self.y @ self.coefResponse_
-        sigma_eeg = self.y.T @ self.y
+        s_hat = y @ self.coefResponse_
+        sigma_eeg = y.T @ y
         sigma_reconstr = s_hat.T @ s_hat
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
         
