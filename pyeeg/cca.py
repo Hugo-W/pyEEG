@@ -219,7 +219,7 @@ class CCA_Estimator(BaseEstimator):
         self.coefStim_ = np.reshape(A, (len(self.lags), self.n_feats_, self.coefResponse_.shape[1]))
             
         
-    def plot_time_filter(self, n_comp=1, feat_id=0):
+    def plot_time_filter(self, n_comp=1, dim=[0]):
         """Plot the TRF of the feature requested.
         Parameters
         ----------
@@ -228,16 +228,19 @@ class CCA_Estimator(BaseEstimator):
         """
         if n_comp < 6:
             for c in range(n_comp):
-                plt.plot(self.times, self.coefStim_[:,feat_id,c],label='CC #%s' % (c+1))
+                for d in range(len(dim)):
+                    plt.plot(self.times, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
         else:
             for c in range(5):
-                plt.plot(self.times, self.coefStim_[:,feat_id,c],label='CC #%s' % (c+1))
+                for d in range(len(dim)):
+                    plt.plot(self.times, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
             for c in range(5,n_comp):
-                plt.plot(self.times, self.coefStim_[:,feat_id,c])
+                for d in range(len(dim)):
+                    plt.plot(self.times, self.coefStim_[:,dim[d],c])
         if self.feat_names_:
             plt.title('Time filter for {:s}'.format(self.feat_names_[0]))
         plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        plt.ylim([-max(np.abs(self.coefStim_[:,feat_id,:n_comp].flatten())), max(np.abs(self.coefStim_[:,feat_id,:n_comp].flatten()))]);
+        plt.ylim([-max(np.abs(self.coefStim_[:,dim,:n_comp].flatten())), max(np.abs(self.coefStim_[:,dim,:n_comp].flatten()))]);
             
     def plot_spatial_filter(self, pos, n_comp=1):
         """Plot the topo of the feature requested.
