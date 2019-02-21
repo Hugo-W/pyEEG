@@ -243,7 +243,8 @@ class CCA_Estimator(BaseEstimator):
         feat_id : int
             Index of the feature requested
         """
-        topoplot_array(self.coefResponse_, pos, n_topos=n_comp, titles=self.score_)
+        titles = ["CC #{:d}, corr: {:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
+        topoplot_array(self.coefResponse_, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
         
         
@@ -265,8 +266,9 @@ class CCA_Estimator(BaseEstimator):
             for i in range(64):
                 r[i,c] = np.corrcoef(y[:,i], eeg_proj)[0,1]
             cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
-          
-        topoplot_array(r, pos, n_topos=n_comp, titles=self.score_)
+        
+        titles = ["CC #{:d}, corr: {:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
+        topoplot_array(r, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
         
     def plot_activation_map(self, pos, n_comp=1):
@@ -287,10 +289,11 @@ class CCA_Estimator(BaseEstimator):
         sigma_reconstr = s_hat.T @ s_hat
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
         
-        topoplot_array(a_map, pos, n_topos=n_comp, titles=self.score_)
+        titles = ["CC #{:d}, corr: {:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
+        topoplot_array(a_map, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
         
-    def plot_spect(self, n_comp=2, feat_id=0):
+    def plot_compact_time(self, n_comp=2, feat_id=0):
         plt.imshow(self.coefStim_[:, feat_id, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
         plt.colorbar()
 

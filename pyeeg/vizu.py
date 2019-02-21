@@ -40,7 +40,7 @@ def plot_filterbank_output(signals, spacing=None, axis=-1):
         
 def topoplot_array(data, pos, n_topos=1, titles=None):
     """
-    Plotting topographic plot from spatial filters.
+    Plotting topographic plot.
     """
     fig = plt.figure(figsize=(12, 10), constrained_layout=False)
     outer_grid = fig.add_gridspec(5, 5, wspace=0.0, hspace=0.25)
@@ -48,5 +48,5 @@ def topoplot_array(data, pos, n_topos=1, titles=None):
         inner_grid = outer_grid[c].subgridspec(1, 1)
         ax = plt.Subplot(fig, inner_grid[0])
         im, _ = mne.viz.plot_topomap(data[:,c], pos, axes=ax, show=False)
-        ax.set(title=r"CC #{:d}, $\rho:$ {:.3f} ".format(c+1, titles[c]))
+        ax.set(title=titles[c])
         fig.add_subplot(ax)
