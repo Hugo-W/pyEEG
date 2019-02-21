@@ -241,7 +241,7 @@ class CCA_Estimator(BaseEstimator):
         plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
         plt.ylim([-max(np.abs(self.coefStim_[:,feat_id,:n_comp].flatten())), max(np.abs(self.coefStim_[:,feat_id,:n_comp].flatten()))]);
             
-    def plot_spatial_filter(self, pos, n_comp=1, feat_id=0):
+    def plot_spatial_filter(self, pos, n_comp=1):
         """Plot the topo of the feature requested.
         Parameters
         ----------
