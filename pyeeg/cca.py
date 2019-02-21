@@ -38,8 +38,9 @@ def cca_nt(x, y, threshs, knee_point):
         Val, Vec = np.linalg.eigh(C_temp)               # get eigval & eigvec
         if not is_pos_def(C_temp):
             discard = np.argwhere(Val < 0)
-            Val = Val[max(discard)[0]+1:]
-            Vec = Vec[:,max(discard)[0]+1:]
+            if not len(discard) == 0:
+                Val = Val[max(discard)[0]+1:]
+                Vec = Vec[:,max(discard)[0]+1:]
         Val, Vec = Val[::-1], Vec[:, ::-1]
         if knee_point is not None:
             find_knee_point()
@@ -126,6 +127,8 @@ class CCA_Estimator(BaseEstimator):
         self.n_chans_ = None
         self.feat_names_ = None
         self.sklearn_TRF_ = None
+        self.tempX_path_ = None
+        self.tempy_path_ = None
         
     
     def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, feat_names=()):
@@ -212,6 +215,8 @@ class CCA_Estimator(BaseEstimator):
             tmpdir = os.environ["TMPDIR"]
         np.save(os.path.join(tmpdir,'temp_X'), X)
         np.save(os.path.join(tmpdir,'temp_y'), y)
+        self.tempX_path_ = os.path.join(tmpdir,'temp_X')
+        self.tempy_path_ = os.path.join(tmpdir,'temp_y')
         
         self.coefStim_ = np.reshape(A, (len(self.lags), self.n_feats_, self.coefResponse_.shape[1]))
             
