@@ -12,10 +12,10 @@ Out of my head, some things to finish now:
 
 ### Priority
 
-- [ ] Computing _or_ loading envelopes (12/02/2019)
-- [ ] An object for all speech related features, aligne with segement (not necessarily word-level features!), e.g. what about pitch or envelope? (12/02/2019)
-- [ ] Getting the indices to align stim and repsonse shoul be doable independently of stim type (12/02/2019)
-- [ ] Format EEG for DNN input (12/02/2019)
+- [x] Computing or loading envelopes (12/02/2019)
+- [x] An object for all speech related features, aligne with segement (not necessarily word-level features!), e.g. what about pitch or envelope? (12/02/2019)
+- [x] Getting the indices to align stim and repsonse shoul be doable independently of stim type (12/02/2019) **-> STILL TO BE TESTED?**
+- [x] Format EEG for DNN input (12/02/2019) **-> check _chunk_data_ ?**
 - [ ] Loading/computing syntactic features (12/02/2019)
 
 > Release 1.0 on completion of all above
@@ -25,7 +25,7 @@ Out of my head, some things to finish now:
 - [ ] Functional connectivity methods:
   - [ ] Estimate connectivity
   - [ ] Graph theory metrics (path length, clustering coeff.)
-- [ ] Pipeline `pyRiemann` and `pyeeg` [this one](https://github.com/freole/pyeeg) into the some workflows..
+- [ ] Pipeline `pyRiemann` and `pyeeg` [this one](https://github.com/freole/pyeeg) into some workflows..
 
 ------
 
