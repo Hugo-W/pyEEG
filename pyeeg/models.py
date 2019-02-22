@@ -163,7 +163,7 @@ class TRFEstimator(BaseEstimator):
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
         estimated_mem_usage = X.nbytes * len(self.lags) + y_memory
         if estimated_mem_usage/1024.**3 > mem_check():
-            raise MemoryError("Not enough RAM available!")
+            raise MemoryError("Not enough RAM available! (needed %.1fGB, but only %.1fGB available)"%(estimated_mem_usage/1024.**3, mem_check()))
 
         self.n_feats_ = X.shape[1]
         self.n_chans_ = y.shape[1] if y.ndim == 2 else y.shape[2]
