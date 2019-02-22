@@ -254,7 +254,7 @@ class CCA_Estimator(BaseEstimator):
         mne.viz.tight_layout()
         
         
-    def plot_corr(self, pos, n_comp=1, feat_id=0):
+    def plot_corr(self, pos, n_comp=1):
         """Plot the correlation between the EEG component waveform and the EEG channel waveform.
         Parameters
         ----------
@@ -297,8 +297,8 @@ class CCA_Estimator(BaseEstimator):
         topoplot_array(a_map, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
         
-    def plot_compact_time(self, n_comp=2, feat_id=0):
-        plt.imshow(self.coefStim_[:, feat_id, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
+    def plot_compact_time(self, n_comp=2, dim=0):
+        plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
         plt.colorbar()
 
         
