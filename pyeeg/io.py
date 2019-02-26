@@ -365,11 +365,11 @@ class AlignedSpeech:
         Parameters
         ----------
         feat : ndarray
-            The fetaure signal
+            The feature signal
         name : str
             Name of feature being added
         """
-        assert hasattr(self, 'indices'), "Cannot add features if indices are not defnied! Load them with path to audio..."
+        assert hasattr(self, 'indices'), "Cannot add features if indices are not defined! Load them with path to audio..."
         self.feats = pd.concat([self.feats, pd.DataFrame({name: feat}, index=self.indices)],
                                join='inner', axis=1, sort=False)
 
@@ -420,7 +420,7 @@ class AlignedSpeech:
                 else:
                     feat_to_add = word_feats.align_word_features(self.srate, wordonset_feature=False, features=[feat_name])
                 assert len(feat_to_add) == len(self.feats), "Length of arrays mismatch, are you aligning features from the same story part?"
-                self.add_feature(feat_to_add[:, -1], feat_name)
+                self.add_feature(feat_to_add[:, :], feat_name)
         return self
 
     def create_word_level_features(self, path_wordonsets, path_surprisal=None, path_wordvectors=None,
