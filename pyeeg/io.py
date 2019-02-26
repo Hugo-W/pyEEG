@@ -370,7 +370,13 @@ class AlignedSpeech:
             Name of feature being added
         """
         assert hasattr(self, 'indices'), "Cannot add features if indices are not defined! Load them with path to audio..."
-        self.feats = pd.concat([self.feats, pd.DataFrame({name: feat}, index=self.indices)],
+        if len(feat.shape) > 1 and feat.shape[1] > 1:
+            ndims = feat.shape[1]
+            names = [name + "_" + str(k) for k in range(ndims)]
+            new_df = pd.DataFrame(dict(zip(names, feat.T)), index=self.indices)
+        else:
+            new_df = pd.DataFrame({name: feat}, index=self.indices)
+        self.feats = pd.concat([self.feats, new_df],
                                join='inner', axis=1, sort=False)
 
     def samples_from_onset(self, onset_segment, srate):
@@ -420,7 +426,7 @@ class AlignedSpeech:
                 else:
                     feat_to_add = word_feats.align_word_features(self.srate, wordonset_feature=False, features=[feat_name])
                 assert len(feat_to_add) == len(self.feats), "Length of arrays mismatch, are you aligning features from the same story part?"
-                self.add_feature(feat_to_add[:, :], feat_name)
+                self.add_feature(feat_to_add, feat_name)
         return self
 
     def create_word_level_features(self, path_wordonsets, path_surprisal=None, path_wordvectors=None,
