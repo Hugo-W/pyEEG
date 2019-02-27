@@ -107,8 +107,8 @@ class CCA_Estimator(BaseEstimator):
         
         if tmin and tmax:
             LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
-            self.lags = lag_span(tmin, tmax, srate=srate)
-            self.times = self.lags / srate
+            self.lags = lag_span(-tmax, -tmin, srate=srate)
+            self.times = -self.lags[::-1] / srate
         else:
             self.lags = lag_sparse(times, srate)
             self.times = np.asarray(times)
