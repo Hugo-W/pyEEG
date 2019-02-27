@@ -8,12 +8,15 @@ Created on Thu Jan 24 15:09:24 2019
 import logging
 import mne
 import numpy as np
+import sys
+import os
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 from mne.decoding import BaseEstimator
 from sklearn.cross_decomposition import CCA
 from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def, find_knee_point
 from pyeeg.vizu import topoplot_array
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import normalize as zscore
 
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
@@ -35,8 +38,9 @@ def cca_nt(x, y, threshs, knee_point):
         Val, Vec = np.linalg.eigh(C_temp)               # get eigval & eigvec
         if not is_pos_def(C_temp):
             discard = np.argwhere(Val < 0)
-            Val = Val[max(discard)[0]+1:]
-            Vec = Vec[:,max(discard)[0]+1:]
+            if not len(discard) == 0:
+                Val = Val[max(discard)[0]+1:]
+                Vec = Vec[:,max(discard)[0]+1:]
         Val, Vec = Val[::-1], Vec[:, ::-1]
         if knee_point is not None:
             find_knee_point()
@@ -112,8 +116,6 @@ class CCA_Estimator(BaseEstimator):
         self.srate = srate
         self.fit_intercept = fit_intercept
         self.fitted = False
-        self.X = 0
-        self.y = 0
         # All following attributes are only defined once fitted (hence the "_" suffix)
         self.intercept_ = None
         self.coefStim_ = None
@@ -125,9 +127,11 @@ class CCA_Estimator(BaseEstimator):
         self.n_chans_ = None
         self.feat_names_ = None
         self.sklearn_TRF_ = None
+        self.tempX_path_ = None
+        self.tempy_path_ = None
         
     
-    def fit(self, X, y, cca_implementation='nt', thresh_x=None, thresh_y=None, n_comp=2, knee_point=None, drop=True, feat_names=()):
+    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, feat_names=()):
         """ Fit CCA model.
         
         X : ndarray (nsamples x nfeats)
@@ -140,6 +144,7 @@ class CCA_Estimator(BaseEstimator):
         coef_ : ndarray (nlags x nfeats)
         intercept_ : ndarray (nfeats x 1)
         """
+        
         self.n_feats_ = X.shape[1]
         self.n_chans_ = y.shape[1]
         if feat_names:
@@ -158,8 +163,9 @@ class CCA_Estimator(BaseEstimator):
                 y = y[:-drop_bottom, :]
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
-        self.X = X
-        self.y = y
+        
+#         self.X = np.reshape(X, (X.shape[0],len(self.lags), self.n_feats_))
+#         self.y = y
         
         # Adding intercept feature:
         if self.fit_intercept:
@@ -179,8 +185,7 @@ class CCA_Estimator(BaseEstimator):
             if self.fit_intercept:
                 self.intercept_ = A[0, :]
                 A = A[1:, :]
-
-            self.coefStim_ = A
+             
             self.coefResponse_ = B
             self.score_ = R
             self.eigvals_x = eigvals_x
@@ -193,33 +198,59 @@ class CCA_Estimator(BaseEstimator):
             if self.fit_intercept:
                 self.intercept_ = A[0, :]
                 A = A[1:, :]
-                
-            self.coefStim_ = A
+            
             self.coefResponse_ = cca_skl.y_rotations_
             score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
             self.score_ = score
             self.sklearn_TRF_ = cca_skl.coef_
+
+        # save the matrix X and y to save memory
+        if self.fit_intercept:
+            X = X[:, 1:]
+        if sys.platform.startswith("win"):
+            tmpdir = os.environ["TEMP"]
+        else:
+            tmpdir = os.environ["TMPDIR"]
+        np.save(os.path.join(tmpdir,'temp_X'), X)
+        np.save(os.path.join(tmpdir,'temp_y'), y)
+        self.tempX_path_ = os.path.join(tmpdir,'temp_X')
+        self.tempy_path_ = os.path.join(tmpdir,'temp_y')
+        
+        self.coefStim_ = np.reshape(A, (len(self.lags), self.n_feats_, self.coefResponse_.shape[1]))
             
         
-    def plot_time_filter(self, n_comp=1, feat_id=0):
+    def plot_time_filter(self, n_comp=1, dim=[0]):
         """Plot the TRF of the feature requested.
         Parameters
         ----------
         feat_id : int
             Index of the feature requested
         """
-        plt.plot(self.times, self.coefStim_[:, :n_comp])
+        if n_comp < 6:
+            for c in range(n_comp):
+                for d in range(len(dim)):
+                    plt.plot(self.times, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
+        else:
+            for c in range(5):
+                for d in range(len(dim)):
+                    plt.plot(self.times, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
+            for c in range(5,n_comp):
+                for d in range(len(dim)):
+                    plt.plot(self.times, self.coefStim_[:,dim[d],c])
         if self.feat_names_:
-            plt.title('TRF for {:s}'.format(self.feat_names_[feat_id]))
+            plt.title('Time filter for {:s}'.format(self.feat_names_[0]))
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.ylim([-max(np.abs(self.coefStim_[:,dim,:n_comp].flatten())), max(np.abs(self.coefStim_[:,dim,:n_comp].flatten()))]);
             
-    def plot_spatial_filter(self, pos, n_comp=1, feat_id=0):
+    def plot_spatial_filter(self, pos, n_comp=1):
         """Plot the topo of the feature requested.
         Parameters
         ----------
         feat_id : int
             Index of the feature requested
         """
-        topoplot_array(self.coefResponse_, pos, n_topos=n_comp)
+        titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
+        topoplot_array(self.coefResponse_, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
         
         
@@ -227,16 +258,21 @@ class CCA_Estimator(BaseEstimator):
         """Plot the correlation between the EEG component waveform and the EEG channel waveform.
         Parameters
         ----------
-        """ 
+        """
+        X = np.load(self.tempX_path_+'.npy')
+        y = np.load(self.tempy_path_+'.npy')
+        coefStim_ = self.coefStim_.reshape((self.coefStim_.shape[0] * self.coefStim_.shape[1], self.coefStim_.shape[2]))
+
         r = np.zeros((64,n_comp))
         for c in range(n_comp):
-            eeg_proj = self.y @ self.coefResponse_[:,c]
-            env_proj = self.X @ self.coefStim_[:, c]
+            eeg_proj = y @ self.coefResponse_[:, c]
+            env_proj = X @ coefStim_[:, c]
             for i in range(64):
-                r[i,c] = np.corrcoef(self.y[:,i], eeg_proj)[0,1]
+                r[i,c] = np.corrcoef(y[:,i], eeg_proj)[0,1]
             cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
-          
-        topoplot_array(r, pos, n_topos=n_comp)
+        
+        titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
+        topoplot_array(r, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
         
     def plot_activation_map(self, pos, n_comp=1):
@@ -244,15 +280,26 @@ class CCA_Estimator(BaseEstimator):
         Parameters
         ----------
         """   
+        if sys.platform.startswith("win"):
+            tmpdir = os.environ["TEMP"]
+        else:
+            tmpdir = os.environ["TMPDIR"]
+        y = np.load(os.path.join(tmpdir,'temp_y.npy'))
+        
         if n_comp <= 0:
             print('Invalid number of components, must be a positive integer.')
-        s_hat = self.y @ self.coefResponse_
-        sigma_eeg = self.y.T @ self.y
+        s_hat = y @ self.coefResponse_
+        sigma_eeg = y.T @ y
         sigma_reconstr = s_hat.T @ s_hat
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
         
-        topoplot_array(a_map, pos, n_topos=n_comp)
+        titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
+        topoplot_array(a_map, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
+        
+    def plot_compact_time(self, n_comp=2, dim=0):
+        plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
+        plt.colorbar()
 
         
         
