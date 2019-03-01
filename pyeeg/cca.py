@@ -227,7 +227,10 @@ class CCA_Estimator(BaseEstimator):
         else:
             tmpdir = os.environ["TMPDIR"]
         np.save(os.path.join(tmpdir,'temp_X'), X)
-        np.save(os.path.join(tmpdir,'temp_y'), y)
+        if isinstance(y, list):
+            np.save(os.path.join(tmpdir,'temp_y'), np.asarray(y).reshape((len(y)*y[0].shape[0], y[0].shape[1])))
+        else:
+            np.save(os.path.join(tmpdir,'temp_y'), y)
         self.tempX_path_ = os.path.join(tmpdir,'temp_X')
         self.tempy_path_ = os.path.join(tmpdir,'temp_y')
         
@@ -275,13 +278,14 @@ class CCA_Estimator(BaseEstimator):
         ----------
         """
         X = np.load(self.tempX_path_+'.npy')
+        all_x = np.concatenate([X]*5)
         y = np.load(self.tempy_path_+'.npy')
         coefStim_ = self.coefStim_.reshape((self.coefStim_.shape[0] * self.coefStim_.shape[1], self.coefStim_.shape[2]))
 
         r = np.zeros((64,n_comp))
         for c in range(n_comp):
             eeg_proj = y @ self.coefResponse_[:, c]
-            env_proj = X @ coefStim_[:, c]
+            env_proj = all_x @ coefStim_[:, c]
             for i in range(64):
                 r[i,c] = np.corrcoef(y[:,i], eeg_proj)[0,1]
             cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
@@ -295,11 +299,7 @@ class CCA_Estimator(BaseEstimator):
         Parameters
         ----------
         """   
-        if sys.platform.startswith("win"):
-            tmpdir = os.environ["TEMP"]
-        else:
-            tmpdir = os.environ["TMPDIR"]
-        y = np.load(os.path.join(tmpdir,'temp_y.npy'))
+        y = np.load(self.tempy_path_+'.npy')
         
         if n_comp <= 0:
             print('Invalid number of components, must be a positive integer.')
