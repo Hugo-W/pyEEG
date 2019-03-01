@@ -144,12 +144,9 @@ class CCA_Estimator(BaseEstimator):
         coef_ : ndarray (nlags x nfeats)
         intercept_ : ndarray (nfeats x 1)
         """
-        if isinstance(y, list):
-            print('y is a list. CCA will be implemented more efficiently.')
-            self.n_chans_ = y[0].shape[1]
-        else:
-            self.n_chans_ = y.shape[1]
+        
         self.n_feats_ = X.shape[1]
+        self.n_chans_ = y.shape[1]
         if feat_names:
             self.feat_names_ = feat_names
 
@@ -179,34 +176,30 @@ class CCA_Estimator(BaseEstimator):
         if thresh_y is None:
             thresh_y = thresh_x
         threshs = np.asarray([thresh_x, thresh_y])
-        if isinstance(y, list):
-            print('needs implementing')
+        if cca_implementation == 'nt':
+            A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, threshs, knee_point)
+            # Reshaping and getting coefficients
+            if self.fit_intercept:
+                self.intercept_ = A[0, :]
+                A = A[1:, :]
+             
+            self.coefResponse_ = B
+            self.score_ = R
+            self.eigvals_x = eigvals_x
+            self.eigvals_y =eigvals_y
             
-        else:
-            if cca_implementation == 'nt':
-                A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, threshs, knee_point)
-                # Reshaping and getting coefficients
-                if self.fit_intercept:
-                    self.intercept_ = A[0, :]
-                    A = A[1:, :]
-
-                self.coefResponse_ = B
-                self.score_ = R
-                self.eigvals_x = eigvals_x
-                self.eigvals_y =eigvals_y
-
-            if cca_implementation == 'sklearn':
-                cca_skl = CCA(n_components=n_comp)
-                cca_skl.fit(X, y)
-                A = cca_skl.x_rotations_
-                if self.fit_intercept:
-                    self.intercept_ = A[0, :]
-                    A = A[1:, :]
-
-                self.coefResponse_ = cca_skl.y_rotations_
-                score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
-                self.score_ = score
-                self.sklearn_TRF_ = cca_skl.coef_
+        if cca_implementation == 'sklearn':
+            cca_skl = CCA(n_components=n_comp)
+            cca_skl.fit(X, y)
+            A = cca_skl.x_rotations_
+            if self.fit_intercept:
+                self.intercept_ = A[0, :]
+                A = A[1:, :]
+            
+            self.coefResponse_ = cca_skl.y_rotations_
+            score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
+            self.score_ = score
+            self.sklearn_TRF_ = cca_skl.coef_
 
         # save the matrix X and y to save memory
         if self.fit_intercept:
