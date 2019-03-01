@@ -26,10 +26,24 @@ def cca_nt(x, y, threshs, knee_point):
     # A, B: transform matrices
     # R: r scores
     # can normalise the data
+    m = x.shape[1]
     # Build covariance matrix: C=[x,y]'*[x,y]
-    m = np.size(x,1)
-    C = np.concatenate([x, y], axis=1).T @ np.concatenate([x, y], axis=1)
-    # C = np.cov(np.transpose(x),np.transpose(y)) # normalised
+    
+    if isinstance(y, list):
+        n = y[0].shape[1]
+        print('it really is a list')
+        C = np.zeros((m + n,m + n))
+        # create list of X for all y's
+        all_x = [x for i in range(len(y))]
+        x_cov = sum(list(map(lambda a,b: a.T @ b, all_x, all_x)))        
+        y_cov = sum(list(map(lambda a,b: a.T @ b, y, y)))
+        xy_cov = sum(list(map(lambda a,b: a.T @ b, all_x, y)))
+        C[:m,:m] = x_cov
+        C[m:,m:] = y_cov
+        C[:m,m:] = xy_cov
+        C[m:,:m] = xy_cov.T      
+    else:
+        C = np.concatenate([x, y], axis=1).T @ np.concatenate([x, y], axis=1)
     
     # PCA on X.T X to get sphering matrix A1 and on Y.T*Y for A2
     As = []
@@ -179,34 +193,31 @@ class CCA_Estimator(BaseEstimator):
         if thresh_y is None:
             thresh_y = thresh_x
         threshs = np.asarray([thresh_x, thresh_y])
-        if isinstance(y, list):
-            print('needs implementing')
-            
-        else:
-            if cca_implementation == 'nt':
-                A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, threshs, knee_point)
-                # Reshaping and getting coefficients
-                if self.fit_intercept:
-                    self.intercept_ = A[0, :]
-                    A = A[1:, :]
+        
+        if cca_implementation == 'nt':
+            A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, threshs, knee_point)
+            # Reshaping and getting coefficients
+            if self.fit_intercept:
+                self.intercept_ = A[0, :]
+                A = A[1:, :]
 
-                self.coefResponse_ = B
-                self.score_ = R
-                self.eigvals_x = eigvals_x
-                self.eigvals_y =eigvals_y
+            self.coefResponse_ = B
+            self.score_ = R
+            self.eigvals_x = eigvals_x
+            self.eigvals_y =eigvals_y
 
-            if cca_implementation == 'sklearn':
-                cca_skl = CCA(n_components=n_comp)
-                cca_skl.fit(X, y)
-                A = cca_skl.x_rotations_
-                if self.fit_intercept:
-                    self.intercept_ = A[0, :]
-                    A = A[1:, :]
+        if cca_implementation == 'sklearn':
+            cca_skl = CCA(n_components=n_comp)
+            cca_skl.fit(X, y)
+            A = cca_skl.x_rotations_
+            if self.fit_intercept:
+                self.intercept_ = A[0, :]
+                A = A[1:, :]
 
-                self.coefResponse_ = cca_skl.y_rotations_
-                score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
-                self.score_ = score
-                self.sklearn_TRF_ = cca_skl.coef_
+            self.coefResponse_ = cca_skl.y_rotations_
+            score = np.diag(np.corrcoef(cca_skl.x_scores_, cca_skl.y_scores_, rowvar=False)[:n_comp, n_comp:])
+            self.score_ = score
+            self.sklearn_TRF_ = cca_skl.coef_
 
         # save the matrix X and y to save memory
         if self.fit_intercept:
