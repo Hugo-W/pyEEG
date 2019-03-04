@@ -31,7 +31,6 @@ def cca_nt(x, y, threshs, knee_point):
     
     if isinstance(y, list):
         n = y[0].shape[1]
-        print('it really is a list')
         C = np.zeros((m + n,m + n))
         # create list of X for all y's
         all_x = [x for i in range(len(y))]
@@ -315,3 +314,32 @@ class CCA_Estimator(BaseEstimator):
     def plot_compact_time(self, n_comp=2, dim=0):
         plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
         plt.colorbar()
+
+    def plot_all_dim_time(self, n_comp=0, n_dim=2):
+        n_comp = range(n_comp)
+        n_rows = len(n_comp) // 2 + len(n_comp)%2
+        fig = plt.figure(figsize=(10, 20), constrained_layout=False)
+        outer_grid = fig.add_gridspec(n_rows, 2, wspace=0.1, hspace=0.1)
+        bottoms, tops, _, _ = outer_grid.get_grid_positions(fig)
+        for c, coefs in enumerate(self.coefStim_.swapaxes(0,2)[n_comp]):
+            inner_grid = outer_grid[c].subgridspec(1, 1)
+            ax = plt.Subplot(fig, inner_grid[0])
+            vmin = np.min(coefs)
+            vmax = np.max(coefs)
+            im = ax.imshow(coefs, aspect=0.04, origin='bottom',
+                           extent=[self.times[0], self.times[-1], 0, n_dim],
+                           vmin=vmin, vmax=vmax)
+            if c // 2 != n_rows-1:
+                ax.set_xticks([])
+            else:
+                ax.set_xlabel('Time (s)')
+            if c%2!=0:
+                ax.set_yticks([])
+            else:
+                ax.set_ylabel('Dimension')
+            ax.set(title=('CC #{:d}'.format(c+1)))
+            fig.add_subplot(ax)
+        # Colorbar
+        fig.subplots_adjust(right=0.8)
+        cbar_ax = fig.add_axes([0.85, 0.5 - 0.05, 0.01, 0.1])
+        fig.colorbar(im, cax=cbar_ax, shrink=0.6)
