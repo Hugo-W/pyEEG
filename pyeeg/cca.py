@@ -314,6 +314,9 @@ class CCA_Estimator(BaseEstimator):
     def plot_compact_time(self, n_comp=2, dim=0):
         plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
         plt.colorbar()
+        plt.ylabel('Components')
+        plt.xlabel('Time (ms)')
+        plt.title('Dimension #{:d}'.format(dim+1))
 
     def plot_all_dim_time(self, n_comp=0, n_dim=2):
         n_comp = range(n_comp)
