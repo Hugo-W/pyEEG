@@ -143,7 +143,7 @@ class TRFEstimator(BaseEstimator):
         self.n_chans_ = None
         self.feat_names_ = None
 
-    def fit(self, X, y, drop=True, feat_names=()):
+    def fit(self, X, y, lagged=False, drop=True, feat_names=()):
         """Fit the TRF model.
 
         Parameters
@@ -165,23 +165,30 @@ class TRFEstimator(BaseEstimator):
         if estimated_mem_usage/1024.**3 > mem_check():
             raise MemoryError("Not enough RAM available! (needed %.1fGB, but only %.1fGB available)"%(estimated_mem_usage/1024.**3, mem_check()))
 
-        self.n_feats_ = X.shape[1]
+        self.n_feats_ = X.shape[1] if not lagged else X.shape[1] // len(self.lags)
         self.n_chans_ = y.shape[1] if y.ndim == 2 else y.shape[2]
         if feat_names:
+            err_msg = "Length of feature names does not match number of columns from feature matrix"
+            if lagged:
+                assert len(feat_names) == X.shape[1] // len(self.lags), err_msg
+            else:
+                assert len(feat_names) == X.shape[1], err_msg
             self.feat_names_ = feat_names
 
-        # Creating lag-matrix droping NaN values if necessary
-        if drop:
-            X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
 
-            # Droping rows of NaN values in y
-            if any(np.asarray(self.lags) < 0):
-                drop_top = abs(min(self.lags))
-                y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
-            if any(np.asarray(self.lags) > 0):
-                drop_bottom = abs(max(self.lags))
-                y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
-        else:
+        # Creating lag-matrix droping NaN values if necessary
+        if not lagged:
+            if drop:
+                X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
+
+                # Droping rows of NaN values in y
+                if any(np.asarray(self.lags) < 0):
+                    drop_top = abs(min(self.lags))
+                    y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
+                if any(np.asarray(self.lags) > 0):
+                    drop_bottom = abs(max(self.lags))
+                    y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
+            else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
 
         # Adding intercept feature:
