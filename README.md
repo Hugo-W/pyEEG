@@ -13,10 +13,10 @@ Out of my head, some things to finish now:
 ### Priority
 
 - [x] Computing or loading envelopes (12/02/2019)
-- [x] An object for all speech related features, aligne with segement (not necessarily word-level features!), e.g. what about pitch or envelope? (12/02/2019)
-- [x] Getting the indices to align stim and repsonse shoul be doable independently of stim type (12/02/2019) **-> STILL TO BE TESTED?**
-- [x] Format EEG for DNN input (12/02/2019) **-> check _chunk_data_ ?**
-- [ ] Loading/computing syntactic features (12/02/2019)
+- [x] An object for all speech related features, aligned with segement (not necessarily word-level features!), e.g. what about pitch or envelope? (12/02/2019)
+- [x] Getting the indices to align stim and repsonse shoul be doable independently of stim type (12/02/2019) **ERROR WHEN DROP IS FALSE OBSERVED WITH DUTCH DATA**
+- [x] Format EEG for DNN input (12/02/2019)
+- [x] Loading/computing syntactic features (12/02/2019)
 
 > Release 1.0 on completion of all above
 
