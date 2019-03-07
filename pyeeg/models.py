@@ -189,7 +189,7 @@ class TRFEstimator(BaseEstimator):
                     drop_bottom = abs(max(self.lags))
                     y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
             else:
-            X = lag_matrix(X, lag_samples=self.lags, filling=0.)
+                X = lag_matrix(X, lag_samples=self.lags, filling=0.)
 
         # Adding intercept feature:
         if self.fit_intercept:
