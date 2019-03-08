@@ -330,11 +330,15 @@ def get_word_onsets(filepath):
     *word* respectively.
 
     """
-    csv = pd.read_csv(filepath)
-    csv.columns = [x.lower() for x in csv] # lower column names
-    # if "ton" in file replace by "onset"
-    if "ton" in csv:
+    # Check header of file to see if we have syntax fdeat formats or old wordfreq_timed csv files:
+    with open(filepath, 'r') as f:
+        hdr = f.readline() # read only header line
+    if "ton" in hdr.split(): # then we have a syntax feat file
+        csv = pd.read_csv(filepath, delim_whitespace=True)
         csv = csv.rename(columns={"ton":"onset"})
+    else:
+        csv = pd.read_csv(filepath)
+    csv.columns = [x.lower() for x in csv] # lower column names        
     return csv.word.get_values(), csv.onset.get_values()
 
 def get_word_vectors(wordlist, wordvectors, unk='skip'):
@@ -475,7 +479,7 @@ class AlignedSpeech:
         """Add an existing word level feature instance to this :class:`AlignedSpeech` instance,
         but not simply as an object here, but actually add the aligned features...
         """
-        names = ['surprisal', 'wordfrequency', 'entropy', 'wordvectors']
+        names = ['surprisal', 'wordfrequency', 'entropy', 'wordvectors', 'depth', 'open', 'close']
         if use_wordonsets:
             names = ['wordonsets'] + names
         for feat_name in names:
