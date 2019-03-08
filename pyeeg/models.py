@@ -230,20 +230,27 @@ class TRFEstimator(BaseEstimator):
             return np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
         
 
-    def plot(self, feat_id=0, **kwargs):
+    def plot(self, feat_id=[], **kwargs):
         """Plot the TRF of the feature requested as a _butterfly_ plot.
 
         Parameters
         ----------
-        feat_id : int
-            Index of the feature requested
+        feat_id : list or int
+            Index of the feature requested or list of features.
+            Default is to use all features.
+        **kwargs : **dict
+            Parameters to pass to :func:`plt.subplots`
         """
+        if isinstance(feat_id, int):
+            feat_id = list(feat_id) # cast into list to be able to use min, len, etc...
+        if len(feat_id) == 0:
+            feat_id = range(self.n_feats_)
         assert self.fitted, "Fit the model first!"
         assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), "Feat ids not in range"
 
         _, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), squeeze=False, **kwargs)
 
-        for k, feat in enumerate(list(feat_id)):
+        for k, feat in enumerate(feat_id):
             ax[0, k].plot(self.times, self.coef_[:, feat, :])
             if self.feat_names_:
                 ax[0, k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))
