@@ -373,10 +373,10 @@ class CCA_Estimator(BaseEstimator):
                 # Droping rows of NaN values in y
                 if any(np.asarray(self.lags) < 0):
                     drop_top = abs(min(self.lags))
-                    y = y[drop_top:, :]
+                    y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
                 if any(np.asarray(self.lags) > 0):
                     drop_bottom = abs(max(self.lags))
-                    y = y[:-drop_bottom, :]
+                    y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
 
