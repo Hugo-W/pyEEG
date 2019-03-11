@@ -143,7 +143,7 @@ class TRFEstimator(BaseEstimator):
         self.n_chans_ = None
         self.feat_names_ = None
 
-    def fit(self, X, y, drop=True, feat_names=()):
+    def fit(self, X, y, lagged=False, drop=True, feat_names=()):
         """Fit the TRF model.
 
         Parameters
@@ -161,28 +161,35 @@ class TRFEstimator(BaseEstimator):
         """
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
-        estimated_mem_usage = X.nbytes * len(self.lags) + y_memory
+        estimated_mem_usage = X.nbytes * (len(self.lags) if not lagged else 1) + y_memory
         if estimated_mem_usage/1024.**3 > mem_check():
             raise MemoryError("Not enough RAM available! (needed %.1fGB, but only %.1fGB available)"%(estimated_mem_usage/1024.**3, mem_check()))
 
-        self.n_feats_ = X.shape[1]
+        self.n_feats_ = X.shape[1] if not lagged else X.shape[1] // len(self.lags)
         self.n_chans_ = y.shape[1] if y.ndim == 2 else y.shape[2]
         if feat_names:
+            err_msg = "Length of feature names does not match number of columns from feature matrix"
+            if lagged:
+                assert len(feat_names) == X.shape[1] // len(self.lags), err_msg
+            else:
+                assert len(feat_names) == X.shape[1], err_msg
             self.feat_names_ = feat_names
 
-        # Creating lag-matrix droping NaN values if necessary
-        if drop:
-            X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
 
-            # Droping rows of NaN values in y
-            if any(np.asarray(self.lags) < 0):
-                drop_top = abs(min(self.lags))
-                y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
-            if any(np.asarray(self.lags) > 0):
-                drop_bottom = abs(max(self.lags))
-                y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
-        else:
-            X = lag_matrix(X, lag_samples=self.lags, filling=0.)
+        # Creating lag-matrix droping NaN values if necessary
+        if not lagged:
+            if drop:
+                X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
+
+                # Droping rows of NaN values in y
+                if any(np.asarray(self.lags) < 0):
+                    drop_top = abs(min(self.lags))
+                    y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
+                if any(np.asarray(self.lags) > 0):
+                    drop_bottom = abs(max(self.lags))
+                    y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
+            else:
+                X = lag_matrix(X, lag_samples=self.lags, filling=0.)
 
         # Adding intercept feature:
         if self.fit_intercept:
@@ -223,20 +230,27 @@ class TRFEstimator(BaseEstimator):
             return np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
         
 
-    def plot(self, feat_id=0, **kwargs):
+    def plot(self, feat_id=[], **kwargs):
         """Plot the TRF of the feature requested as a _butterfly_ plot.
 
         Parameters
         ----------
-        feat_id : int
-            Index of the feature requested
+        feat_id : list or int
+            Index of the feature requested or list of features.
+            Default is to use all features.
+        **kwargs : **dict
+            Parameters to pass to :func:`plt.subplots`
         """
+        if isinstance(feat_id, int):
+            feat_id = list(feat_id) # cast into list to be able to use min, len, etc...
+        if len(feat_id) == 0:
+            feat_id = range(self.n_feats_)
         assert self.fitted, "Fit the model first!"
         assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), "Feat ids not in range"
 
         _, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), squeeze=False, **kwargs)
 
-        for k, feat in enumerate(list(feat_id)):
+        for k, feat in enumerate(feat_id):
             ax[0, k].plot(self.times, self.coef_[:, feat, :])
             if self.feat_names_:
                 ax[0, k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))

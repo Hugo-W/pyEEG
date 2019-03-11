@@ -252,6 +252,62 @@ def load_wordfreq_values(filepath, unkval=111773390, normfactor=3.2137e12):
     wordfreq = -np.log(wordfreq/normfactor)
     return wordfreq
 
+def load_depth_values(filepath):
+    """
+    Load syntactic structure depth values.
+    Expected file format is:
+    
+        word1 depth1 onset1 offset1
+        word2 depth2 onset2 offset2
+        ...
+
+    or, if loaded from file with all other syntactic features:
+
+        Word    Depth   Open    Close   ton toff
+        word1   depth1  open1   close1  ton1    toff1
+        word2   depth2  ...
+
+    Note that the second format has a header line.
+    """
+    if filepath is None:
+        return None
+    df = pd.read_csv(filepath, delim_whitespace=True)
+    if "ton" in df:
+        return df.Depth.get_values()
+    else:
+        df = pd.read_csv(filepath, delim_whitespace=True, names=["word", "depth", "onset", "offset"])
+        return df.depth
+
+def load_open_values(filepath):
+    """
+    Load syntactic structure open values.
+    Expected file format is:
+
+        Word    Depth   Open    Close   ton toff
+        word1   depth1  open1   close1  ton1    toff1
+        word2   depth2  ...
+
+    """
+    if filepath is None:
+        return None
+    data = pd.read_csv(filepath, delim_whitespace=True)
+    return data.Open.get_values()
+
+def load_close_values(filepath):
+    """
+    Load syntactic structure open values.
+    Expected file format is:
+
+        Word    Depth   Open    Close   ton toff
+        word1   depth1  open1   close1  ton1    toff1
+        word2   depth2  ...
+
+    """
+    if filepath is None:
+        return None
+    data = pd.read_csv(filepath, delim_whitespace=True)
+    return data.Close.get_values()
+
 def get_word_onsets(filepath):
     """Simply load word lists and respective onsets for a given sound file/story parts...
 
@@ -274,8 +330,15 @@ def get_word_onsets(filepath):
     *word* respectively.
 
     """
-    csv = pd.read_csv(filepath)
-    csv.columns = [x.lower() for x in csv] # lower column namesb
+    # Check header of file to see if we have syntax fdeat formats or old wordfreq_timed csv files:
+    with open(filepath, 'r') as f:
+        hdr = f.readline() # read only header line
+    if "ton" in hdr.split(): # then we have a syntax feat file
+        csv = pd.read_csv(filepath, delim_whitespace=True)
+        csv = csv.rename(columns={"ton":"onset"})
+    else:
+        csv = pd.read_csv(filepath)
+    csv.columns = [x.lower() for x in csv] # lower column names        
     return csv.word.get_values(), csv.onset.get_values()
 
 def get_word_vectors(wordlist, wordvectors, unk='skip'):
@@ -375,7 +438,7 @@ class AlignedSpeech:
             names = [name + "_" + str(k) for k in range(ndims)]
             new_df = pd.DataFrame(dict(zip(names, feat.T)), index=self.indices)
         else:
-            new_df = pd.DataFrame({name: feat[:, -1]}, index=self.indices)
+            new_df = pd.DataFrame({name: feat[:, -1] if feat.ndim == 2 else feat}, index=self.indices)
         self.feats = pd.concat([self.feats, new_df],
                                join='inner', axis=1, sort=False)
 
@@ -416,7 +479,7 @@ class AlignedSpeech:
         """Add an existing word level feature instance to this :class:`AlignedSpeech` instance,
         but not simply as an object here, but actually add the aligned features...
         """
-        names = ['surprisal', 'wordfrequency', 'entropy', 'wordvectors']
+        names = ['surprisal', 'wordfrequency', 'entropy', 'wordvectors', 'depth', 'open', 'close']
         if use_wordonsets:
             names = ['wordonsets'] + names
         for feat_name in names:
@@ -430,12 +493,12 @@ class AlignedSpeech:
         return self
 
     def create_word_level_features(self, path_wordonsets, path_surprisal=None, path_wordvectors=None,
-                                   path_wordfrequency=None, use_wordonsets=False):
+                                   path_wordfrequency=None, path_syntactic=None, use_wordonsets=False):
         """Create a new word level feature object attached to this...
         """
         self.add_word_level_features(WordLevelFeatures(path_wordonsets=path_wordonsets, path_surprisal=path_surprisal,
                                                         path_wordfrequency=path_wordfrequency, path_wordvectors=path_wordvectors,
-                                                        path_audio=self.path_audio), use_wordonsets=use_wordonsets)
+                                                        path_syntactic=path_syntactic, path_audio=self.path_audio), use_wordonsets=use_wordonsets)
         return self
 
     def __add__(self, aligned_speech):
@@ -483,6 +546,9 @@ class WordLevelFeatures:
         with a line indicating number of words and dimension (i.e. `gensim` compatible)
     path_wordfrequency : str
         Path to file containing word counts as exctracted from Google Unigrams.
+    path_syntactic : str
+        Path to file containing all following syntactic features: depth in syntactic structure
+        parse, opening node, closing node
     path_wordonsets : str
         *Important!* Path to file with word onsets. For now, this must be one of the `*_timed.csv`
         files, for instance as in `Katerina_experiment/story-parts/wordfrequencies/*`
@@ -558,13 +624,12 @@ class WordLevelFeatures:
     TODO
     ----
     - Extend the class to create word-feature of choices on-the-fly
-    - Extract entropy!
     - Be able to extract word onsets from TextGrid data?
 
     """
 
     def __init__(self, path_praat_env=None, path_surprisal=None, path_wordvectors=None,
-                 path_wordfrequency=None, path_wordonsets=None, path_transcript=None,
+                 path_wordfrequency=None, path_syntactic=None, path_wordonsets=None, path_transcript=None,
                  rnnlm_model=None, path_audio=None, keep_vectors=False, unk_wv='rdm'):
 
         if path_praat_env:
@@ -578,6 +643,9 @@ class WordLevelFeatures:
             raise ValueError("Please supply a path at least for word onsets!")
         self.surprisal = load_surprisal_values(path_surprisal)
         self.wordfrequency = load_wordfreq_values(path_wordfrequency)
+        self.depth = load_depth_values(path_syntactic)
+        self.close = load_open_values(path_syntactic)
+        self.open = load_close_values(path_syntactic)
 
         # TODO: load audio and transcript, run rnnlm from here
 
@@ -602,7 +670,8 @@ class WordLevelFeatures:
     def summary(self):
         "Print a short summary for each variables contained in the instance"
         dataframe = pd.DataFrame(dict(surprisal=self.surprisal, wordfreq=self.wordfrequency,
-                                      words=self.wordlist, onsets=self.wordfrequency))
+                                      depth=self.depth, open=self.open, close=self.close,
+                                      words=self.wordlist, onsets=self.wordonsets))
 
         print(dataframe.head())
         print("\nSummary statistics:")
@@ -614,6 +683,7 @@ class WordLevelFeatures:
 
     def __repr__(self):
         dataframe = pd.DataFrame(dict(surprisal=self.surprisal, wordfreq=self.wordfrequency,
+                                      depth=self.depth, open=self.open, close=self.close,
                                       words=self.wordlist, onsets=self.wordonsets))
         short_repr = dataframe.head().__repr__()
         other_repr = "\nDuration: {:.2f}".format(self.duration)

@@ -31,8 +31,8 @@ class mCCA(BaseEstimator):
     Methods
     -------
         fit
-        fit_transform
-        transform
+        canonical_correlate_single
+        denoise
 
     References
     ----------
