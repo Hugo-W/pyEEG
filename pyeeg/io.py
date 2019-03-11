@@ -438,7 +438,7 @@ class AlignedSpeech:
             names = [name + "_" + str(k) for k in range(ndims)]
             new_df = pd.DataFrame(dict(zip(names, feat.T)), index=self.indices)
         else:
-            new_df = pd.DataFrame({name: feat[:, -1]}, index=self.indices)
+            new_df = pd.DataFrame({name: feat[:, -1] if feat.ndim == 2 else feat}, index=self.indices)
         self.feats = pd.concat([self.feats, new_df],
                                join='inner', axis=1, sort=False)
 
