@@ -144,7 +144,7 @@ class CCA_Estimator(BaseEstimator):
         self.tempy_path_ = None
         
     
-    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, feat_names=()):
+    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, y_already_dropped=False, feat_names=()):
         """ Fit CCA model.
         
         X : ndarray (nsamples x nfeats)
@@ -169,14 +169,15 @@ class CCA_Estimator(BaseEstimator):
         # Creating lag-matrix droping NaN values if necessary
         if drop:
             X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
-
-            # Droping rows of NaN values in y
-            if any(np.asarray(self.lags) < 0):
-                drop_top = abs(min(self.lags))
-                y = y[drop_top:, :]
-            if any(np.asarray(self.lags) > 0):
-                drop_bottom = abs(max(self.lags))
-                y = y[:-drop_bottom, :]
+            
+            if not y_already_dropped:
+                # Droping rows of NaN values in y
+                if any(np.asarray(self.lags) < 0):
+                    drop_top = abs(min(self.lags))
+                    y = y[drop_top:, :]
+                if any(np.asarray(self.lags) > 0):
+                    drop_bottom = abs(max(self.lags))
+                    y = y[:-drop_bottom, :]
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
         
