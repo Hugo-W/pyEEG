@@ -1,24 +1,20 @@
 # pyEEG
 
+> v1.0
+
 pyEEG is a library fo processing EEG data build mostly on top of MNE-py and scikit-learn. It allows anlaysis of raw data and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level features).
 
-If on the netwrok of Imperial College, you can access the documentation here: [pyeeg-docs](http://bg-hw2512.bg.ic.ac.uk).
+If on the network of Imperial College, you can access the documentation here: [pyeeg-docs](http://bg-hw2512.bg.ic.ac.uk).
 
 ------
 
 ## TODOs
 
-Out of my head, some things to finish now:
-
 ### Priority
 
-- [x] Computing or loading envelopes (12/02/2019)
-- [x] An object for all speech related features, aligned with segement (not necessarily word-level features!), e.g. what about pitch or envelope? (12/02/2019)
-- [x] Getting the indices to align stim and repsonse shoul be doable independently of stim type (12/02/2019) **ERROR WHEN DROP IS FALSE OBSERVED WITH DUTCH DATA**
-- [x] Format EEG for DNN input (12/02/2019)
-- [x] Loading/computing syntactic features (12/02/2019)
-
-> Release 1.0 on completion of all above
+- [ ] **FIX ERROR WHEN DROP IS FALSE OBSERVED WITH DUTCH DATA**
+- [ ] Use [doctest](https://docs.python.org/2/library/doctest.html) for systematic testing of some functions
+- [ ] fix imports (for now, cannot do `import pyeeg` to access all modules...)
 
 ### Future enhancements
 
@@ -50,7 +46,7 @@ Install requirements:
 pip install requirements.txt
 ```
 
-To generate the doc, Python package `sphinx` (>= 1.1.0), `sphinx_rtd_theme` and `nbsphinx` are required (`sphinx` is installable from `conda` and the others from `pip`).
+To generate the doc, Python package `sphinx` (>= 1.1.0), `sphinx_rtd_theme` and `nbsphinx` are required (`sphinx` can be installed from `conda` and the others from `pip`).
 
 ### User Installation
 
@@ -87,12 +83,12 @@ See [examples/import_WordVectors.ipynb](docs/source/examples/importWordVectors.i
 
 ## Documentation
 
-The simplest way is to access it from Imperial College Network (or via VPN) [here](http://pyeeg-docs).
-But you can also generate an _offline_ version, or a PDF file of all the docs by following the following instructions.
+The simplest way is to access it from Imperial College Network (or via VPN) [here](http://bg-hw2512.bg.ic.ac.uk/).
+But you can also generate an _offline_ HTML version, or a PDF file of all the docs by following the following instructions (I reckon the HTML pages are easier to navigate in and prettier than the PDF thanks to the nice theme brought by `sphinx_rtd_theme`).
 
 ### Generate the documentation
 
-To generate the documentation you will need `sphinx` to be installed in your Python environment. If it is not installed, install it with:
+To generate the documentation you will need `sphinx` to be installed in your Python environment, as well as the extension `nbsphinx` (for Jupyter Notebook integration) and the theme package `sphinx_rtd_theme`. Install those with:
 
 ```bash
 conda install sphinx
@@ -101,23 +97,28 @@ pip install sphinx_rtd_theme
 ```
 
 You can access the doc as HTML or PDF format.
-To generate the documentation HTML pages, type in a terminal (does not work Windows!):
+To generate the documentation HTML pages, type in a terminal:
+
+For Unix environment:
 
 ```bash
 make doc
 ```
 
-And for PDF version:
+For Windows environment:
 
 ```bash
-make docpdf
+make.bat doc
 ```
 
-Then you can open the `docs/build/html/index.html` page in your favourite browser or open `docs/build/latex/pyEEG.pdf` in a PDF viewer.
+Then you can open the `docs/build/html/index.html` page in your favourite browser.
+
+And for PDF version, simply use `docpdf` instead of `doc` above.
+Then open `docs/build/latex/pyEEG.pdf` in a PDF viewer.
 
 **The PDF documentation can only be generated if `latex` and `latxmk` are present on the machine**
 
-To clean files created during build process:
+To clean files created during build process (can be necessary to re-build the documentation):
 
 ```bash
 make clean
