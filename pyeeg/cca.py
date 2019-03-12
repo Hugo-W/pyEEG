@@ -28,22 +28,22 @@ def cca_nt(x, y, threshs, knee_point):
     # can normalise the data
     m = x.shape[1]
     # Build covariance matrix: C=[x,y]'*[x,y]
-    
+
     if isinstance(y, list):
         n = y[0].shape[1]
         C = np.zeros((m + n,m + n))
         # create list of X for all y's
         all_x = [x for i in range(len(y))]
-        x_cov = sum(list(map(lambda a,b: a.T @ b, all_x, all_x)))        
+        x_cov = sum(list(map(lambda a,b: a.T @ b, all_x, all_x)))
         y_cov = sum(list(map(lambda a,b: a.T @ b, y, y)))
         xy_cov = sum(list(map(lambda a,b: a.T @ b, all_x, y)))
         C[:m,:m] = x_cov
         C[m:,m:] = y_cov
         C[:m,m:] = xy_cov
-        C[m:,:m] = xy_cov.T      
+        C[m:,:m] = xy_cov.T
     else:
         C = np.concatenate([x, y], axis=1).T @ np.concatenate([x, y], axis=1)
-    
+
     # PCA on X.T X to get sphering matrix A1 and on Y.T*Y for A2
     As = []
     Eigvals = []
@@ -57,7 +57,7 @@ def cca_nt(x, y, threshs, knee_point):
         Val, Vec = Val[::-1], Vec[:, ::-1]
         if knee_point is not None:
             find_knee_point()
-            print('knee_point used')    
+            print('knee_point used')
         keep = np.cumsum(Val)/sum(Val) <= threshs[idx]   # only keep components over certain percentage of variance
         topcs = Vec[:, keep]                        # corresponding vecs
         Val = Val[keep]
@@ -66,29 +66,228 @@ def cca_nt(x, y, threshs, knee_point):
         As.append(topcs @ np.diag(np.sqrt(1/Val)))
         Eigvals.append(Val)
     A1, A2 = As
-    eigvals_x, eigvals_y = Eigvals 
-    
+    eigvals_x, eigvals_y = Eigvals
+
     # create new C = Amix.T*C*Amix
     AA = np.zeros((A1.shape[0] + A2.shape[0], A1.shape[1] + A2.shape[1]))
     AA[:A1.shape[0], :A1.shape[1]] = A1
     AA[A1.shape[0]:, A1.shape[1]:] = A2
     C = AA.T @ C @ AA
-    
+
     N = np.min((np.size(A1,1), np.size(A2,1)))    # number of canonical components
-    
+
     # PCA on Cnew
     Val, Vec = np.linalg.eigh(C)
     Val, Vec = Val[::-1], Vec[:, ::-1]
-    
+
     A = A1 @ Vec[:np.size(A1,1),:N]*np.sqrt(2)      # keeping only N first PCs
     B = A2 @ Vec[np.size(A1,1):,:N]*np.sqrt(2)
     R = Val[:N] - 1
-    
+
     return A1, A2, A, B, R, eigvals_x, eigvals_y
 
+
+def cca_svd(x, y, opt={}):
+    """CCA by SVD.
+
+    Implements CCA between x and y with regularisation options as specified in
+    opt.
+
+    If y is a list of matrices, computes CCA between the concatenated
+    elements of y and a repeated version of x (generic model).
+
+    Parameters
+    ----------
+    x : ndarray (nsamples x ndims_x)
+        Multivariate data
+
+    y : ndarray (nsamples x ndims_y) or list of ndarray (all of the same shape)
+        Multivariate data
+
+    opt : dictionary
+        Regularisation options for x and y. opt['x'] and opt['y'] are
+        dictionaries containing options that will be used for their respective
+        PCA. See :func:`reg_eigen` for valid options.
+
+    Returns
+    -------
+    Ax, Ay : ndarrays (ndims_x x nCC and ndims_y x nCC)
+        Coefficients such that (y @ Ay).T @ (x @ Ax) is diagognal with the
+        largest correlation values possible on the diagonal.
+
+    R: ndarray
+        Correlation values between the projections of x and y (i.e.
+        R[i] = (y.T @ Ay[i]).T @ (x @ Ax[i]) )
+
+    Remark
+    -------
+    x and y are assumed to be zero-mean column-wise.
+
+    Example
+    -------
+    >>> x = np.random.randn(1000,10)
+    >>> y = np.random.randn(1000,8)
+    >>> opt = {'x': {'nKeep': 3}, 'y': {'var': 0.99}}
+    >>> Ax, Ay, R = myCCA.cca_svd(x, y, opt)
+
+    CCA between x and y, while keeping only 3 top PCs for x and dimensions
+    accounting for 99 % the total variance for y.
+    """
+
+    # TODO: if y is a list, add option to switch between generic model and
+    # one CCA per element of y?
+
+    # default input
+    if not 'x' in opt:
+        opt['x'] = {}
+
+    if not 'y' in opt:
+        opt['y'] = {}
+
+    # same as below with a for loop, curtesy of Hugo
+    #    S, V = {}, {}
+    #    for k, mat in zip(opt.keys(), [x, y]):
+    #        S[k] = regEigen(mat, opt[k])
+
+    # regularised PCA
+    S, V = reg_eigen(x,opt['x'])
+    O, N = reg_eigen(y,opt['y'])
+
+    S = 1 / np.sqrt(S)
+    O = 1 / np.sqrt(O)
+
+    if isinstance(y, list):
+        ytx = np.zeros((y[0].shape[1],x.shape[1]))
+        for m in y:
+            ytx += m.T @ x
+    else:
+        ytx = y.T @ x
+
+    # this does an SVD on C given by (matrix multiplications):
+    # C = diag(O) * N' * y' * x * V * diag(S)
+    P, Q, R = np.linalg.svd((O[:,np.newaxis] * N.T) @ ytx @ (V * S), full_matrices=False)
+
+    # P, Q, R = np.linalg.svd(X) such that: X = P * Q * R (and not R.T)
+    # hence R needs to be transposed below
+    # (singular values already sorted in descending order)
+    Ax = (V * S) @ R.T
+    Ay = (N * O) @ P
+
+    return Ax, Ay, Q
+
+
+def reg_eigen(x, opt={}):
+    """Regularised PCA.
+
+    Does an eigenvalue decompostion x' * x = V * S * V' and returns matrix V
+    and vector S sorted by decreasing eigenvalues and with some regularisation
+    as specfied in opt (reg_eigen will always discard at least degenerate
+    dimensions).
+
+    If x is a list of matrices, does the same on the summed covariance matrix
+    of its elements (i.e. PCA on the concatenated elements of x ; hence: all
+    elements must all have equal 2nd dimension).
+
+    Parameters
+    ----------
+    x : ndarray (nsamples x ndims) or list of ndarray  (all of the same shape)
+        Multivariate data
+
+    opt : dictionary
+        Regularisation options for x and y. Possible options:
+
+            key 'cond', val: float
+                Keep all eigenvalues e_i that verify:
+                    (max(eigen) / eigen_i) < opt['cond']
+            key 'nKeep', val: int
+                Number of eigenvalues to keep
+            key 'var', val : float
+                Fraction of the total variance to keep
+            key 'absTol', val : float
+                Discard eigenvalues smaller than absTol
+
+    Returns
+    -------
+    S : ndarray (nPC,)
+        Sorted eigenvalues (decreasing)
+
+    V : (ndims x nPC)
+        Rotation matrix (eigenvectors) -- sorted as S
+
+    Remark
+    -------
+    x and y are assumed to be zero-mean column-wise. regEigen does not apply
+    any normalisation.
+
+    Examples
+    -------
+    reg_eigen(x,{'cond': 1e6}) # keep eigenvals up to a condition number of 1e6
+    reg_eigen(x,{'nKeep': 10}) # keep the 10 PCs with largest eigenvalues
+    reg_eigen(x,{'var': 0.99}) # keep 99 % of variance
+    reg_eigen(x,{'absTol': 1e-6}) # discard dimension with variance < 1e-6
+    """
+
+    # TODO: add checks on input validity?
+
+    if isinstance(x, list):
+        xtx = np.zeros((x[0].shape[1],x[0].shape[1]))
+        for m in x:
+            xtx += m.T @ m
+
+        S, V = np.linalg.eigh(xtx)
+
+    else:
+        S, V = np.linalg.eigh(x.T @ x)
+
+    # eigh sort eigenvalues in increasing order
+    # reorder in decreasing order
+    # NB: there may be (small) negative eigenvalues in the case of degenerate
+    # matrices, we'll discard these here
+    rx = np.sum(S < 0)
+    S = np.flip(S[rx:])
+    V = np.flip(V[:, rx:], 1)
+
+    # always remove (at least) numerical zeros by default
+    # same default tolerance as the one used to compute rank in
+    # np.linalg.matrix_rank
+    tol = S[0] * x.shape[1] * np.finfo(S.dtype).eps
+    rx = np.sum(S > tol) # keep the rx first elements
+
+    # regularisation:
+    # keep a custom number of dimensions
+    if opt:
+
+        # condition number
+        if 'cond' in opt:
+            # since all eigenvals are now > 0
+            rc = np.searchsorted(S[0] / S, opt['cond'])
+
+        # explicit number of dimensions to keep
+        elif 'nKeep' in opt:
+            rc = opt['nKeep']
+
+        # fraction of total variance
+        elif 'var' in opt:
+            rc = np.searchsorted(np.cumsum(S) / np.sum(S), opt['var'])
+
+        # absolute tolerance value
+        elif 'absTol' in opt:
+            rc = np.sum(S > opt['absTol'])
+
+        # TODO: add ridge regularisation?
+
+        rx = np.min((rx, rc))
+
+    # drop dimensions
+    V = V[:, :rx]
+    S = S[:rx]
+
+    return S,V
+
+
 class CCA_Estimator(BaseEstimator):
-    
-    """Canonocal Correlation (CCA) Estimator Class.
+
+    """Canonical Correlation (CCA) Estimator Class.
 
     Attributes
     ----------
@@ -115,9 +314,9 @@ class CCA_Estimator(BaseEstimator):
     Attributes with a `_` suffix are only set once the TRF has been fitted on EEG data
 
    """
-        
+
     def __init__(self, times =(0.,), tmin=None, tmax=None, srate=1., fit_intercept=True):
-        
+
         if tmin and tmax:
             LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
             self.lags = lag_span(-tmax, -tmin, srate=srate)
@@ -125,7 +324,7 @@ class CCA_Estimator(BaseEstimator):
         else:
             self.lags = lag_sparse(times, srate)
             self.times = np.asarray(times)
-            
+
         self.srate = srate
         self.fit_intercept = fit_intercept
         self.fitted = False
@@ -142,11 +341,11 @@ class CCA_Estimator(BaseEstimator):
         self.sklearn_TRF_ = None
         self.tempX_path_ = None
         self.tempy_path_ = None
-        
-    
-    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, feat_names=()):
+
+
+    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, y_already_dropped=False, feat_names=(), opt_cca_svd={}):
         """ Fit CCA model.
-        
+
         X : ndarray (nsamples x nfeats)
             Array of features (time-lagged)
         y : ndarray (nsamples x nchans)
@@ -169,20 +368,21 @@ class CCA_Estimator(BaseEstimator):
         # Creating lag-matrix droping NaN values if necessary
         if drop:
             X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
-
-            # Droping rows of NaN values in y
-            if any(np.asarray(self.lags) < 0):
-                drop_top = abs(min(self.lags))
-                y = y[drop_top:, :]
-            if any(np.asarray(self.lags) > 0):
-                drop_bottom = abs(max(self.lags))
-                y = y[:-drop_bottom, :]
+            
+            if not y_already_dropped:
+                # Droping rows of NaN values in y
+                if any(np.asarray(self.lags) < 0):
+                    drop_top = abs(min(self.lags))
+                    y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
+                if any(np.asarray(self.lags) > 0):
+                    drop_bottom = abs(max(self.lags))
+                    y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
-        
+
         # Adding intercept feature:
         if self.fit_intercept:
-            X = np.hstack([np.ones((len(X), 1)), X])          
+            X = np.hstack([np.ones((len(X), 1)), X])
         if thresh_x is None:
             if thresh_y is None:
                 thresh_x = 0.999
@@ -192,7 +392,7 @@ class CCA_Estimator(BaseEstimator):
         if thresh_y is None:
             thresh_y = thresh_x
         threshs = np.asarray([thresh_x, thresh_y])
-        
+
         if cca_implementation == 'nt':
             A1, A2, A, B, R, eigvals_x, eigvals_y = cca_nt(X, y, threshs, knee_point)
             # Reshaping and getting coefficients
@@ -204,6 +404,16 @@ class CCA_Estimator(BaseEstimator):
             self.score_ = R
             self.eigvals_x = eigvals_x
             self.eigvals_y =eigvals_y
+
+        if cca_implementation == 'svd':
+            Ax, Ay, R = cca_svd(X, y, opt_cca_svd)
+            # Reshaping and getting coefficients
+            if self.fit_intercept:
+                self.intercept_ = Ax[0, :]
+                Ax = Ax[1:, :]
+
+            self.coefResponse_ = Ay
+            self.score_ = R
 
         if cca_implementation == 'sklearn':
             cca_skl = CCA(n_components=n_comp)
@@ -232,10 +442,10 @@ class CCA_Estimator(BaseEstimator):
             np.save(os.path.join(tmpdir,'temp_y'), y)
         self.tempX_path_ = os.path.join(tmpdir,'temp_X')
         self.tempy_path_ = os.path.join(tmpdir,'temp_y')
-        
+
         self.coefStim_ = np.reshape(A, (len(self.lags), self.n_feats_, self.coefResponse_.shape[1]))
-            
-        
+
+
     def plot_time_filter(self, n_comp=1, dim=[0]):
         """Plot the TRF of the feature requested.
         Parameters
@@ -258,7 +468,7 @@ class CCA_Estimator(BaseEstimator):
             plt.title('Time filter for {:s}'.format(self.feat_names_[0]))
         plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
         plt.ylim([-max(np.abs(self.coefStim_[:,dim,:n_comp].flatten())), max(np.abs(self.coefStim_[:,dim,:n_comp].flatten()))]);
-            
+
     def plot_spatial_filter(self, pos, n_comp=1):
         """Plot the topo of the feature requested.
         Parameters
@@ -269,8 +479,8 @@ class CCA_Estimator(BaseEstimator):
         titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
         topoplot_array(self.coefResponse_, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
-        
-        
+
+
     def plot_corr(self, pos, n_comp=1):
         """Plot the correlation between the EEG component waveform and the EEG channel waveform.
         Parameters
@@ -288,29 +498,29 @@ class CCA_Estimator(BaseEstimator):
             for i in range(64):
                 r[i,c] = np.corrcoef(y[:,i], eeg_proj)[0,1]
             cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
-        
+
         titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
         topoplot_array(r, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
-        
+
     def plot_activation_map(self, pos, n_comp=1):
         """Plot the activation map from the spatial filter.
         Parameters
         ----------
-        """   
+        """
         y = np.load(self.tempy_path_+'.npy')
-        
+
         if n_comp <= 0:
             print('Invalid number of components, must be a positive integer.')
         s_hat = y @ self.coefResponse_
         sigma_eeg = y.T @ y
         sigma_reconstr = s_hat.T @ s_hat
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
-        
+
         titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
         topoplot_array(a_map, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
-        
+
     def plot_compact_time(self, n_comp=2, dim=0):
         plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
         plt.colorbar()
