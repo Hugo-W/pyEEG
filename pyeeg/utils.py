@@ -192,7 +192,7 @@ def fir_order(tbw, srate, atten=60, ripples=None):
     If ripple is given will use rule:
 
     .. math ::
-    
+
         N = \\frac{2}{3} \log_{10}\\frac{1}{10\delta_ripp\delta_att} \\frac{Fs}{TBW}
 
     Else:
@@ -219,9 +219,9 @@ def fir_order(tbw, srate, atten=60, ripples=None):
 
     Notes
     -----
-    Rule of thumbs from :ref:`here_`.
+    Rule of thumbs from here_.
 
-    .. here_ : https://dsp.stackexchange.com/a/31077/28372
+    .. _here : https://dsp.stackexchange.com/a/31077/28372
     """
     if ripples:
         atten = 10**(-abs(atten)/10.)
@@ -325,8 +325,8 @@ def chunk_data(data, window_size, overlap_size=0, padding=False, win_as_samples=
     -----
     Please note that we expect first dim as our axis on which to apply
     the rolling window.
-    Calling `mean(axis=0)` works if :param:`win_as_samples` is set to `False`,
-    otherwise use `mean(axis=1)`.
+    Calling :func:`mean(axis=0)` works if ``win_as_samples`` is set to ``False``,
+    otherwise use :func:`mean(axis=1)`.
 
     """
     assert data.ndim <= 2, "Data must be 2D at most!"

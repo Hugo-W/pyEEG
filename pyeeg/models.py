@@ -7,8 +7,8 @@ implementing:
 
     - Forward modelling (stimulus -> EEG), a.k.a _TRF_ (Temporal Response Functions)
     - Backward modelling (EEG -> stimulus)
-    - CCA
-    - ?
+    - CCA (in cca.py)
+    - ...
 
 TODO
 ''''
@@ -117,7 +117,12 @@ class TRFEstimator(BaseEstimator):
     Attributes with a `_` suffix are only set once the TRF has been fitted on EEG data (i.e. after
     the method :meth:`TRFEstimator.fit` has been called).
 
-    #TODO: add example
+    Examples
+    --------
+    >>> trf = TRFEstimator(tmin=-0.5, tmax-1.2, srate=125)
+    >>> x = np.random.randn(1000, 3)
+    >>> y = np.random.randn(1000, 2)
+    >>> trf.fit(x, y, lagged=False)
     """
 
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
@@ -214,24 +219,64 @@ class TRFEstimator(BaseEstimator):
         return self
 
     def predict(self, X):
-        """Compute output based on fitted coefficients and some feature matrix X
+        """Compute output based on fitted coefficients and feature matrix X.
+
+        Parameters
+        ----------
+        X : ndarray
+            Matrix of features (can be already lagged or not).
+
+        Returns
+        -------
+        ndarray
+            Reconstruction of target with current beta estimates
+
+        Notes
+        -----
+        If the matrix onky has features in its column (not yet lagged), the lagged version
+        of the feature matrix will be created on the fly (this might take some time if the matrix
+        is large).
+
         """
         assert self.fitted, "Fit model first!"
         betas = np.reshape(self.coef_, (len(self.lags) * self.n_feats_, self.n_chans_))
+
         if self.fit_intercept:
             betas = np.r_[self.intercept_, betas]
+
+        # Check if input has been lagged already, if not, do it:
+        if X.shape[1] != int(self.fit_intercept) + self.lags * self.n_feats_:
+            LOGGER.info("Creating lagged feature matrix...")
+            X = lag_matrix(X, lag_samples=self.lags, filling=0.)
 
         return X.dot(betas)
 
     def score(self, Xtest, ytrue, scoring="corr"):
-        "Return score"
+        """Compute a score of the model given true target and estimated target from Xtest.
+
+        Parameters
+        ----------
+        Xtest : ndarray
+            Array used to get "yhat" estimate from model
+        ytrue : ndarray
+            True target
+        scoring : str (or func in future?)
+            Scoring function to be used
+
+        Returns
+        -------
+        float
+            Score value computed on whole segment.
+        """
         yhat = self.predict(Xtest)
         if scoring == 'corr':
             return np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
+        else:
+            raise NotImplementedError("Only correlation score is valid for now...")
         
 
-    def plot(self, feat_id=[], **kwargs):
-        """Plot the TRF of the feature requested as a _butterfly_ plot.
+    def plot(self, feat_id=None, **kwargs):
+        """Plot the TRF of the feature requested as a *butterfly* plot.
 
         Parameters
         ----------
@@ -243,7 +288,7 @@ class TRFEstimator(BaseEstimator):
         """
         if isinstance(feat_id, int):
             feat_id = list(feat_id) # cast into list to be able to use min, len, etc...
-        if len(feat_id) == 0:
+        if not feat_id:
             feat_id = range(self.n_feats_)
         assert self.fitted, "Fit the model first!"
         assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), "Feat ids not in range"

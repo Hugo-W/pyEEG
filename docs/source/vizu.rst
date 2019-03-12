@@ -1,8 +1,8 @@
 .. role:: hidden
     :class: hidden-section
 
-Plotting stuff
-==============
+Vizualisaton
+============
 
 .. automodule:: pyeeg.vizu
     :no-members:

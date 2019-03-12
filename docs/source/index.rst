@@ -27,6 +27,11 @@ pyEEG is a wrapper around some common tooloboxes and algorithm for EEG processin
    models
    utils
    vizu
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Other
+
    about
 
 Indices and tables
