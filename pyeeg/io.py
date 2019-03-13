@@ -732,7 +732,7 @@ class WordLevelFeatures:
                                       depth=self.depth, open=self.open, close=self.close,
                                       words=self.wordlist, onsets=self.wordonsets))
         short_repr = dataframe.head().__repr__()
-        other_repr = "\nDuration: {:.2f}".format(self.duration)
+        other_repr = "\nDuration: {:.2f}".format(self.duration) if hasattr(self, 'duration') else ""
         if self.vectordim > 0:
             other_repr += "\nWord vectors loaded (ndim: {:d})".format(self.vectordim)
         return short_repr + other_repr
