@@ -542,9 +542,10 @@ class AlignedSpeech:
                                    path_wordfrequency=None, path_syntactic=None, use_wordonsets=False):
         """Create a new word level feature object attached to this...
         """
-        self.add_word_level_features(WordLevelFeatures(path_wordonsets=path_wordonsets, path_surprisal=path_surprisal,
-                                                        path_wordfrequency=path_wordfrequency, path_wordvectors=path_wordvectors,
-                                                        path_syntactic=path_syntactic, path_audio=self.path_audio), use_wordonsets=use_wordonsets)
+        self.wordlevel = WordLevelFeatures(path_wordonsets=path_wordonsets, path_surprisal=path_surprisal,
+                                           path_wordfrequency=path_wordfrequency, path_wordvectors=path_wordvectors,
+                                           path_syntactic=path_syntactic, path_audio=self.path_audio)
+        self.add_word_level_features(self.wordlevel, use_wordonsets=use_wordonsets)
         return self
 
     def __add__(self, aligned_speech):
