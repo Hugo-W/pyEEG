@@ -114,8 +114,11 @@ class TRFEstimator(BaseEstimator):
 
     Notes
     -----
-    Attributes with a `_` suffix are only set once the TRF has been fitted on EEG data (i.e. after
-    the method :meth:`TRFEstimator.fit` has been called).
+        - Attributes with a `_` suffix are only set once the TRF has been fitted on EEG data (i.e. after
+        the method :meth:`TRFEstimator.fit` has been called).
+        - Can fit on a list of multiple dataset, where we have a list of target Y and
+        a single stimulus matrix of features X, then the computation is made such that
+        the coefficients computed are similar to those obtained by concatenating all matrices
 
     Examples
     --------
@@ -245,7 +248,7 @@ class TRFEstimator(BaseEstimator):
             betas = np.r_[self.intercept_, betas]
 
         # Check if input has been lagged already, if not, do it:
-        if X.shape[1] != int(self.fit_intercept) + self.lags * self.n_feats_:
+        if X.shape[1] != int(self.fit_intercept) + len(self.lags) * self.n_feats_:
             LOGGER.info("Creating lagged feature matrix...")
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
 
