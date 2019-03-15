@@ -8,6 +8,7 @@ Module containing some preprocessing helper and function to be applied to EEG...
 # Standard library
 import numpy as np
 from scipy import signal
+from scipy.linalg import eigh as geigh
 from joblib import Parallel, delayed
 #import matplotlib.pyplot as plt
 from sklearn.covariance import oas, ledoit_wolf, fast_mcd, empirical_covariance
@@ -72,13 +73,22 @@ def _check_est(est):
     return est
 
 def covariances(X, estimator='cov'):
-    """Estimation of covariance matrix."""
+    """Estimation of covariance matrices."""
     est = _check_est(estimator)
+    assert X.ndim == 3, "Data must be 3d (trials, samples, channels)"
     Ntrials, Nsamples, Nchans = X.shape
     covmats = np.zeros((Ntrials, Nchans, Nchans))
     for i in range(Ntrials):
         covmats[i, :, :] = est(X[i, :, :])
     return covmats
+
+def covariance(X, estimator='cov'):
+    """Estimation of one covariance matrix on whole dataset"""
+    est = _check_est(estimator)
+    if X.ndim == 3:
+        nchans = X.shape[2]
+        X = X.reshape((-1, nchans))
+    return est(X)
 
 
 def covariances_extended(X, P, estimator='cov'):
@@ -146,3 +156,46 @@ def get_power(signals, decibels=False, win=125, axis=-1, n_jobs=-1):
         out[k, :, :] = feat
 
     return out
+
+
+class multichanWienerFilter(object):
+    def __init__(self, lags=(0,), low_rank=False, thresh=None):
+        self.lags = lags
+        self.low_rank = low_rank
+        self.thresh = thresh
+    
+    def fit(self, y_clean, y_artifact, cov_data=False):
+        if cov_data:
+            Sc = y_clean
+            Sy = y_artifact
+        else:
+            Sc = covariance(y_clean) # neural covariance estimate
+            Sy = covariance(y_artifact) # mixture covariance estimate
+        if self.low_rank:
+            print("Using low rank approximation")
+            w, v = geigh(Sy, Sc)
+            w, v = w[::-1], v[:, ::-1]
+            sigma_y = np.diag(v.T @ Sy @ v)
+            sigma_c = np.diag(v.T @ Sc @ v)
+            sigma_d = sigma_y - sigma_c
+            sigma_d[sigma_d <= 0] = 0.
+            if self.thresh:
+                if self.thresh >= 1:
+                    print("Prior on rank of artifacts: %d"%self.thresh)
+                    sigma_d[self.thresh:] = 0.
+                else:
+                    print("Keeping %.1f per cent of eigenvalues"%(self.thresh * 100))
+                    #sigma_d[np.cumsum(sigma_d / sum(sigma_d)) > self.thresh] = 0.
+                    sigma_d[int(self.thresh * len(sigma_d)):] = 0.
+            Sd = np.linalg.inv(v.T) @ np.diag(sigma_d) @ np.linalg.inv(v)
+        else:
+            Sd = Sy - Sc # noise/artifact covariance estimate
+        self.W_ = np.linalg.inv(Sy) @ Sd
+        return self
+    
+    def transorm(self, x):
+        return x - x @ self.W_
+        
+    def fit_transform(self, y_clean, y_artifact, x, cov_data=False):
+        self.fit(y_clean, y_artifact, cov_data=cov_data)
+        return self.transorm(x)
