@@ -31,6 +31,7 @@ def cca_nt(x, y, threshs, knee_point):
 
     if isinstance(y, list):
         n = y[0].shape[1]
+        print(n)
         C = np.zeros((m + n,m + n))
         # create list of X for all y's
         all_x = [x for i in range(len(y))]
@@ -333,6 +334,7 @@ class CCA_Estimator(BaseEstimator):
         self.coefStim_ = None
         self.coefResponse_ = None
         self.score_ = None
+        self.lag_y = False
         self.eigvals_x = None
         self.eigvals_y = None
         self.n_feats_ = None
@@ -343,7 +345,7 @@ class CCA_Estimator(BaseEstimator):
         self.tempy_path_ = None
 
 
-    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, y_already_dropped=False, feat_names=(), opt_cca_svd={}):
+    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, y_already_dropped=False, lag_y=False, feat_names=(), opt_cca_svd={}):
         """ Fit CCA model.
 
         X : ndarray (nsamples x nfeats)
@@ -364,7 +366,7 @@ class CCA_Estimator(BaseEstimator):
         self.n_feats_ = X.shape[1]
         if feat_names:
             self.feat_names_ = feat_names
-
+            
         # Creating lag-matrix droping NaN values if necessary
         if drop:
             X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
@@ -377,9 +379,33 @@ class CCA_Estimator(BaseEstimator):
                 if any(np.asarray(self.lags) > 0):
                     drop_bottom = abs(max(self.lags))
                     y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
+                    
+            if lag_y:
+                self.lag_y = True
+                if isinstance(y, list):
+                    lagged_y = []
+                    for subj in range(len(y)):
+                        # NEED TO CHANGE TO drop_missing=True
+                        temp = lag_matrix(y[subj], lag_samples=self.lags[::-1], drop_missing=False, filling=0.)
+                        lagged_y.append(temp)
+                else:
+                    # NEED TO CHANGE TO drop_missing=True
+                    lagged_y = lag_matrix(y , lag_samples=self.lags[::-1], drop_missing=False, filling=0.)
+                    print(lagged_y.shape)
+                        
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
-
+            if lag_y:
+                self.lag_y = True
+                if isinstance(y, list):
+                    lagged_y = []
+                    for subj in range(len(y)):
+                        temp = lag_matrix(y[subj], lag_samples=self.lags[::-1], filling=0.)
+                        lagged_y.append(temp)
+                else:
+                    lagged_y = lag_matrix(y , lag_samples=self.lags[::-1], filling=0.)
+                    
+        y = lagged_y
         # Adding intercept feature:
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])
