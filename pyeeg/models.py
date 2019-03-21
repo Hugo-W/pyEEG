@@ -133,11 +133,12 @@ class TRFEstimator(BaseEstimator):
 
         if tmin and tmax:
             LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
-            self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
-            self.times = -self.lags[::-1] / srate
+            self.lags = lag_span(tmin, tmax, srate=srate)[::-1] #pylint: disable=invalid-unary-operand-type
+            #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
+            self.times = self.lags[::-1] / srate
         else:
             self.times = np.asarray(times)
-            self.lags = lag_sparse(-self.times, srate)[::-1]
+            self.lags = lag_sparse(self.times, srate)[::-1]
 
         self.srate = srate
         self.alpha = alpha
@@ -150,6 +151,7 @@ class TRFEstimator(BaseEstimator):
         self.n_feats_ = None
         self.n_chans_ = None
         self.feat_names_ = None
+        self.valid_samples_ = None
 
     def fit(self, X, y, lagged=False, drop=True, feat_names=()):
         """Fit the TRF model.
@@ -182,9 +184,22 @@ class TRFEstimator(BaseEstimator):
             else:
                 assert len(feat_names) == X.shape[1], err_msg
             self.feat_names_ = feat_names
+        
+        n_samples_all = y.shape[0] if y.ndim == 2 else y.shape[1] # this include non-valid samples for now
 
+        if drop:
+            self.valid_samples_ = np.logical_not(np.logical_or(np.arange(n_samples_all) < abs(max(self.lags)),
+                                                               np.arange(n_samples_all)[::-1] < abs(min(self.lags))))
+        else:
+            self.valid_samples_ = np.ones((n_samples_all,), dtype=bool)
 
         # Creating lag-matrix droping NaN values if necessary
+        y = y[self.valid_samples_, :] if y.ndim == 2 else y[:, self.valid_samples_, :]
+        if not lagged:
+            X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.)
+        #else: # simply do the dropping assuming it hasn't been done when default values are supplied
+        #    X = X[self.valid_samples_, :]
+        '''
         if not lagged:
             if drop:
                 X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
@@ -198,7 +213,7 @@ class TRFEstimator(BaseEstimator):
                     y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
             else:
                 X = lag_matrix(X, lag_samples=self.lags, filling=0.)
-
+        '''
         # Adding intercept feature:
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])
@@ -216,7 +231,7 @@ class TRFEstimator(BaseEstimator):
             betas = betas[1:, :]
 
         self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
-        #self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
+        self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
         self.fitted = True
 
         return self
@@ -242,7 +257,7 @@ class TRFEstimator(BaseEstimator):
 
         """
         assert self.fitted, "Fit model first!"
-        betas = np.reshape(self.coef_, (len(self.lags) * self.n_feats_, self.n_chans_))
+        betas = np.reshape(self.coef_[::-1, :, :], (len(self.lags) * self.n_feats_, self.n_chans_))
 
         if self.fit_intercept:
             betas = np.r_[self.intercept_, betas]
