@@ -373,12 +373,24 @@ class CCA_Estimator(BaseEstimator):
             
             if not y_already_dropped:
                 # Droping rows of NaN values in y
-                if any(np.asarray(self.lags) < 0):
-                    drop_top = abs(min(self.lags))
-                    y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
-                if any(np.asarray(self.lags) > 0):
-                    drop_bottom = abs(max(self.lags))
-                    y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
+                if isinstance(y, list):
+                    temp = []
+                    for yy in y:
+                        if any(np.asarray(self.lags) < 0):
+                            drop_top = abs(min(self.lags))
+                            yy = yy[drop_top:, :] if yy.ndim == 2 else yy[:, drop_top:, :]
+                        if any(np.asarray(self.lags) > 0):
+                            drop_bottom = abs(max(self.lags))
+                            yy = yy[:-drop_bottom, :] if yy.ndim == 2 else yy[:, :-drop_bottom, :]
+                        temp.append(yy)
+                    y = temp
+                else:
+                    if any(np.asarray(self.lags) < 0):
+                        drop_top = abs(min(self.lags))
+                        y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
+                    if any(np.asarray(self.lags) > 0):
+                        drop_bottom = abs(max(self.lags))
+                        y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
                     
             if lag_y:
                 self.lag_y = True
@@ -386,11 +398,11 @@ class CCA_Estimator(BaseEstimator):
                     lagged_y = []
                     for subj in range(len(y)):
                         # NEED TO CHANGE TO drop_missing=True
-                        temp = lag_matrix(y[subj], lag_samples=self.lags[::-1], drop_missing=False, filling=0.)
+                        temp = lag_matrix(y[subj], lag_samples=self.lags[::-12], drop_missing=False, filling=0.)
                         lagged_y.append(temp)
                 else:
                     # NEED TO CHANGE TO drop_missing=True
-                    lagged_y = lag_matrix(y , lag_samples=self.lags[::-1], drop_missing=False, filling=0.)
+                    lagged_y = lag_matrix(y , lag_samples=self.lags[::-12], drop_missing=False, filling=0.)
                     print(lagged_y.shape)
                 y = lagged_y    
         else:
@@ -529,23 +541,37 @@ class CCA_Estimator(BaseEstimator):
         topoplot_array(r, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
 
-    def plot_activation_map(self, pos, n_comp=1):
+    def plot_activation_map(self, pos, n_comp=1, lag=0):
         """Plot the activation map from the spatial filter.
         Parameters
         ----------
         """
         y = np.load(self.tempy_path_+'.npy')
-
         if n_comp <= 0:
-            print('Invalid number of components, must be a positive integer.')
+                print('Invalid number of components, must be a positive integer.')
+        
         s_hat = y @ self.coefResponse_
         sigma_eeg = y.T @ y
         sigma_reconstr = s_hat.T @ s_hat
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
-
-        titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
-        topoplot_array(a_map, pos, n_topos=n_comp, titles=titles)
-        mne.viz.tight_layout()
+        
+        if self.lag_y:
+            a_map = np.reshape(a_map,(self.lags[::-12].shape[0],self.n_chans_,self.coefResponse_.shape[1]))
+            titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
+            fig = plt.figure(figsize=(12, 10), constrained_layout=False)
+            outer_grid = fig.add_gridspec(5, 5, wspace=0.0, hspace=0.25)
+            for c in range(n_comp):
+                inner_grid = outer_grid[c].subgridspec(1, 1)
+                ax = plt.Subplot(fig, inner_grid[0])
+                im, _ = mne.viz.plot_topomap(a_map[lag,:,c], pos, axes=ax, show=False)
+                ax.set(title=titles[c])
+                fig.add_subplot(ax)
+            mne.viz.tight_layout()
+            
+        else:  
+            titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
+            topoplot_array(a_map, pos, n_topos=n_comp, titles=titles)
+            mne.viz.tight_layout()
 
     def plot_compact_time(self, n_comp=2, dim=0):
         plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
