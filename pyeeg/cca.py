@@ -392,7 +392,7 @@ class CCA_Estimator(BaseEstimator):
                     # NEED TO CHANGE TO drop_missing=True
                     lagged_y = lag_matrix(y , lag_samples=self.lags[::-1], drop_missing=False, filling=0.)
                     print(lagged_y.shape)
-                        
+                y = lagged_y    
         else:
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
             if lag_y:
@@ -404,8 +404,8 @@ class CCA_Estimator(BaseEstimator):
                         lagged_y.append(temp)
                 else:
                     lagged_y = lag_matrix(y , lag_samples=self.lags[::-1], filling=0.)
-                    
-        y = lagged_y
+                y = lagged_y    
+        
         # Adding intercept feature:
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])
