@@ -149,11 +149,12 @@ class TRFEstimator(BaseEstimator):
         self.intercept_ = None
         self.coef_ = None
         self.n_feats_ = None
+        self.rotations_ = None # matrices to be used to rotate coefficients into a 'better conditonned subspace'
         self.n_chans_ = None
         self.feat_names_ = None
         self.valid_samples_ = None
 
-    def fit(self, X, y, lagged=False, drop=True, feat_names=()):
+    def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=()):
         """Fit the TRF model.
 
         Parameters
@@ -162,7 +163,17 @@ class TRFEstimator(BaseEstimator):
             Array of features (time-lagged)
         y : ndarray (nsamples x nchans)
             EEG data
-
+        lagged : bool
+            Default: False.
+            Whether the X matrix has been previously 'lagged' (intercept still to be added).
+        drop : bool
+            Default: True.
+            Whether to drop non valid samples (if False, non valid sample are filled with 0.)
+        feat_names : list
+            Names of features being fitted. Must be of length ``nfeats``.
+        rotations : list of ndarrays (shape (nlag x nlags))
+            List of rotation matrices (if ``V`` is one such rotation, ``V @ V.T`` is a projection).
+            Can use empty item in place of identity matrix.
 
         Returns
         -------
@@ -229,6 +240,13 @@ class TRFEstimator(BaseEstimator):
         if self.fit_intercept:
             self.intercept_ = betas[0, :]
             betas = betas[1:, :]
+
+        if rotations:
+            newbetas = np.zeros((len(self.lags) * self.n_feats_, self.n_chans_))
+            for k, rot in zip(range(self.n_feats_), rotations):
+                if not rot: rot = np.eye(self.lags)
+                newbetas[::self.n_feats_, :] = rot @ betas[...]
+            betas = newbetas
 
         self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
         self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
