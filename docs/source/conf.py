@@ -76,7 +76,7 @@ language = None
 exclude_patterns = ['_build', '**.ipynb_checkpoints']
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = None
+pygments_style = 'default'
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -96,6 +96,8 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 # documentation.
 #
 # html_theme_options = {}
+
+html_logo = "img/pyeeg-logo-light.svg"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
