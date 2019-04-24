@@ -691,8 +691,8 @@ class WordLevelFeatures:
         self.surprisal = load_surprisal_values(path_surprisal)
         self.wordfrequency = load_wordfreq_values(path_wordfrequency)
         self.depth = load_depth_values(path_syntactic)
-        self.close = load_open_values(path_syntactic)
-        self.open = load_close_values(path_syntactic)
+        self.open = load_open_values(path_syntactic)
+        self.close = load_close_values(path_syntactic)
 
         # TODO: load audio and transcript, run rnnlm from here
 
