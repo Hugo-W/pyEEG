@@ -510,12 +510,12 @@ class AlignedSpeech:
         times = np.arange(0., self.duration, deltat)
         return np.arange(onset_sample, onset_sample + len(times))
 
-    def get_envelope(self):
+    def get_envelope(self, cutoff=20):
         """Extract envelope from sound associated with this instance and add to it as a feature.
         """
         if self.path_audio:
             srate, snd = wavread(self.path_audio)
-            env = signal_envelope(snd, srate, method='rectify', resample=self.srate)
+            env = signal_envelope(snd, srate, method='rectify', resample=self.srate, cutoff=cutoff)
         else:
             raise AttributeError("Must set the audio path first")
         self.add_feature(env, 'envelope')
