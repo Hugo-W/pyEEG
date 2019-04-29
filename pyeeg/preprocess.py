@@ -184,9 +184,10 @@ class MultichanWienerFilter():
     Example
     -------
     TODO: Add code example
-    Here is an example output:
+    
     .. image:: img/MWF_EOG_cleaning_example.png
         :width: 400
+        
     '''
     def __init__(self, lags=(0,), low_rank=False, thresh=None):
         self.lags = lags
