@@ -278,7 +278,7 @@ class TRFEstimator(BaseEstimator):
         betas = np.reshape(self.coef_[::-1, :, :], (len(self.lags) * self.n_feats_, self.n_chans_))
 
         if self.fit_intercept:
-            betas = np.r_[self.intercept_, betas]
+            betas = np.r_[self.intercept_[:, None].T, betas]
 
         # Check if input has been lagged already, if not, do it:
         if X.shape[1] != int(self.fit_intercept) + len(self.lags) * self.n_feats_:
