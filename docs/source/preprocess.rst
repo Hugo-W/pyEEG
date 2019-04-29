@@ -18,6 +18,14 @@ Classes
 
    pyeeg.mcca.mCCA
 
+.. currentmodule:: pyeeg.preprocess
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   pyeeg.preprocess.MultichanWienerFilter
+
 Functions
 ----------------------------------
 .. currentmodule:: pyeeg.preprocess

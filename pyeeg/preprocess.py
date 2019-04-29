@@ -157,14 +157,48 @@ def get_power(signals, decibels=False, win=125, axis=-1, n_jobs=-1):
 
     return out
 
+class MultichanWienerFilter():
+    '''
+    This class implements a multichannel Wiener Filter for artifact removal.
+    The method is detailed in the reference paper _A generic EEG artifact removal algorithm based on the multi-channel
+    Wiener filter_ form Ben Somers et. al.
 
-class multichanWienerFilter(object):
+    To correctly train the model, one must supply portions of contaminated data and clean data. This can be selected visually
+    using the annotation tool from MNE for instance, or automatically by detecting above threshold values and considering this as
+    bad portions. It is ok to have large windows around bad data segments, however the clean segments must be artifact free.
+
+    The model expects zero-mean data for both noisy and clean segments.
+
+    Attributes
+    ----------
+        lags : list
+            Lags used for general model (NOT IMPLEMENTED YET)
+        low_rank : bool
+            Whether to use low-rank approximation of covariance matrix for the artifactual data
+        thresh : int or float
+            If int, this will correspond to the rank prior
+            If float, it will be considered as the percent of variance to be kept
+        W_ : ndarray
+            Once fitted, contains the filter coefficients
+    '''
     def __init__(self, lags=(0,), low_rank=False, thresh=None):
         self.lags = lags
         self.low_rank = low_rank
         self.thresh = thresh
     
     def fit(self, y_clean, y_artifact, cov_data=False):
+        '''
+        Fit model to data.
+
+        Parameters
+        ----------
+        y_clean : ndarray
+            Clean segments
+        y_artifact : ndarray
+            Artifact-contaminated segments
+        cov_data : bool
+            Whether the input data are already covariance matrices estimate for each class
+        '''
         if cov_data:
             Sc = y_clean
             Sy = y_artifact
@@ -194,8 +228,23 @@ class multichanWienerFilter(object):
         return self
     
     def transorm(self, x):
+        '''
+        Filter the data to remove artifact learned by the model.
+
+        Parameters
+        ----------
+        x : data
+            EEG data
+        
+        Returns
+        -------
+        Filtered EEG data
+        '''
         return x - x @ self.W_
         
     def fit_transform(self, y_clean, y_artifact, x, cov_data=False):
+        '''
+        Train the model on input and transform directly the data in `x`.
+        '''
         self.fit(y_clean, y_artifact, cov_data=cov_data)
         return self.transorm(x)
