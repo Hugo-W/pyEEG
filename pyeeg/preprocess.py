@@ -160,8 +160,8 @@ def get_power(signals, decibels=False, win=125, axis=-1, n_jobs=-1):
 class MultichanWienerFilter():
     '''
     This class implements a multichannel Wiener Filter for artifact removal.
-    The method is detailed in the reference paper _A generic EEG artifact removal algorithm based on the multi-channel
-    Wiener filter_ form Ben Somers et. al.
+    The method is detailed in the reference paper *A generic EEG artifact removal algorithm based on the multi-channel
+    Wiener filter* from Ben Somers et. al.
 
     To correctly train the model, one must supply portions of contaminated data and clean data. This can be selected visually
     using the annotation tool from MNE for instance, or automatically by detecting above threshold values and considering this as
@@ -180,6 +180,13 @@ class MultichanWienerFilter():
             If float, it will be considered as the percent of variance to be kept
         W_ : ndarray
             Once fitted, contains the filter coefficients
+
+    Example
+    -------
+    TODO: Add code example
+    Here is an example output:
+    .. image::
+        img/MWF_EOG_cleaning_example.png
     '''
     def __init__(self, lags=(0,), low_rank=False, thresh=None):
         self.lags = lags
