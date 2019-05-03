@@ -341,6 +341,36 @@ def load_close_values(filepath):
     data = pd.read_csv(filepath, delim_whitespace=True)
     return data.Close.get_values()
 
+def get_sentence_position(filepath):
+    """
+    Extract sentence position of words given a text file.
+    The format of the input file must be such that each line has one sentence, words
+    separated by space and eventually no punctuation (ideally word list should match
+    list obtained from word onsets or word frequency features...).
+
+    Parameters
+    ----------
+    filepath : str
+        path to text file, one sentence per line, cleaned of punctuations...
+
+    Returns
+    -------
+    list
+        Word list
+    list
+        Sentence position of each word
+    """
+    wordlist = []
+    positions = []
+    with open(filepath, 'r') as f:
+        sents = f.readlines()
+        for sent in sents:
+            if sent=='': break
+            words, pos = zip(*[(w,p+1) for p,w in enumerate(sent.split())])
+            wordlist += words
+            positions += pos
+    return wordlist, positions
+
 def get_word_onsets(filepath):
     """Simply load word lists and respective onsets for a given sound file/story parts...
 
@@ -450,14 +480,14 @@ class AlignedSpeech:
         self.feats = pd.DataFrame(index=self.indices) if hasattr(self, 'indices') else pd.DataFrame()
         self.wordlevel = None
 
-    def _get_feat(self, id):
+    def _get_feat(self, idx):
         """
         Returns the feature corresponding to requested name or index.
         """
-        if isinstance(id, int):
-            name = self.feats.columns[id]
+        if isinstance(idx, int):
+            name = self.feats.columns[idx]
         else:
-            name = id
+            name = idx
         return self.feats[name].get_values()
 
 
@@ -522,8 +552,11 @@ class AlignedSpeech:
         return env
 
     def add_word_level_features(self, word_feats, use_wordonsets=False):
-        """Add an existing word level feature instance to this :class:`AlignedSpeech` instance,
+        """Add an existing :class:`WordLevelFeatures` instance to this :class:`AlignedSpeech` instance,
         but not simply as an object here, but actually add the aligned features...
+        Hence this only work for the list of features handled by :class:`WordLevelFeatures`.
+
+        See also :func:`create_word_level_features`.
         """
         names = ['surprisal', 'wordfrequency', 'entropy', 'wordvectors', 'depth', 'open', 'close']
         if use_wordonsets:
@@ -540,7 +573,17 @@ class AlignedSpeech:
 
     def create_word_level_features(self, path_wordonsets, path_surprisal=None, path_wordvectors=None,
                                    path_wordfrequency=None, path_syntactic=None, use_wordonsets=False):
-        """Create a new word level feature object attached to this...
+        """Create a new word level feature object attached to this instance.
+        The word feature object might contains the following features:
+            - wordonsets
+            - surprisal
+            - word frequency
+            - word vectors values
+            - syntactic depth
+            - openning nodes
+            - closing nodes
+
+        For any pther arbitrary word level features, one should attach it "by hand" to this instance.
         """
         self.wordlevel = WordLevelFeatures(path_wordonsets=path_wordonsets, path_surprisal=path_surprisal,
                                            path_wordfrequency=path_wordfrequency, path_wordvectors=path_wordvectors,
@@ -826,3 +869,6 @@ class WordLevelFeatures:
             feat[onset_samples, current_idx:] = self.wordvectors
 
         return feat
+
+    def __len__(self):
+        return len(self.wordlist)

@@ -184,9 +184,11 @@ class MultichanWienerFilter():
     Example
     -------
     TODO: Add code example
+
+    Example of result obtained (cleaning EOG artifact here):
     
-    .. image:: img/MWF_EOG_cleaning_example.png
-        :width: 400
+    .. image:: ../img/MWF_EOG_cleaning_example.png
+        :width: 600
         
     '''
     def __init__(self, lags=(0,), low_rank=False, thresh=None):
