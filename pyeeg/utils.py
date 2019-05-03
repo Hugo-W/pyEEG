@@ -46,6 +46,12 @@ def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False)
     lagged : ndarray (nsamples_new x nfeats*len(lag_samples))
         Matrix of lagged time series.
 
+    Raises
+    ------
+    ValueError
+        If ``filling`` is set by user and ``drop_missing`` is ``True`` (it should be one or
+        the other, the error is raised to avoid this confusion by users).
+
     Example
     -------
     >>> data = np.asarray([[1,2,3,4,5,6],[7,8,9,10,11,12]]).T
@@ -59,6 +65,9 @@ def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False)
             [ 6., 12., nan, nan]])
 
     """
+    if not np.isnan(filling) and drop_missing:
+        raise ValueError("Dropping missing values or filling them are two mutually exclusive arguments!")
+
     dframe = pd.DataFrame(data)
 
     cols = []
