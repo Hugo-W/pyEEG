@@ -31,7 +31,6 @@ def cca_nt(x, y, threshs, knee_point):
 
     if isinstance(y, list):
         n = y[0].shape[1]
-        print(n)
         C = np.zeros((m + n,m + n))
         # create list of X for all y's
         all_x = [x for i in range(len(y))]
@@ -292,7 +291,7 @@ class CCA_Estimator(BaseEstimator):
 
     Attributes
     ----------
-    lags : 1d-array
+    xlags : 1d-array
         Array of `int`, corresponding to lag in samples at which the TRF coefficients are computed
     times : 1d-array
         Array of `float`, corresponding to lag in seconds at which the TRF coefficients are computed
@@ -316,14 +315,14 @@ class CCA_Estimator(BaseEstimator):
 
    """
 
-    def __init__(self, times =(0.,), tmin=None, tmax=None, srate=1., fit_intercept=True):
+    def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1., fit_intercept=True):
 
         if tmin and tmax:
-            LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
-            self.lags = lag_span(-tmax, -tmin, srate=srate)
-            self.times = -self.lags[::-1] / srate
+            LOGGER.info("Will use xlags spanning form tmin to tmax.\nTo use individual xlags, use the `times` argument...")
+            self.xlags = lag_span(-tmax, -tmin, srate=srate)
+            self.times = -self.xlags[::-1] / srate
         else:
-            self.lags = lag_sparse(times, srate)
+            self.xlags = lag_sparse(times, srate)
             self.times = np.asarray(times)
 
         self.srate = srate
@@ -345,7 +344,7 @@ class CCA_Estimator(BaseEstimator):
         self.tempy_path_ = None
 
 
-    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, y_already_dropped=False, lag_y=False, feat_names=(), opt_cca_svd={}):
+    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, y_already_dropped=False, lag_y=False, ylags=(0.,), feat_names=(), opt_cca_svd={}):
         """ Fit CCA model.
 
         X : ndarray (nsamples x nfeats)
@@ -369,27 +368,27 @@ class CCA_Estimator(BaseEstimator):
             
         # Creating lag-matrix droping NaN values if necessary
         if drop:
-            X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
+            X = lag_matrix(X, lag_samples=self.xlags, drop_missing=True)
             
             if not y_already_dropped:
                 # Droping rows of NaN values in y
                 if isinstance(y, list):
                     temp = []
                     for yy in y:
-                        if any(np.asarray(self.lags) < 0):
-                            drop_top = abs(min(self.lags))
+                        if any(np.asarray(self.xlags) < 0):
+                            drop_top = abs(min(self.xlags))
                             yy = yy[drop_top:, :] if yy.ndim == 2 else yy[:, drop_top:, :]
-                        if any(np.asarray(self.lags) > 0):
-                            drop_bottom = abs(max(self.lags))
+                        if any(np.asarray(self.xlags) > 0):
+                            drop_bottom = abs(max(self.xlags))
                             yy = yy[:-drop_bottom, :] if yy.ndim == 2 else yy[:, :-drop_bottom, :]
                         temp.append(yy)
                     y = temp
                 else:
-                    if any(np.asarray(self.lags) < 0):
-                        drop_top = abs(min(self.lags))
+                    if any(np.asarray(self.xlags) < 0):
+                        drop_top = abs(min(self.xlags))
                         y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
-                    if any(np.asarray(self.lags) > 0):
-                        drop_bottom = abs(max(self.lags))
+                    if any(np.asarray(self.xlags) > 0):
+                        drop_bottom = abs(max(self.xlags))
                         y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
                     
             if lag_y:
@@ -398,24 +397,24 @@ class CCA_Estimator(BaseEstimator):
                     lagged_y = []
                     for subj in range(len(y)):
                         # NEED TO CHANGE TO drop_missing=True
-                        temp = lag_matrix(y[subj], lag_samples=self.lags[::-12], drop_missing=False, filling=0.)
+                        temp = lag_matrix(y[subj], lag_samples=lag_sparse(ylags,self.srate), drop_missing=False, filling=0.)
                         lagged_y.append(temp)
                 else:
                     # NEED TO CHANGE TO drop_missing=True
-                    lagged_y = lag_matrix(y , lag_samples=self.lags[::-12], drop_missing=False, filling=0.)
+                    lagged_y = lag_matrix(y , lag_samples=lag_sparse(ylags,self.srate), drop_missing=False, filling=0.)
                     print(lagged_y.shape)
                 y = lagged_y    
         else:
-            X = lag_matrix(X, lag_samples=self.lags, filling=0.)
+            X = lag_matrix(X, lag_samples=self.xlags, filling=0.)
             if lag_y:
                 self.lag_y = True
                 if isinstance(y, list):
                     lagged_y = []
                     for subj in range(len(y)):
-                        temp = lag_matrix(y[subj], lag_samples=self.lags[::-1], filling=0.)
+                        temp = lag_matrix(y[subj], lag_samples=lag_sparse(ylags,self.srate), filling=0.)
                         lagged_y.append(temp)
                 else:
-                    lagged_y = lag_matrix(y , lag_samples=self.lags[::-1], filling=0.)
+                    lagged_y = lag_matrix(y , lag_samples=lag_sparse(ylags,self.srate), filling=0.)
                 y = lagged_y    
         
         # Adding intercept feature:
@@ -481,7 +480,7 @@ class CCA_Estimator(BaseEstimator):
         self.tempX_path_ = os.path.join(tmpdir,'temp_X')
         self.tempy_path_ = os.path.join(tmpdir,'temp_y')
 
-        self.coefStim_ = np.reshape(A, (len(self.lags), self.n_feats_, self.coefResponse_.shape[1]))
+        self.coefStim_ = np.reshape(A, (len(self.xlags), self.n_feats_, self.coefResponse_.shape[1]))
 
 
     def plot_time_filter(self, n_comp=1, dim=[0]):
@@ -556,7 +555,7 @@ class CCA_Estimator(BaseEstimator):
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
         
         if self.lag_y:
-            a_map = np.reshape(a_map,(self.lags[::-12].shape[0],self.n_chans_,self.coefResponse_.shape[1]))
+            a_map = np.reshape(a_map,(self.xlags[::-12].shape[0],self.n_chans_,self.coefResponse_.shape[1]))
             titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
             fig = plt.figure(figsize=(12, 10), constrained_layout=False)
             outer_grid = fig.add_gridspec(5, 5, wspace=0.0, hspace=0.25)
