@@ -334,6 +334,7 @@ class CCA_Estimator(BaseEstimator):
         self.coefResponse_ = None
         self.score_ = None
         self.lag_y = False
+        self.ylags = None
         self.eigvals_x = None
         self.eigvals_y = None
         self.n_feats_ = None
@@ -393,28 +394,30 @@ class CCA_Estimator(BaseEstimator):
                     
             if lag_y:
                 self.lag_y = True
+                self.ylags = lag_sparse(ylags,self.srate)
                 if isinstance(y, list):
                     lagged_y = []
                     for subj in range(len(y)):
                         # NEED TO CHANGE TO drop_missing=True
-                        temp = lag_matrix(y[subj], lag_samples=lag_sparse(ylags,self.srate), drop_missing=False, filling=0.)
+                        temp = lag_matrix(y[subj], lag_samples=self.ylags, drop_missing=False, filling=0.)
                         lagged_y.append(temp)
                 else:
                     # NEED TO CHANGE TO drop_missing=True
-                    lagged_y = lag_matrix(y , lag_samples=lag_sparse(ylags,self.srate), drop_missing=False, filling=0.)
+                    lagged_y = lag_matrix(y , lag_samples=self.ylags, drop_missing=False, filling=0.)
                     print(lagged_y.shape)
                 y = lagged_y    
         else:
             X = lag_matrix(X, lag_samples=self.xlags, filling=0.)
             if lag_y:
                 self.lag_y = True
+                self.ylags = lag_sparse(ylags,self.srate)
                 if isinstance(y, list):
                     lagged_y = []
                     for subj in range(len(y)):
-                        temp = lag_matrix(y[subj], lag_samples=lag_sparse(ylags,self.srate), filling=0.)
+                        temp = lag_matrix(y[subj], lag_samples=self.ylags, filling=0.)
                         lagged_y.append(temp)
                 else:
-                    lagged_y = lag_matrix(y , lag_samples=lag_sparse(ylags,self.srate), filling=0.)
+                    lagged_y = lag_matrix(y , lag_samples=self.ylags, filling=0.)
                 y = lagged_y    
         
         # Adding intercept feature:
@@ -555,7 +558,7 @@ class CCA_Estimator(BaseEstimator):
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
         
         if self.lag_y:
-            a_map = np.reshape(a_map,(self.xlags[::-12].shape[0],self.n_chans_,self.coefResponse_.shape[1]))
+            a_map = np.reshape(a_map,(self.ylags.shape[0],self.n_chans_,self.coefResponse_.shape[1]))
             titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
             fig = plt.figure(figsize=(12, 10), constrained_layout=False)
             outer_grid = fig.add_gridspec(5, 5, wspace=0.0, hspace=0.25)
