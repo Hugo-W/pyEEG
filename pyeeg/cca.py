@@ -319,11 +319,12 @@ class CCA_Estimator(BaseEstimator):
 
         if tmin and tmax:
             LOGGER.info("Will use xlags spanning form tmin to tmax.\nTo use individual xlags, use the `times` argument...")
-            self.xlags = lag_span(-tmax, -tmin, srate=srate)
-            self.times = -self.xlags[::-1] / srate
+            self.xlags = lag_span(tmin, tmax, srate=srate)[::-1]
+            self.times = self.xlags[::-1] / srate
         else:
-            self.xlags = lag_sparse(times, srate)
             self.times = np.asarray(times)
+            self.xlags = lag_sparse(times, srate)[::-1]
+            
 
         self.srate = srate
         self.fit_intercept = fit_intercept
