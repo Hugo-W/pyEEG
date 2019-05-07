@@ -320,10 +320,10 @@ class CCA_Estimator(BaseEstimator):
         if tmin and tmax:
             LOGGER.info("Will use xlags spanning form tmin to tmax.\nTo use individual xlags, use the `times` argument...")
             self.xlags = lag_span(tmin, tmax, srate=srate)[::-1]
-            self.times = self.xlags[::-1] / srate
+            self.xtimes = self.xlags[::-1] / srate
         else:
-            self.times = np.asarray(times)
-            self.xlags = lag_sparse(times, srate)[::-1]
+            self.xtimes = np.asarray(times)
+            self.xlags = lag_sparse(self.xtimes, srate)[::-1]
             
 
         self.srate = srate
@@ -336,6 +336,7 @@ class CCA_Estimator(BaseEstimator):
         self.score_ = None
         self.lag_y = False
         self.ylags = None
+        self.ytimes = None
         self.eigvals_x = None
         self.eigvals_y = None
         self.n_feats_ = None
@@ -395,7 +396,8 @@ class CCA_Estimator(BaseEstimator):
                     
             if lag_y:
                 self.lag_y = True
-                self.ylags = lag_sparse(ylags,self.srate)
+                self.ytimes = np.asarray(ylags)
+                self.ylags = -lag_sparse(self.ytimes, self.srate)[::-1]
                 if isinstance(y, list):
                     lagged_y = []
                     for subj in range(len(y)):
@@ -411,7 +413,8 @@ class CCA_Estimator(BaseEstimator):
             X = lag_matrix(X, lag_samples=self.xlags, filling=0.)
             if lag_y:
                 self.lag_y = True
-                self.ylags = lag_sparse(ylags,self.srate)
+                self.ytimes = np.asarray(ylags)
+                self.ylags = -lag_sparse(self.ytimes, self.srate)[::-1]
                 if isinstance(y, list):
                     lagged_y = []
                     for subj in range(len(y)):
@@ -512,14 +515,14 @@ class CCA_Estimator(BaseEstimator):
         if n_comp < 6:
             for c in range(n_comp):
                 for d in range(len(dim)):
-                    plt.plot(self.times, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
+                    plt.plot(self.xtimes, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
         else:
             for c in range(5):
                 for d in range(len(dim)):
-                    plt.plot(self.times, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
+                    plt.plot(self.xtimes, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
             for c in range(5,n_comp):
                 for d in range(len(dim)):
-                    plt.plot(self.times, self.coefStim_[:,dim[d],c])
+                    plt.plot(self.xtimes, self.coefStim_[:,dim[d],c])
         if self.feat_names_:
             plt.title('Time filter for {:s}'.format(self.feat_names_[0]))
         plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
@@ -595,7 +598,7 @@ class CCA_Estimator(BaseEstimator):
             mne.viz.tight_layout()
 
     def plot_compact_time(self, n_comp=2, dim=0):
-        plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
+        plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.xtimes[0], self.xtimes[-1], 0, n_comp])
         plt.colorbar()
         plt.ylabel('Components')
         plt.xlabel('Time (ms)')
@@ -613,7 +616,7 @@ class CCA_Estimator(BaseEstimator):
             vmin = np.min(coefs)
             vmax = np.max(coefs)
             im = ax.imshow(coefs, aspect=0.04, origin='bottom',
-                           extent=[self.times[0], self.times[-1], 0, n_dim],
+                           extent=[self.xtimes[0], self.xtimes[-1], 0, n_dim],
                            vmin=vmin, vmax=vmax)
             if c // 2 != n_rows-1:
                 ax.set_xticks([])
