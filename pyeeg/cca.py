@@ -486,6 +486,21 @@ class CCA_Estimator(BaseEstimator):
 
         self.coefStim_ = np.reshape(A, (len(self.xlags), self.n_feats_, self.coefResponse_.shape[1]))
 
+    def transform(self, transform_x=True, transform_y=False, comp=0):
+        """ Transform X and Y using the coefficients
+        """
+        X = np.load(self.tempX_path_+'.npy')
+        y = np.load(self.tempy_path_+'.npy')
+        if len(y) > len(X):
+            all_x = np.concatenate([X for i in range(int(len(y)/len(X)))])  
+        else:
+            all_x = X
+        coefStim_ = self.coefStim_.reshape((self.coefStim_.shape[0] * self.coefStim_.shape[1], self.coefStim_.shape[2]))
+        
+        if transform_x:
+            return all_x @ coefStim_[:, comp]
+        if transform_y:
+            return y @ self.coefResponse_[:, comp]
 
     def plot_time_filter(self, n_comp=1, dim=[0]):
         """Plot the TRF of the feature requested.
@@ -528,8 +543,11 @@ class CCA_Estimator(BaseEstimator):
         ----------
         """
         X = np.load(self.tempX_path_+'.npy')
-        all_x = np.concatenate([X]*5)
         y = np.load(self.tempy_path_+'.npy')
+        if len(y) > len(X):
+            all_x = np.concatenate([X for i in range(int(len(y)/len(X)))])  
+        else:
+            all_x = X
         coefStim_ = self.coefStim_.reshape((self.coefStim_.shape[0] * self.coefStim_.shape[1], self.coefStim_.shape[2]))
 
         r = np.zeros((64,n_comp))
@@ -538,7 +556,7 @@ class CCA_Estimator(BaseEstimator):
             env_proj = all_x @ coefStim_[:, c]
             for i in range(64):
                 r[i,c] = np.corrcoef(y[:,i], eeg_proj)[0,1]
-            cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
+            # cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
 
         titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
         topoplot_array(r, pos, n_topos=n_comp, titles=titles)
