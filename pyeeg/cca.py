@@ -17,6 +17,7 @@ from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def, find_knee_
 from pyeeg.vizu import topoplot_array
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import normalize as zscore
+from pyeeg.preprocess import create_filterbank, apply_filterbank
 
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ def cca_nt(x, y, threshs, knee_point):
 
     if isinstance(y, list):
         n = y[0].shape[1]
+        print(m)
+        print(n)
         C = np.zeros((m + n,m + n))
         # create list of X for all y's
         all_x = [x for i in range(len(y))]
@@ -315,18 +318,22 @@ class CCA_Estimator(BaseEstimator):
 
    """
 
-    def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1., fit_intercept=True):
-
-        if tmin and tmax:
-            LOGGER.info("Will use xlags spanning form tmin to tmax.\nTo use individual xlags, use the `times` argument...")
-            self.xlags = lag_span(tmin, tmax, srate=srate)[::-1]
-            self.xtimes = self.xlags[::-1] / srate
-        else:
-            self.xtimes = np.asarray(times)
-            self.xlags = lag_sparse(self.xtimes, srate)[::-1]
-            
+    def __init__(self, times=(0.,), tmin=None, tmax=None, filterbank=False, freqs=(0.,), srate=1., fit_intercept=True):
 
         self.srate = srate
+        if filterbank:
+            self.f_bank = create_filterbank(freqs=freqs, srate=self.srate, N=2, rs=3)
+        
+        else:
+            if tmin and tmax:
+                LOGGER.info("Will use xlags spanning form tmin to tmax.\nTo use individual xlags, use the `times` argument...")
+                self.xlags = lag_span(tmin, tmax, srate=srate)[::-1]
+                self.xtimes = self.xlags[::-1] / srate
+            else:
+                self.xtimes = np.asarray(times)
+                self.xlags = lag_sparse(self.xtimes, srate)[::-1]
+            
+
         self.fit_intercept = fit_intercept
         self.fitted = False
         # All following attributes are only defined once fitted (hence the "_" suffix)
@@ -343,6 +350,8 @@ class CCA_Estimator(BaseEstimator):
         self.n_chans_ = None
         self.feat_names_ = None
         self.sklearn_TRF_ = None
+        self.f_bank_freqs = freqs
+        self.f_bank_used = filterbank
         self.tempX_path_ = None
         self.tempy_path_ = None
 
@@ -369,60 +378,77 @@ class CCA_Estimator(BaseEstimator):
         if feat_names:
             self.feat_names_ = feat_names
             
+        # Creating filterbank
+        if self.f_bank_used:
+            temp_X = apply_filterbank(X,self.f_bank)
+            X = np.reshape(temp_X,(X.shape[0],temp_X.shape[0]*temp_X.shape[2]))
+            if isinstance(y, list):
+                filterbank_y = []
+                for subj in range(len(y)):
+                    # NEED TO CHANGE TO drop_missing=True
+                    temp = apply_filterbank(y[subj],self.f_bank)
+                    temp_y = np.reshape(temp,(y[subj].shape[0],temp.shape[0]*temp.shape[2]))
+                    filterbank_y.append(temp_y)
+            else:
+                # NEED TO CHANGE TO drop_missing=True
+                temp = apply_filterbank(y,self.f_bank)
+                filterbank_y = np.reshape(temp,(y.shape[0],temp.shape[0]*temp.shape[2]))
+            y = filterbank_y  
+        else:
         # Creating lag-matrix droping NaN values if necessary
-        if drop:
-            X = lag_matrix(X, lag_samples=self.xlags, drop_missing=True)
-            
-            if not y_already_dropped:
-                # Droping rows of NaN values in y
-                if isinstance(y, list):
-                    temp = []
-                    for yy in y:
+            if drop:
+                X = lag_matrix(X, lag_samples=self.xlags, drop_missing=True)
+                
+                if not y_already_dropped:
+                    # Droping rows of NaN values in y
+                    if isinstance(y, list):
+                        temp = []
+                        for yy in y:
+                            if any(np.asarray(self.xlags) < 0):
+                                drop_top = abs(min(self.xlags))
+                                yy = yy[drop_top:, :] if yy.ndim == 2 else yy[:, drop_top:, :]
+                            if any(np.asarray(self.xlags) > 0):
+                                drop_bottom = abs(max(self.xlags))
+                                yy = yy[:-drop_bottom, :] if yy.ndim == 2 else yy[:, :-drop_bottom, :]
+                            temp.append(yy)
+                        y = temp
+                    else:
                         if any(np.asarray(self.xlags) < 0):
                             drop_top = abs(min(self.xlags))
-                            yy = yy[drop_top:, :] if yy.ndim == 2 else yy[:, drop_top:, :]
+                            y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
                         if any(np.asarray(self.xlags) > 0):
                             drop_bottom = abs(max(self.xlags))
-                            yy = yy[:-drop_bottom, :] if yy.ndim == 2 else yy[:, :-drop_bottom, :]
-                        temp.append(yy)
-                    y = temp
-                else:
-                    if any(np.asarray(self.xlags) < 0):
-                        drop_top = abs(min(self.xlags))
-                        y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
-                    if any(np.asarray(self.xlags) > 0):
-                        drop_bottom = abs(max(self.xlags))
-                        y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
-                    
-            if lag_y:
-                self.lag_y = True
-                self.ytimes = np.asarray(ylags)
-                self.ylags = -lag_sparse(self.ytimes, self.srate)[::-1]
-                if isinstance(y, list):
-                    lagged_y = []
-                    for subj in range(len(y)):
+                            y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
+                        
+                if lag_y:
+                    self.lag_y = True
+                    self.ytimes = np.asarray(ylags)
+                    self.ylags = -lag_sparse(self.ytimes, self.srate)[::-1]
+                    if isinstance(y, list):
+                        lagged_y = []
+                        for subj in range(len(y)):
+                            # NEED TO CHANGE TO drop_missing=True
+                            temp = lag_matrix(y[subj], lag_samples=self.ylags, drop_missing=False, filling=0.)
+                            lagged_y.append(temp)
+                    else:
                         # NEED TO CHANGE TO drop_missing=True
-                        temp = lag_matrix(y[subj], lag_samples=self.ylags, drop_missing=False, filling=0.)
-                        lagged_y.append(temp)
-                else:
-                    # NEED TO CHANGE TO drop_missing=True
-                    lagged_y = lag_matrix(y , lag_samples=self.ylags, drop_missing=False, filling=0.)
-                    print(lagged_y.shape)
-                y = lagged_y    
-        else:
-            X = lag_matrix(X, lag_samples=self.xlags, filling=0.)
-            if lag_y:
-                self.lag_y = True
-                self.ytimes = np.asarray(ylags)
-                self.ylags = -lag_sparse(self.ytimes, self.srate)[::-1]
-                if isinstance(y, list):
-                    lagged_y = []
-                    for subj in range(len(y)):
-                        temp = lag_matrix(y[subj], lag_samples=self.ylags, filling=0.)
-                        lagged_y.append(temp)
-                else:
-                    lagged_y = lag_matrix(y , lag_samples=self.ylags, filling=0.)
-                y = lagged_y    
+                        lagged_y = lag_matrix(y , lag_samples=self.ylags, drop_missing=False, filling=0.)
+                        print(lagged_y.shape)
+                    y = lagged_y    
+            else:
+                X = lag_matrix(X, lag_samples=self.xlags, filling=0.)
+                if lag_y:
+                    self.lag_y = True
+                    self.ytimes = np.asarray(ylags)
+                    self.ylags = -lag_sparse(self.ytimes, self.srate)[::-1]
+                    if isinstance(y, list):
+                        lagged_y = []
+                        for subj in range(len(y)):
+                            temp = lag_matrix(y[subj], lag_samples=self.ylags, filling=0.)
+                            lagged_y.append(temp)
+                    else:
+                        lagged_y = lag_matrix(y , lag_samples=self.ylags, filling=0.)
+                    y = lagged_y    
         
         # Adding intercept feature:
         if self.fit_intercept:
@@ -486,8 +512,11 @@ class CCA_Estimator(BaseEstimator):
             np.save(os.path.join(tmpdir,'temp_y'), y)
         self.tempX_path_ = os.path.join(tmpdir,'temp_X')
         self.tempy_path_ = os.path.join(tmpdir,'temp_y')
-
-        self.coefStim_ = np.reshape(A, (len(self.xlags), self.n_feats_, self.coefResponse_.shape[1]))
+        
+        if self.f_bank_used:
+            self.coefStim_ = np.reshape(A, (len(self.f_bank_freqs), self.n_feats_, self.coefResponse_.shape[1]))
+        else:
+            self.coefStim_ = np.reshape(A, (len(self.xlags), self.n_feats_, self.coefResponse_.shape[1]))
 
     def transform(self, transform_x=True, transform_y=False, comp=0):
         """ Transform X and Y using the coefficients
@@ -526,6 +555,7 @@ class CCA_Estimator(BaseEstimator):
         if self.feat_names_:
             plt.title('Time filter for {:s}'.format(self.feat_names_[0]))
         plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.xlabel('Time (s)');
         plt.ylim([-max(np.abs(self.coefStim_[:,dim,:n_comp].flatten())), max(np.abs(self.coefStim_[:,dim,:n_comp].flatten()))]);
 
     def plot_spatial_filter(self, pos, n_comp=1):
