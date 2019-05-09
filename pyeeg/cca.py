@@ -609,8 +609,11 @@ class CCA_Estimator(BaseEstimator):
         sigma_reconstr = s_hat.T @ s_hat
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
         
-        if self.lag_y:
-            a_map = np.reshape(a_map,(self.ylags.shape[0],self.n_chans_,self.coefResponse_.shape[1]))
+        if self.lag_y | self.f_bank_used:
+            if self.f_bank_used:
+                a_map = np.reshape(a_map,(len(self.f_bank_freqs),self.n_chans_,self.coefResponse_.shape[1]))
+            else:
+                a_map = np.reshape(a_map,(self.ylags.shape[0],self.n_chans_,self.coefResponse_.shape[1]))
             titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
             fig = plt.figure(figsize=(12, 10), constrained_layout=False)
             outer_grid = fig.add_gridspec(5, 5, wspace=0.0, hspace=0.25)
@@ -622,7 +625,7 @@ class CCA_Estimator(BaseEstimator):
                 fig.add_subplot(ax)
             mne.viz.tight_layout()
             
-        else:  
+        else:
             titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
             topoplot_array(a_map, pos, n_topos=n_comp, titles=titles)
             mne.viz.tight_layout()
