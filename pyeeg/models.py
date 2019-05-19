@@ -19,6 +19,7 @@ and we would have in `__init__.py` an entry to load all architectures.
 """
 import logging
 import numpy as np
+from scipy import stats
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
@@ -235,6 +236,23 @@ class TRFEstimator(BaseEstimator):
             betas = _svd_regress(X, y, self.alpha)
         else:
             betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+
+        # Get t-statistic and p-vals if regularization is ommited
+        if not self.use_regularisation:
+            cov_betas = X.T @ X
+            H = X @ np.inv(cov_betas) @ X.T
+            if np.ndim(y) == 3:
+                dof = sum(list(map(len, y))) - (len(betas)+1)
+                sigma = 0.
+                for yy in y:
+                    sigma += yy.T @ (np.eye(self.n_chans_) - H) @ yy
+                sigma /= dof
+            else:
+                dof = len(y)-(len(betas)+1)
+                sigma = y.T @ (np.eye(y.shape[1]) - H) @ y / dof
+            C = sigma * np.inv(cov_betas)
+            self.tvals_ = betas / np.sqrt(np.diag(C))
+            self.pvals_ = 2 * (1-stats.t.cdf(self.tvals_, df=dof))
 
         # Reshaping and getting coefficients
         if self.fit_intercept:
