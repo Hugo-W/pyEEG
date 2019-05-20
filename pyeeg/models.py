@@ -240,7 +240,7 @@ class TRFEstimator(BaseEstimator):
         # Get t-statistic and p-vals if regularization is ommited
         if not self.use_regularisation:
             cov_betas = X.T @ X
-            H = X @ np.inv(cov_betas) @ X.T
+            H = X @ np.linalg.inv(cov_betas) @ X.T
             if np.ndim(y) == 3:
                 dof = sum(list(map(len, y))) - (len(betas)+1)
                 sigma = 0.
@@ -250,7 +250,7 @@ class TRFEstimator(BaseEstimator):
             else:
                 dof = len(y)-(len(betas)+1)
                 sigma = y.T @ (np.eye(y.shape[1]) - H) @ y / dof
-            C = sigma * np.inv(cov_betas)
+            C = sigma * np.linalg.inv(cov_betas)
             self.tvals_ = betas / np.sqrt(np.diag(C))
             self.pvals_ = 2 * (1-stats.t.cdf(self.tvals_, df=dof))
 
