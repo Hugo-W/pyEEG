@@ -335,7 +335,7 @@ class TRFEstimator(BaseEstimator):
             raise NotImplementedError("Only correlation score is valid for now...")
 
 
-    def plot(self, feat_id=None, **kwargs):
+    def plot(self, feat_id=None, ax=None, **kwargs):
         """Plot the TRF of the feature requested as a *butterfly* plot.
 
         Parameters
@@ -343,8 +343,14 @@ class TRFEstimator(BaseEstimator):
         feat_id : list or int
             Index of the feature requested or list of features.
             Default is to use all features.
+        ax : array of axes (flatten)
+            list of subaxes
         **kwargs : **dict
             Parameters to pass to :func:`plt.subplots`
+
+        Returns
+        -------
+        fig : figure
         """
         if isinstance(feat_id, int):
             feat_id = list(feat_id) # cast into list to be able to use min, len, etc...
@@ -353,9 +359,10 @@ class TRFEstimator(BaseEstimator):
         assert self.fitted, "Fit the model first!"
         assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), "Feat ids not in range"
 
-        _, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), squeeze=False, **kwargs)
+        if ax is None:
+            fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), **kwargs)
 
         for k, feat in enumerate(feat_id):
-            ax[0, k].plot(self.times, self.coef_[:, feat, :])
+            ax[k].plot(self.times, self.coef_[:, feat, :])
             if self.feat_names_:
-                ax[0, k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))
+                ax[k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))
