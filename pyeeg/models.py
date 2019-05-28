@@ -19,11 +19,11 @@ and we would have in `__init__.py` an entry to load all architectures.
 """
 import logging
 import numpy as np
+from scipy import stats
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
 from .utils import lag_matrix, lag_span, lag_sparse, mem_check
-from .mcca import mCCA
 
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
@@ -195,7 +195,7 @@ class TRFEstimator(BaseEstimator):
             else:
                 assert len(feat_names) == X.shape[1], err_msg
             self.feat_names_ = feat_names
-        
+
         n_samples_all = y.shape[0] if y.ndim == 2 else y.shape[1] # this include non-valid samples for now
 
         if drop:
@@ -243,14 +243,35 @@ class TRFEstimator(BaseEstimator):
 
         if rotations:
             newbetas = np.zeros((len(self.lags) * self.n_feats_, self.n_chans_))
-            for k, rot in zip(range(self.n_feats_), rotations):
-                if not rot: rot = np.eye(self.lags)
+            for _, rot in zip(range(self.n_feats_), rotations):
+                if not rot:
+                    rot = np.eye(self.lags)
                 newbetas[::self.n_feats_, :] = rot @ betas[...]
             betas = newbetas
 
         self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
         self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
         self.fitted = True
+
+        # Get t-statistic and p-vals if regularization is ommited
+        if not self.use_regularisation:
+            cov_betas = X.T @ X
+            # Compute variance sigma (MSE)
+            if np.ndim(y) == 3:
+                dof = sum(list(map(len, y))) - (len(betas)+1+1) # 1 for mean, 1 for intercept (betas does not contains it)
+                sigma = 0.
+                for yy in y:
+                    sigma += np.sum((yy - self.predict(X))**2, axis=0)
+                sigma /= dof
+            else:
+                dof = len(y)-(len(betas)+1+1)
+                sigma = np.sum((y - self.predict(X))**2, axis=0) / dof
+            # Covariance matrix on betas
+            #C = sigma * np.linalg.inv(cov_betas)
+            C = np.einsum('ij,k', np.linalg.inv(cov_betas), sigma)
+            # Actual stats
+            self.tvals_ = betas / np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1)[1:, :])
+            self.pvals_ = 2 * (1-stats.t.cdf(abs(self.tvals_), df=dof))
 
         return self
 
@@ -284,6 +305,9 @@ class TRFEstimator(BaseEstimator):
         if X.shape[1] != int(self.fit_intercept) + len(self.lags) * self.n_feats_:
             LOGGER.info("Creating lagged feature matrix...")
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
+            # Adding intercept feature:
+            if self.fit_intercept:
+                X = np.hstack([np.ones((len(X), 1)), X])
 
         return X.dot(betas)
 
@@ -309,9 +333,9 @@ class TRFEstimator(BaseEstimator):
             return np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
         else:
             raise NotImplementedError("Only correlation score is valid for now...")
-        
 
-    def plot(self, feat_id=None, **kwargs):
+
+    def plot(self, feat_id=None, ax=None, **kwargs):
         """Plot the TRF of the feature requested as a *butterfly* plot.
 
         Parameters
@@ -319,8 +343,14 @@ class TRFEstimator(BaseEstimator):
         feat_id : list or int
             Index of the feature requested or list of features.
             Default is to use all features.
+        ax : array of axes (flatten)
+            list of subaxes
         **kwargs : **dict
             Parameters to pass to :func:`plt.subplots`
+
+        Returns
+        -------
+        fig : figure
         """
         if isinstance(feat_id, int):
             feat_id = list(feat_id) # cast into list to be able to use min, len, etc...
@@ -329,9 +359,10 @@ class TRFEstimator(BaseEstimator):
         assert self.fitted, "Fit the model first!"
         assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), "Feat ids not in range"
 
-        _, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), squeeze=False, **kwargs)
+        if ax is None:
+            fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), **kwargs)
 
         for k, feat in enumerate(feat_id):
-            ax[0, k].plot(self.times, self.coef_[:, feat, :])
+            ax[k].plot(self.times, self.coef_[:, feat, :])
             if self.feat_names_:
-                ax[0, k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))
+                ax[k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))
