@@ -24,6 +24,7 @@ logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
 from .utils import lag_matrix, lag_span, lag_sparse, mem_check
+from .vizu import get_spatial_colors
 
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
@@ -335,7 +336,7 @@ class TRFEstimator(BaseEstimator):
             raise NotImplementedError("Only correlation score is valid for now...")
 
 
-    def plot(self, feat_id=None, ax=None, **kwargs):
+    def plot(self, feat_id=None, ax=None, spatial_colors=False, info=None, **kwargs):
         """Plot the TRF of the feature requested as a *butterfly* plot.
 
         Parameters
@@ -359,10 +360,23 @@ class TRFEstimator(BaseEstimator):
         assert self.fitted, "Fit the model first!"
         assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), "Feat ids not in range"
 
+        if spatial_colors:
+            assert info is not None, "To use spatial colouring, you must supply raw.info instance"
+            colors = get_spatial_colors(info)
+            
         if ax is None:
             fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), **kwargs)
 
         for k, feat in enumerate(feat_id):
-            ax[k].plot(self.times, self.coef_[:, feat, :])
-            if self.feat_names_:
-                ax[k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))
+            if len(feat_id) == 1:
+                ax.plot(self.times, self.coef_[:, feat, :])
+                if self.feat_names_:
+                    ax.set_title('TRF for {:s}'.format(self.feat_names_[feat]))
+            else:
+                ax[k].plot(self.times, self.coef_[:, feat, :])
+                if self.feat_names_:
+                    ax[k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))
+            if spatial_colors:
+                lines = plt.gca().get_lines()
+                for k, l in enumerate(lines):
+                    l.set_color(colors[k])
