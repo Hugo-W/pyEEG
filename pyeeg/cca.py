@@ -517,22 +517,24 @@ class CCA_Estimator(BaseEstimator):
             self.coefStim_ = np.reshape(A, (len(self.f_bank_freqs), self.n_feats_, self.coefResponse_.shape[1]))
         else:
             self.coefStim_ = np.reshape(A, (len(self.xlags), self.n_feats_, self.coefResponse_.shape[1]))
+            self.coefStim_ = self.coefStim_[::-1, :, :]
 
     def transform(self, transform_x=True, transform_y=False, comp=0):
         """ Transform X and Y using the coefficients
         """
         X = np.load(self.tempX_path_+'.npy')
-        y = np.load(self.tempy_path_+'.npy')
-        if len(y) > len(X):
-            all_x = np.concatenate([X for i in range(int(len(y)/len(X)))])  
-        else:
-            all_x = X
-        coefStim_ = self.coefStim_.reshape((self.coefStim_.shape[0] * self.coefStim_.shape[1], self.coefStim_.shape[2]))
-        
-        if transform_x:
-            return all_x @ coefStim_[:, comp]
-        if transform_y:
-            return y @ self.coefResponse_[:, comp]
+#        y = np.load(self.tempy_path_+'.npy')
+#        if len(y) > len(X):
+#            all_x = np.concatenate([X for i in range(int(len(y)/len(X)))])  
+#        else:
+#            all_x = X
+#        coefStim_ = self.coefStim_.reshape((self.coefStim_.shape[0] * self.coefStim_.shape[1], self.coefStim_.shape[2]))
+#        
+#        if transform_x:
+#            return all_x @ coefStim_[:, comp]
+#        if transform_y:
+#            return y @ self.coefResponse_[:, comp]
+        return self.coefResponse_.T @ self.coefStim_.T @ X
 
     def plot_time_filter(self, n_comp=1, dim=[0]):
         """Plot the TRF of the feature requested.
