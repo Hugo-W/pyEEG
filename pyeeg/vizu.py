@@ -78,7 +78,7 @@ def plot_trf_signi(trf, reject, spatial_colors=True, info=None, ax=None, **kwarg
     for feat, cax in enumerate(list_axes):
         cax.fill_between(x=trf.times, y1=cax.get_ylim()[0], y2=cax.get_ylim()[1],
                         where=np.any(reject[:, feat, :], 1),
-                        color='w' if np.mean(to_rgb(plt.rcParams['figure.facecolor']))<.5 else 'k', alpha=0.2)
+                        color='w' if np.mean(to_rgb(plt.rcParams['axes.facecolor'])) < .5 else 'k', alpha=0.2)
         lines = cax.get_lines()
         for k, l in enumerate(lines):
             if spatial_colors:
