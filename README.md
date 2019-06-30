@@ -72,7 +72,6 @@ See files in [`examples/`](docs/source/examples/).
 
 See [examples/CCA_envelope.ipynb](docs/source/examples/CCA_envelope.ipynb)
 
-
 ### Computing Word-feature TRF
 
 See [examples/TRF_wordonsets.ipynb](docs/source/examples/TRF_wordonsets.ipynb)

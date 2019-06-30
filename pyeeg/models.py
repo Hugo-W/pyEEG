@@ -141,6 +141,8 @@ class TRFEstimator(BaseEstimator):
             self.times = np.asarray(times)
             self.lags = lag_sparse(self.times, srate)[::-1]
 
+        self.tmin = tmin
+        self.tmax = tmax
         self.srate = srate
         self.alpha = alpha
         self.use_regularisation = alpha > 0.
@@ -372,11 +374,33 @@ class TRFEstimator(BaseEstimator):
                 ax.plot(self.times, self.coef_[:, feat, :])
                 if self.feat_names_:
                     ax.set_title('TRF for {:s}'.format(self.feat_names_[feat]))
+                if spatial_colors:
+                    lines = ax.get_lines()
+                    for k, l in enumerate(lines):
+                        l.set_color(colors[k])
             else:
                 ax[k].plot(self.times, self.coef_[:, feat, :])
                 if self.feat_names_:
                     ax[k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))
-            if spatial_colors:
-                lines = plt.gca().get_lines()
-                for k, l in enumerate(lines):
-                    l.set_color(colors[k])
+                if spatial_colors:
+                    lines = ax[k].get_lines()
+                    for k, l in enumerate(lines):
+                        l.set_color(colors[k])
+
+    def __getitem__(self, feats):
+        "Extract a sub-part of TRF instance as a new TRF instance (useful for plotting only some features...)"
+        try:
+            len(feats)
+            assert all([f in self.feat_names_ for f in feats])
+        except:
+            raise AttributeError("feats must be a list, and each values must exist as a feat_name")
+        indices = [self.feat_names_.index(f) for f in feats]
+        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
+        trf.coef_ = self.coef_[:, indices]
+        trf.feat_names_ = feats
+        trf.n_feats_ = len(feats)
+        trf.n_chans_ = self.n_chans_
+        trf.fitted = True
+
+        return trf
+        
