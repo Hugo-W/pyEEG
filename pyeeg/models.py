@@ -381,7 +381,7 @@ class TRFEstimator(BaseEstimator):
             else:
                 ax[k].plot(self.times, self.coef_[:, feat, :])
                 if self.feat_names_:
-                    ax[k].set_title('TRF for {:s}'.format(self.feat_names_[feat]))
+                    ax[k].set_title('{:s}'.format(self.feat_names_[feat]))
                 if spatial_colors:
                     lines = ax[k].get_lines()
                     for k, l in enumerate(lines):
