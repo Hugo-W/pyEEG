@@ -65,7 +65,7 @@ def topoplot_array(data, pos, n_topos=1, titles=None):
         ax.set(title=titles[c])
         fig.add_subplot(ax)
 
-def plot_trf_signi(trf, reject, spatial_colors=True, info=None, ax=None, **kwargs):
+def plot_trf_signi(trf, reject, spatial_colors=True, info=None, ax=None, shades=None, **kwargs):
     "Plot trf with significant portions highlighted and with thicker lines"
     trf.plot(ax=ax, **kwargs)
 
@@ -76,9 +76,13 @@ def plot_trf_signi(trf, reject, spatial_colors=True, info=None, ax=None, **kwarg
     signi_trf = np.ones_like(reject) * np.nan
     list_axes = ax if ax is not None else plt.gcf().axes
     for feat, cax in enumerate(list_axes):
+        if shades is None:
+            color_shade = 'w' if np.mean(to_rgb(plt.rcParams['axes.facecolor'])) < .5 else [.2, .2, .2]
+        else:
+            color_shade = shades
         cax.fill_between(x=trf.times, y1=cax.get_ylim()[0], y2=cax.get_ylim()[1],
                         where=np.any(reject[:, feat, :], 1),
-                        color='w' if np.mean(to_rgb(plt.rcParams['axes.facecolor'])) < .5 else 'k', alpha=0.2)
+                        color=color_shade, alpha=0.2)
         lines = cax.get_lines()
         for k, l in enumerate(lines):
             if spatial_colors:
