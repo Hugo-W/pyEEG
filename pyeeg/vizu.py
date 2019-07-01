@@ -85,8 +85,10 @@ def plot_trf_signi(trf, reject, time_highlight=None, spatial_colors=True, info=N
                             where=np.any(reject[:, feat, :], 1),
                             color=color_shade, alpha=0.2)
         else: # fill regions of time of interest
-            toi = np.logical_and(trf.times >= time_highlight[feat][0], trf.times < time_highlight[feat][1])
-            
+            toi = np.zeros_like(trf.times, dtype=bool)
+            for tlims in time_highlight[feat]:
+                toi = np.logical_or(toi, np.logical_and(trf.times >= tlims[0], trf.times < tlims[1]))
+
             cax.fill_between(x=trf.times, y1=cax.get_ylim()[0], y2=cax.get_ylim()[1],
                             where=toi,
                             color=color_shade, alpha=0.2)
