@@ -273,12 +273,12 @@ def load_surprisal_values(filepath, eps=1e-12):
         surprisal = dataframe.proba
     return -np.log(surprisal + eps)
 
-def load_wordfreq_values(filepath, unkval=111773390, normfactor=3.2137e12):
+def load_wordfreq_values(filepath, key='frequency', unkval=111773390, normfactor=3.2137e12):
     "Load word frequency, and returns -log of it (scaled by median value)"
     if filepath is None:
         return None
     csv = pd.read_csv(filepath)
-    wordfreq = csv.frequency.get_values()
+    wordfreq = csv[key].get_values()
     # Replace unknown by (global, form my stories) median value:
     wordfreq[wordfreq == -1] = unkval
     # Transform into log proba, normalized by maximum count, roughly equals to total count:
