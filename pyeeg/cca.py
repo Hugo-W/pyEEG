@@ -410,7 +410,9 @@ class CCA_Estimator(BaseEstimator):
             # Reshaping and getting coefficients
             if self.fit_intercept:
                 self.intercept_ = Ax[0, :]
-                Ax = Ax[1:, :]
+                A = Ax[1:, :]
+            else:
+                A = Ax
 
             self.coefResponse_ = Ay
             self.score_ = R
