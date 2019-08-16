@@ -21,6 +21,20 @@ from sklearn.preprocessing import minmax_scale
 import pandas as pd
 import matplotlib.pyplot as plt
 
+def print_title(msg, line='=', frame=True):
+    """Printing function, allowing to print a titled message (underlined or framded)
+
+    Parameters
+    ----------
+    msg : str
+        String of characters
+    line : str
+        Which character to use to underline (default "=")
+    frame : bool
+        Whether to frame or only underline title
+    """
+    print((line*len(msg)+"\n" if frame else "") + msg + '\n'+line*len(msg)+'\n')
+
 def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False):
     """Helper function to create a matrix of lagged time series.
 
