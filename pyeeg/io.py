@@ -306,7 +306,7 @@ def load_depth_values(filepath):
         return None
     df = pd.read_csv(filepath, delim_whitespace=True)
     if "ton" in df:
-        return df.Depth.get_values()
+        return df.Depth.array
     else:
         df = pd.read_csv(filepath, delim_whitespace=True, names=["word", "depth", "onset", "offset"])
         return df.depth
@@ -324,7 +324,7 @@ def load_open_values(filepath):
     if filepath is None:
         return None
     data = pd.read_csv(filepath, delim_whitespace=True)
-    return data.Open.get_values()
+    return data.Open.array
 
 def load_close_values(filepath):
     """
@@ -339,7 +339,7 @@ def load_close_values(filepath):
     if filepath is None:
         return None
     data = pd.read_csv(filepath, delim_whitespace=True)
-    return data.Close.get_values()
+    return data.Close.array
 
 def get_sentence_position(filepath):
     """
@@ -402,7 +402,7 @@ def get_word_onsets(filepath):
     else:
         csv = pd.read_csv(filepath)
     csv.columns = [x.lower() for x in csv] # lower column names        
-    return csv.word.get_values(), csv.onset.get_values()
+    return csv.word.array, csv.onset.array
 
 def get_word_vectors(wordlist, wordvectors, unk='skip'):
     """Get the word vectors for each word in the list supplied.
