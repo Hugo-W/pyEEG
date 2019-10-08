@@ -94,7 +94,7 @@ def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False)
     if drop_missing:
         dframe.dropna(inplace=True)
 
-    return dframe.get_values()
+    return dframe.values
     #return dframe.loc[:, ::-1].get_values()
 
 def lag_span(tmin, tmax, srate=125):
