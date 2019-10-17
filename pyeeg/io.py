@@ -263,7 +263,7 @@ def load_surprisal_values(filepath, eps=1e-12):
         return None
     try:
         dataframe = pd.read_csv(filepath, delim_whitespace=True, usecols=[0, 1, 2, 3, 4])
-        surprisal = dataframe.loc[np.logical_and(dataframe.Word != '</s>', dataframe.Word != '\''), 'P(NET)'].get_values()
+        surprisal = dataframe.loc[np.logical_and(dataframe.Word != '</s>', dataframe.Word != '\''), 'P(NET)'].to_numpy()
     except pd.errors.ParserError:
         LOGGER.error("Wrong file format, please check the path used and that file exists.")
         raise pd.errors.ParserError    
@@ -278,7 +278,7 @@ def load_wordfreq_values(filepath, key='frequency', unkval=111773390, normfactor
     if filepath is None:
         return None
     csv = pd.read_csv(filepath)
-    wordfreq = csv[key].get_values()
+    wordfreq = csv[key].to_numpy()
     # Replace unknown by (global, form my stories) median value:
     wordfreq[wordfreq == -1] = unkval
     # Transform into log proba, normalized by maximum count, roughly equals to total count:
@@ -488,7 +488,7 @@ class AlignedSpeech:
             name = self.feats.columns[idx]
         else:
             name = idx
-        return self.feats[name].get_values()
+        return self.feats[name].to_numpy()
 
 
     def _load_audio(self, path_audio):
@@ -839,6 +839,9 @@ class WordLevelFeatures:
         nfeat = wordonset_feature + len(features) + use_w2v * self.vectordim + len(custom_wordfeats)
         feat = np.zeros((n_samples, nfeat))
         onset_samples = np.round(self.wordonsets * srate).astype(int)
+
+        # When low sampling rate some words overlap, we separate them to not break code
+        onset_samples[np.argwhere(np.diff(onset_samples)==0)+1] += 1
 
         if wordonset_feature:
             feat[onset_samples, 0] = 1.
