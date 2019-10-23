@@ -1,6 +1,6 @@
 # pyEEG
 
-> v1.0
+> v1.1
 
 pyEEG is a library fo processing EEG data build mostly on top of MNE-py and scikit-learn. It allows anlaysis of raw data and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level features).
 
