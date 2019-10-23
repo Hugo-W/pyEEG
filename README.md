@@ -12,7 +12,6 @@ If on the network of Imperial College, you can access the documentation here: [p
 
 ### Priority
 
-- [x] **FIX ERROR WHEN DROP IS FALSE OBSERVED WITH DUTCH DATA**
 - [ ] Use [doctest](https://docs.python.org/2/library/doctest.html) for systematic testing of some functions
 - [ ] fix imports (for now, cannot do `import pyeeg` to access all modules...)
 
