@@ -17,6 +17,7 @@ from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def, find_knee_
 from pyeeg.vizu import topoplot_array
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import normalize as zscore
+from pyeeg.preprocess import create_filterbank, apply_filterbank
 
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ def cca_nt(x, y, threshs, knee_point):
 
     if isinstance(y, list):
         n = y[0].shape[1]
+        print(m)
+        print(n)
         C = np.zeros((m + n,m + n))
         # create list of X for all y's
         all_x = [x for i in range(len(y))]
@@ -291,7 +294,7 @@ class CCA_Estimator(BaseEstimator):
 
     Attributes
     ----------
-    lags : 1d-array
+    xlags : 1d-array
         Array of `int`, corresponding to lag in samples at which the TRF coefficients are computed
     times : 1d-array
         Array of `float`, corresponding to lag in seconds at which the TRF coefficients are computed
@@ -315,17 +318,22 @@ class CCA_Estimator(BaseEstimator):
 
    """
 
-    def __init__(self, times =(0.,), tmin=None, tmax=None, srate=1., fit_intercept=True):
-
-        if tmin and tmax:
-            LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
-            self.lags = lag_span(-tmax, -tmin, srate=srate)
-            self.times = -self.lags[::-1] / srate
-        else:
-            self.lags = lag_sparse(times, srate)
-            self.times = np.asarray(times)
+    def __init__(self, times=(0.,), tmin=None, tmax=None, filterbank=False, freqs=(0.,), srate=1., fit_intercept=True):
 
         self.srate = srate
+        if filterbank:
+            self.f_bank = create_filterbank(freqs=freqs, srate=self.srate, N=2, rs=3)
+        
+        else:
+            if tmin and tmax:
+                LOGGER.info("Will use xlags spanning form tmin to tmax.\nTo use individual xlags, use the `times` argument...")
+                self.xlags = lag_span(tmin, tmax, srate=srate)[::-1]
+                self.xtimes = self.xlags[::-1] / srate
+            else:
+                self.xtimes = np.asarray(times)
+                self.xlags = lag_sparse(self.xtimes, srate)[::-1]
+            
+
         self.fit_intercept = fit_intercept
         self.fitted = False
         # All following attributes are only defined once fitted (hence the "_" suffix)
@@ -333,17 +341,22 @@ class CCA_Estimator(BaseEstimator):
         self.coefStim_ = None
         self.coefResponse_ = None
         self.score_ = None
+        self.lag_y = False
+        self.ylags = None
+        self.ytimes = None
         self.eigvals_x = None
         self.eigvals_y = None
         self.n_feats_ = None
         self.n_chans_ = None
         self.feat_names_ = None
         self.sklearn_TRF_ = None
+        self.f_bank_freqs = freqs
+        self.f_bank_used = filterbank
         self.tempX_path_ = None
         self.tempy_path_ = None
 
 
-    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, y_already_dropped=False, feat_names=(), opt_cca_svd={}):
+    def fit(self, X, y, cca_implementation='nt', thresh_x=None, normalise=True, thresh_y=None, n_comp=2, knee_point=None, drop=True, y_already_dropped=False, lag_y=False, ylags=(0.,), feat_names=(), opt_cca_svd={}):
         """ Fit CCA model.
 
         X : ndarray (nsamples x nfeats)
@@ -364,22 +377,79 @@ class CCA_Estimator(BaseEstimator):
         self.n_feats_ = X.shape[1]
         if feat_names:
             self.feat_names_ = feat_names
-
-        # Creating lag-matrix droping NaN values if necessary
-        if drop:
-            X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
             
-            if not y_already_dropped:
-                # Droping rows of NaN values in y
-                if any(np.asarray(self.lags) < 0):
-                    drop_top = abs(min(self.lags))
-                    y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
-                if any(np.asarray(self.lags) > 0):
-                    drop_bottom = abs(max(self.lags))
-                    y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
+        # Creating filterbank
+        if self.f_bank_used:
+            temp_X = apply_filterbank(X,self.f_bank)
+            X = np.reshape(temp_X,(X.shape[0],temp_X.shape[0]*temp_X.shape[2]))
+            if isinstance(y, list):
+                filterbank_y = []
+                for subj in range(len(y)):
+                    # NEED TO CHANGE TO drop_missing=True
+                    temp = apply_filterbank(y[subj],self.f_bank)
+                    temp_y = np.reshape(temp,(y[subj].shape[0],temp.shape[0]*temp.shape[2]))
+                    filterbank_y.append(temp_y)
+            else:
+                # NEED TO CHANGE TO drop_missing=True
+                temp = apply_filterbank(y,self.f_bank)
+                filterbank_y = np.reshape(temp,(y.shape[0],temp.shape[0]*temp.shape[2]))
+            y = filterbank_y  
         else:
-            X = lag_matrix(X, lag_samples=self.lags, filling=0.)
-
+        # Creating lag-matrix droping NaN values if necessary
+            if drop:
+                X = lag_matrix(X, lag_samples=self.xlags, drop_missing=True)
+                
+                if not y_already_dropped:
+                    # Droping rows of NaN values in y
+                    if isinstance(y, list):
+                        temp = []
+                        for yy in y:
+                            if any(np.asarray(self.xlags) < 0):
+                                drop_top = abs(min(self.xlags))
+                                yy = yy[drop_top:, :] if yy.ndim == 2 else yy[:, drop_top:, :]
+                            if any(np.asarray(self.xlags) > 0):
+                                drop_bottom = abs(max(self.xlags))
+                                yy = yy[:-drop_bottom, :] if yy.ndim == 2 else yy[:, :-drop_bottom, :]
+                            temp.append(yy)
+                        y = temp
+                    else:
+                        if any(np.asarray(self.xlags) < 0):
+                            drop_top = abs(min(self.xlags))
+                            y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
+                        if any(np.asarray(self.xlags) > 0):
+                            drop_bottom = abs(max(self.xlags))
+                            y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
+                        
+                if lag_y:
+                    self.lag_y = True
+                    self.ytimes = np.asarray(ylags)
+                    self.ylags = -lag_sparse(self.ytimes, self.srate)[::-1]
+                    if isinstance(y, list):
+                        lagged_y = []
+                        for subj in range(len(y)):
+                            # NEED TO CHANGE TO drop_missing=True
+                            temp = lag_matrix(y[subj], lag_samples=self.ylags, drop_missing=False, filling=0.)
+                            lagged_y.append(temp)
+                    else:
+                        # NEED TO CHANGE TO drop_missing=True
+                        lagged_y = lag_matrix(y , lag_samples=self.ylags, drop_missing=False, filling=0.)
+                        print(lagged_y.shape)
+                    y = lagged_y    
+            else:
+                X = lag_matrix(X, lag_samples=self.xlags, filling=0.)
+                if lag_y:
+                    self.lag_y = True
+                    self.ytimes = np.asarray(ylags)
+                    self.ylags = -lag_sparse(self.ytimes, self.srate)[::-1]
+                    if isinstance(y, list):
+                        lagged_y = []
+                        for subj in range(len(y)):
+                            temp = lag_matrix(y[subj], lag_samples=self.ylags, filling=0.)
+                            lagged_y.append(temp)
+                    else:
+                        lagged_y = lag_matrix(y , lag_samples=self.ylags, filling=0.)
+                    y = lagged_y    
+        
         # Adding intercept feature:
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])
@@ -444,9 +514,29 @@ class CCA_Estimator(BaseEstimator):
             np.save(os.path.join(tmpdir,'temp_y'), y)
         self.tempX_path_ = os.path.join(tmpdir,'temp_X')
         self.tempy_path_ = os.path.join(tmpdir,'temp_y')
+        
+        if self.f_bank_used:
+            self.coefStim_ = np.reshape(A, (len(self.f_bank_freqs), self.n_feats_, self.coefResponse_.shape[1]))
+        else:
+            self.coefStim_ = np.reshape(A, (len(self.xlags), self.n_feats_, self.coefResponse_.shape[1]))
+            self.coefStim_ = self.coefStim_[::-1, :, :]
 
-        self.coefStim_ = np.reshape(A, (len(self.lags), self.n_feats_, self.coefResponse_.shape[1]))
-
+    def transform(self, transform_x=True, transform_y=False, comp=0):
+        """ Transform X and Y using the coefficients
+        """
+        X = np.load(self.tempX_path_+'.npy')
+#        y = np.load(self.tempy_path_+'.npy')
+#        if len(y) > len(X):
+#            all_x = np.concatenate([X for i in range(int(len(y)/len(X)))])  
+#        else:
+#            all_x = X
+#        coefStim_ = self.coefStim_.reshape((self.coefStim_.shape[0] * self.coefStim_.shape[1], self.coefStim_.shape[2]))
+#        
+#        if transform_x:
+#            return all_x @ coefStim_[:, comp]
+#        if transform_y:
+#            return y @ self.coefResponse_[:, comp]
+        return self.coefResponse_.T @ self.coefStim_.T @ X
 
     def plot_time_filter(self, n_comp=1, dim=[0]):
         """Plot the TRF of the feature requested.
@@ -458,17 +548,18 @@ class CCA_Estimator(BaseEstimator):
         if n_comp < 6:
             for c in range(n_comp):
                 for d in range(len(dim)):
-                    plt.plot(self.times, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
+                    plt.plot(self.xtimes, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
         else:
             for c in range(5):
                 for d in range(len(dim)):
-                    plt.plot(self.times, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
+                    plt.plot(self.xtimes, self.coefStim_[:,dim[d],c],label='CC #%s, dim: %s' % ((c+1), dim[d]))
             for c in range(5,n_comp):
                 for d in range(len(dim)):
-                    plt.plot(self.times, self.coefStim_[:,dim[d],c])
+                    plt.plot(self.xtimes, self.coefStim_[:,dim[d],c])
         if self.feat_names_:
             plt.title('Time filter for {:s}'.format(self.feat_names_[0]))
         plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.xlabel('Time (s)');
         plt.ylim([-max(np.abs(self.coefStim_[:,dim,:n_comp].flatten())), max(np.abs(self.coefStim_[:,dim,:n_comp].flatten()))]);
 
     def plot_spatial_filter(self, pos, n_comp=1):
@@ -489,8 +580,11 @@ class CCA_Estimator(BaseEstimator):
         ----------
         """
         X = np.load(self.tempX_path_+'.npy')
-        all_x = np.concatenate([X]*5)
         y = np.load(self.tempy_path_+'.npy')
+        if len(y) > len(X):
+            all_x = np.concatenate([X for i in range(int(len(y)/len(X)))])  
+        else:
+            all_x = X
         coefStim_ = self.coefStim_.reshape((self.coefStim_.shape[0] * self.coefStim_.shape[1], self.coefStim_.shape[2]))
 
         r = np.zeros((64,n_comp))
@@ -499,32 +593,49 @@ class CCA_Estimator(BaseEstimator):
             env_proj = all_x @ coefStim_[:, c]
             for i in range(64):
                 r[i,c] = np.corrcoef(y[:,i], eeg_proj)[0,1]
-            cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
+            # cc_corr = np.corrcoef(eeg_proj, env_proj)[0,1]
 
         titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
         topoplot_array(r, pos, n_topos=n_comp, titles=titles)
         mne.viz.tight_layout()
 
-    def plot_activation_map(self, pos, n_comp=1):
+    def plot_activation_map(self, pos, n_comp=1, lag=0):
         """Plot the activation map from the spatial filter.
         Parameters
         ----------
         """
         y = np.load(self.tempy_path_+'.npy')
-
         if n_comp <= 0:
-            print('Invalid number of components, must be a positive integer.')
+                print('Invalid number of components, must be a positive integer.')
+        
         s_hat = y @ self.coefResponse_
         sigma_eeg = y.T @ y
         sigma_reconstr = s_hat.T @ s_hat
         a_map = sigma_eeg @ self.coefResponse_ @ np.linalg.inv(sigma_reconstr)
-
-        titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
-        topoplot_array(a_map, pos, n_topos=n_comp, titles=titles)
-        mne.viz.tight_layout()
+        
+        if self.lag_y | self.f_bank_used:
+            if self.f_bank_used:
+                a_map = np.reshape(a_map,(len(self.f_bank_freqs),self.n_chans_,self.coefResponse_.shape[1]))
+            else:
+                a_map = np.reshape(a_map,(self.ylags.shape[0],self.n_chans_,self.coefResponse_.shape[1]))
+            titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
+            fig = plt.figure(figsize=(12, 10), constrained_layout=False)
+            outer_grid = fig.add_gridspec(5, 5, wspace=0.0, hspace=0.25)
+            for c in range(n_comp):
+                inner_grid = outer_grid[c].subgridspec(1, 1)
+                ax = plt.Subplot(fig, inner_grid[0])
+                im, _ = mne.viz.plot_topomap(a_map[lag,:,c], pos, axes=ax, show=False)
+                ax.set(title=titles[c])
+                fig.add_subplot(ax)
+            mne.viz.tight_layout()
+            
+        else:
+            titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
+            topoplot_array(a_map, pos, n_topos=n_comp, titles=titles)
+            mne.viz.tight_layout()
 
     def plot_compact_time(self, n_comp=2, dim=0):
-        plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.times[0], self.times[-1], 0, n_comp])
+        plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.xtimes[0], self.xtimes[-1], 0, n_comp])
         plt.colorbar()
         plt.ylabel('Components')
         plt.xlabel('Time (ms)')
@@ -542,7 +653,7 @@ class CCA_Estimator(BaseEstimator):
             vmin = np.min(coefs)
             vmax = np.max(coefs)
             im = ax.imshow(coefs, aspect=0.04, origin='bottom',
-                           extent=[self.times[0], self.times[-1], 0, n_dim],
+                           extent=[self.xtimes[0], self.xtimes[-1], 0, n_dim],
                            vmin=vmin, vmax=vmax)
             if c // 2 != n_rows-1:
                 ax.set_xticks([])
