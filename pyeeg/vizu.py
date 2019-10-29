@@ -9,6 +9,7 @@ from matplotlib.colors import to_rgb
 import numpy as np
 from scipy import signal
 import mne
+from matplotlib.colors import LinearSegmentedColormap
 
 PROP_CYCLE = plt.rcParams['axes.prop_cycle']
 COLORS = PROP_CYCLE.by_key()['color']
@@ -19,6 +20,30 @@ def _rgb(x, y, z):
     rgb -= rgb.min(0)
     rgb /= np.maximum(rgb.max(0), 1e-16)  # avoid div by zero
     return rgb
+
+def colormap_masked(ncolors=256, knee_index=None):
+    """
+    Create a colormap with value below a threshold being greyed out and transparent.
+    
+    Params
+    ------
+    ncolors : int
+        default to 256
+    knee_index : int
+        index from which transparency stops
+        e.g. knee_idx = np.argmin(abs(np.linspace(0., 3.5, ncolors)+np.log10(0.05)))
+    
+    Returns
+    -------
+    cm : LinearSegmentedColormap
+        Colormap instance
+    """
+    if knee_index is None:
+        # Then map to pvals, as -log(p) between 0 and 3.5, and threshold at 0.05
+        knee_idx = np.argmin(abs(np.linspace(0., 3.5, ncolors)+np.log10(0.05)))
+    cm = plt.cm.inferno(np.linspace(0, 1, ncolors))
+    cm[:knee_idx, :] = np.c_[cm[:knee_idx, 0], cm[:knee_idx, 1], cm[:knee_idx, 2], .3*np.ones((len(cm[:knee_idx, 1])))]
+    return LinearSegmentedColormap("my_colormap", cm)
 
 def get_spatial_colors(info):
     "Create set of colours given info (i.e. channel locs) of raw mne object"
