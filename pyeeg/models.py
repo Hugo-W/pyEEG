@@ -143,11 +143,13 @@ class TRFEstimator(BaseEstimator):
 
         self.tmin = tmin
         self.tmax = tmax
+        self.times = times
         self.srate = srate
         self.alpha = alpha
         self.use_regularisation = alpha > 0.
         self.fit_intercept = fit_intercept
         self.fitted = False
+        self.lags = None
         # All following attributes are only defined once fitted (hence the "_" suffix)
         self.intercept_ = None
         self.coef_ = None
@@ -183,15 +185,15 @@ class TRFEstimator(BaseEstimator):
         coef_ : ndarray (nlags x nfeats)
         intercept_ : ndarray (nfeats x 1)
         """
-        if tmin and tmax:
+        if self.tmin and self.tmax:
             LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
-            self.lags = lag_span(tmin, tmax, srate=srate)[::-1] #pylint: disable=invalid-unary-operand-type
+            self.lags = lag_span(self.tmin, self.tmax, srate=self.srate)[::-1] #pylint: disable=invalid-unary-operand-type
             #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
-            self.times = self.lags[::-1] / srate
+            self.times = self.lags[::-1] / self.srate
         else:
-            self.times = np.asarray(times)
-            self.lags = lag_sparse(self.times, srate)[::-1]
-            
+            self.times = np.asarray(self.times)
+            self.lags = lag_sparse(self.times, self.srate)[::-1]
+
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
         estimated_mem_usage = X.nbytes * (len(self.lags) if not lagged else 1) + y_memory
