@@ -132,14 +132,14 @@ class TRFEstimator(BaseEstimator):
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
                  alpha=0., fit_intercept=True):
 
-        if tmin and tmax:
-            LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
-            self.lags = lag_span(tmin, tmax, srate=srate)[::-1] #pylint: disable=invalid-unary-operand-type
-            #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
-            self.times = self.lags[::-1] / srate
-        else:
-            self.times = np.asarray(times)
-            self.lags = lag_sparse(self.times, srate)[::-1]
+        # if tmin and tmax:
+        #     LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
+        #     self.lags = lag_span(tmin, tmax, srate=srate)[::-1] #pylint: disable=invalid-unary-operand-type
+        #     #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
+        #     self.times = self.lags[::-1] / srate
+        # else:
+        #     self.times = np.asarray(times)
+        #     self.lags = lag_sparse(self.times, srate)[::-1]
 
         self.tmin = tmin
         self.tmax = tmax
@@ -183,6 +183,15 @@ class TRFEstimator(BaseEstimator):
         coef_ : ndarray (nlags x nfeats)
         intercept_ : ndarray (nfeats x 1)
         """
+        if tmin and tmax:
+            LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
+            self.lags = lag_span(tmin, tmax, srate=srate)[::-1] #pylint: disable=invalid-unary-operand-type
+            #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
+            self.times = self.lags[::-1] / srate
+        else:
+            self.times = np.asarray(times)
+            self.lags = lag_sparse(self.times, srate)[::-1]
+            
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
         estimated_mem_usage = X.nbytes * (len(self.lags) if not lagged else 1) + y_memory
