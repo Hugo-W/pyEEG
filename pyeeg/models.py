@@ -412,6 +412,9 @@ class TRFEstimator(BaseEstimator):
         trf.n_feats_ = len(feats)
         trf.n_chans_ = self.n_chans_
         trf.fitted = True
+        trf.times = self.times
+        trf.lags = self.lags
+        trf.intercept_ = self.intercept_
 
         return trf
         
