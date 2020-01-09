@@ -159,6 +159,25 @@ class TRFEstimator(BaseEstimator):
         self.feat_names_ = None
         self.valid_samples_ = None
 
+    def fill_lags(self):
+        """Fill the lags attributes.
+
+        Note
+        ----
+        Necessary to call this function if one wishes to use trf.lags _before_
+        :func:`trf.fit` is called.
+        
+        """
+        if self.tmin and self.tmax:
+            LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
+            self.lags = lag_span(self.tmin, self.tmax, srate=self.srate)[::-1] #pylint: disable=invalid-unary-operand-type
+            #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
+            self.times = self.lags[::-1] / self.srate
+        else:
+            self.times = np.asarray(self.times)
+            self.lags = lag_sparse(self.times, self.srate)[::-1]
+        
+
     def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=()):
         """Fit the TRF model.
 
@@ -185,14 +204,7 @@ class TRFEstimator(BaseEstimator):
         coef_ : ndarray (nlags x nfeats)
         intercept_ : ndarray (nfeats x 1)
         """
-        if self.tmin and self.tmax:
-            LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
-            self.lags = lag_span(self.tmin, self.tmax, srate=self.srate)[::-1] #pylint: disable=invalid-unary-operand-type
-            #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
-            self.times = self.lags[::-1] / self.srate
-        else:
-            self.times = np.asarray(self.times)
-            self.lags = lag_sparse(self.times, self.srate)[::-1]
+        self.fill_lags()
 
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
