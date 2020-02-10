@@ -47,7 +47,7 @@ def colormap_masked(ncolors=256, knee_index=None):
 
 def get_spatial_colors(info):
     "Create set of colours given info (i.e. channel locs) of raw mne object"
-    loc3d = np.asarray([el['loc'][:3] for el in info['chs']])
+    loc3d = np.asarray([el['loc'][:3] for el in info['chs'] if el['kind']==2])
     x, y, z = loc3d.T
     return _rgb(x, y, z)
 

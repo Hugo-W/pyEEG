@@ -38,10 +38,12 @@ def _svd_regress(x, y, alpha=0.):
     y : ndarray (nsamples, nchans) or list of such
         If a list of such arrays is given, each element of the
         list is treated as an individual subject
+    alpha : float or array-like
+        If array, will compute betas for every regularisation parameters at once
 
     Returns
     -------
-    betas : ndarray (nfeats, nchans)
+    betas : ndarray (nfeats, nchans, len(alpha))
         Coefficients
 
     Raises
@@ -56,12 +58,14 @@ def _svd_regress(x, y, alpha=0.):
     A warning is shown in the case where nfeats > nsamples, if so the user
     should rather use partial regression.
     """
+    # cast alpha in ndarray
+    if isinstance(alpha, float):
+        alpha = np.asarray([alpha])
+    else:
+        alpha = np.asarray(alpha)
+
     try:
-        assert np.size(alpha) == 1, "Alpha cannot be an array (in the future yes)"
-    except AssertionError:
-        raise NotImplementedError
-    try:
-        assert alpha >= 0, "Alpha must be positive"
+        assert np.all(alpha >= 0), "Alpha must be positive"
     except AssertionError:
         raise ValueError
 
@@ -73,8 +77,15 @@ def _svd_regress(x, y, alpha=0.):
         Uty /= len(y)
     else:
         Uty = U.T @ y
-    Vsreg = V.T @ np.diag(s/(s**2 + alpha))
-    betas = Vsreg @ Uty
+    # Cast all alpha (regularization param) in a 3D matrix,
+    # each slice being a diagonal matrix of s/(s**2+lambda)
+    eigenvals_scaled = np.zeros((*V.shape, np.size(alpha)))
+    eigenvals_scaled[range(len(V)), range(len(V)), :] = np.repeat(s[:, None], np.size(alpha), axis=1) / \
+        (np.repeat(s[:, None]**2, np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
+    # A dot product instead of matmul allows to repeat multiplication alike across third dimension (alphas)
+    Vsreg = np.dot(V.T, eigenvals_scaled) #np.diag(s/(s**2 + alpha))
+    # Using einsum to control which access get multiplied, again leaving alpha's dimension "untouched"
+    betas = np.einsum('...jk, jl -> ...lk', Vsreg, Uty) #Vsreg @ Uty
     return betas
 
 class TRFEstimator(BaseEstimator):
@@ -146,7 +157,10 @@ class TRFEstimator(BaseEstimator):
         self.times = times
         self.srate = srate
         self.alpha = alpha
-        self.use_regularisation = alpha > 0.
+        if np.ndim(alpha) == 0:
+            self.use_regularisation = alpha > 0.
+        else:
+            self.use_regularisation = np.any(np.asarray(alpha) > 0.)
         self.fit_intercept = fit_intercept
         self.fitted = False
         self.lags = None
@@ -158,6 +172,9 @@ class TRFEstimator(BaseEstimator):
         self.n_chans_ = None
         self.feat_names_ = None
         self.valid_samples_ = None
+        # The two following are only defined if simple least-square (no reg.) is used
+        self.tvals_ = None
+        self.pvals_ = None
 
     def fill_lags(self):
         """Fill the lags attributes.
@@ -258,7 +275,7 @@ class TRFEstimator(BaseEstimator):
         # Solving with svd or least square:
         if self.use_regularisation or np.ndim(y) == 3:
             # svd method:
-            betas = _svd_regress(X, y, self.alpha)
+            betas = _svd_regress(X, y, self.alpha)[..., 0]
         else:
             betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
 
