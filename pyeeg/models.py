@@ -20,6 +20,7 @@ and we would have in `__init__.py` an entry to load all architectures.
 import logging
 import numpy as np
 from scipy import stats
+from sklearn.model_selection import KFold
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
@@ -317,6 +318,104 @@ class TRFEstimator(BaseEstimator):
             self.pvals_ = 2 * (1-stats.t.cdf(abs(self.tvals_), df=dof))
 
         return self
+
+    def xfit(self, X, y, n_splits=5, lagged=False, drop=True, feat_names=(), plot=False):
+        """Apply a cross-validation procedure to find the best regularisation parameters
+        among the list of alphas given (ndim alpha must be == 1, and len(alphas)>1).
+        If there are several subjects, will return a list of best alphas for each subjetc individually.
+        User is expected to re-fit TRF fr each subject using their best individual alpha.
+
+        For a singly subject (y 2-dimensional), the TRF stored is the one with best alpha.
+
+        Notes
+        -----
+        The cross-validation procedure is a simple K-fold procedure with shuffling of samples.
+        This is prone to some leakage since lags span several contiguous samples...
+        """
+        # Make sure we have several alphas
+        if np.ndim(self.alpha) < 1 or len(self.alpha) <= 1:
+            raise ValueError("Supply several alphas to TRF constructor to use this method.")
+
+        self.fill_lags()
+
+        y = np.asarray(y)
+        y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
+        estimated_mem_usage = X.nbytes * (len(self.lags) if not lagged else 1) + y_memory
+        if estimated_mem_usage/1024.**3 > mem_check():
+            raise MemoryError("Not enough RAM available! (needed %.1fGB, but only %.1fGB available)"%(estimated_mem_usage/1024.**3, mem_check()))
+
+        self.n_feats_ = X.shape[1] if not lagged else X.shape[1] // len(self.lags)
+        self.n_chans_ = y.shape[1] if y.ndim == 2 else y.shape[2]
+
+        if feat_names:
+            err_msg = "Length of feature names does not match number of columns from feature matrix"
+            if lagged:
+                assert len(feat_names) == X.shape[1] // len(self.lags), err_msg
+            else:
+                assert len(feat_names) == X.shape[1], err_msg
+            self.feat_names_ = feat_names
+
+        n_samples_all = y.shape[0] if y.ndim == 2 else y.shape[1] # this include non-valid samples for now
+
+        if drop:
+            self.valid_samples_ = np.logical_not(np.logical_or(np.arange(n_samples_all) < abs(max(self.lags)),
+                                                               np.arange(n_samples_all)[::-1] < abs(min(self.lags))))
+        else:
+            self.valid_samples_ = np.ones((n_samples_all,), dtype=bool)
+
+        # Creating lag-matrix droping NaN values if necessary
+        y = y[self.valid_samples_, :] if y.ndim == 2 else y[:, self.valid_samples_, :]
+        if not lagged:
+            X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.)
+        
+        # Adding intercept feature:
+        if self.fit_intercept:
+            X = np.hstack([np.ones((len(X), 1)), X])        
+
+        # Now cross-validation procedure:
+        kf = KFold(n_splits=n_splits)
+        if y.ndim == 2: # single-subject
+            scores = np.zeros((n_splits, 1, len(self.alpha), self.n_chans_))
+            for kfold, (train, test) in enumerate(kf.split(X)):
+                print("Training/Evaluating fold %d/%d"%(kfold+1, n_splits))
+                betas = _svd_regress(X[train, :], y[train, :], self.alpha)
+                yhat = np.einsum('ij,jkl->ikl', X[test, :], betas)
+                for lamb in range(len(self.alpha)):
+                    scores[kfold, 0, lamb, :] = np.diag(np.corrcoef(yhat[..., lamb], y[test, :], rowvar=False), k=self.n_chans_)
+        else: # multi-subject
+            scores = np.zeros((n_splits, y.shape[0], len(self.alpha), self.n_chans_))
+            for kfold, (train, test) in enumerate(kf.split(X)):
+                print("Training/Evaluating fold %d/%d"%(kfold+1, n_splits))
+                betas = _svd_regress(X[train, :], y[:, train, :], self.alpha)
+                yhat = np.einsum('ij,jkl->ikl', X[test, :], betas)
+                for ksubj, yy in enumerate(y[:, test, :]):
+                    for lamb in range(len(self.alpha)):
+                        scores[kfold, ksubj, lamb, :] = np.diag(np.corrcoef(yhat[..., lamb], yy, rowvar=False), k=self.n_chans_)
+
+        # Best alpha
+        peaks = scores.mean(0).mean(-1).argmax(1)
+
+        # Plotting
+        if plot:
+            scores_toplot = scores.mean(0).mean(-1).T
+            lines = plt.semilogx(self.alpha, scores_toplot)
+            if y.ndim == 3: # multi-subject (search best alpha PER subject)
+                for k, p in enumerate(peaks):
+                    plt.semilogx(self.alpha[p], scores_toplot[p, k], '*', ms=10, color=lines[k].get_color())
+            else:
+                plt.semilogx(self.alpha[scores.mean(0).mean(-1).argmax()],
+                            scores_toplot[scores.mean(0).mean(-1).argmax()], '*k', ms=10,)
+            
+        # Reshaping and getting coefficients
+        if self.fit_intercept:
+            self.intercept_ = betas[0, :, peaks[0]]
+            betas = betas[1:, :, peaks[0]]
+
+        self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
+        self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
+        self.fitted = True
+
+        return scores, self.alpha[peaks]
 
     def predict(self, X):
         """Compute output based on fitted coefficients and feature matrix X.
