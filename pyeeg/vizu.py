@@ -5,11 +5,10 @@ Simply.
 
 """
 import matplotlib.pyplot as plt
-from matplotlib.colors import to_rgb
+from matplotlib.colors import LinearSegmentedColormap, to_rgb
 import numpy as np
 from scipy import signal
 import mne
-from matplotlib.colors import LinearSegmentedColormap
 
 PROP_CYCLE = plt.rcParams['axes.prop_cycle']
 COLORS = PROP_CYCLE.by_key()['color']
@@ -38,12 +37,12 @@ def colormap_masked(ncolors=256, knee_index=None):
     cm : LinearSegmentedColormap
         Colormap instance
     """
+    cm = plt.cm.inferno(np.linspace(0, 1, ncolors))
     if knee_index is None:
         # Then map to pvals, as -log(p) between 0 and 3.5, and threshold at 0.05
         knee_idx = np.argmin(abs(np.linspace(0., 3.5, ncolors)+np.log10(0.05)))
-    cm = plt.cm.inferno(np.linspace(0, 1, ncolors))
+        cm[:knee_idx, :] = np.c_[cm[:knee_idx, 0], cm[:knee_idx, 1], cm[:knee_idx, 2], .3*np.ones((len(cm[:knee_idx, 1])))]
     return LinearSegmentedColormap.from_list('my_colormap', cm)
-    cm[:knee_idx, :] = np.c_[cm[:knee_idx, 0], cm[:knee_idx, 1], cm[:knee_idx, 2], .3*np.ones((len(cm[:knee_idx, 1])))]
 
 def get_spatial_colors(info):
     "Create set of colours given info (i.e. channel locs) of raw mne object"
