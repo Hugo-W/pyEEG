@@ -198,16 +198,18 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
     .. [#] https://benediktehinger.de/blog/science/ica-weights-and-invweights/
     .. [#] https://github.com/mne-tools/mne-python/pull/5114/files
     """
-    montage_mne = mne.channels.montage.read_montage(montage)
+    montage_mne = mne.channels.make_standard_montage(montage)
 
     try:
-        raw = mne.io.read_raw_eeglab(input_fname=fname, montage=montage_mne, preload=True)
+        raw = mne.io.read_raw_eeglab(input_fname=fname, preload=True)
     except NotImplementedError:
         print("Version 7.3 matlab file detected, will load 'by hand'")
         eeg, srateate, _, _, _, ch_names = _load_eeglab_data(fname)
-        info = mne.create_info(ch_names=ch_names, sfreq=srateate, ch_types='eeg', montage=montage_mne)
+        info = mne.create_info(ch_names=ch_names, sfreq=srateate, ch_types='eeg')
         raw = mne.io.RawArray(eeg.T, info)
-
+    # set up montage:
+    raw.set_montage(montage_mne)
+    
     if load_ica:
         weights, winv, sphere = load_ica_matrices(fname)
         ica = ICA(n_components=winv.shape[1], max_pca_components=winv.shape[1])
