@@ -507,6 +507,8 @@ class TRFEstimator(BaseEstimator):
             
         if ax is None:
             fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), **kwargs)
+        else:
+            fig = ax.figure
 
         for k, feat in enumerate(feat_id):
             if len(feat_id) == 1:
@@ -525,6 +527,8 @@ class TRFEstimator(BaseEstimator):
                     lines = ax[k].get_lines()
                     for k, l in enumerate(lines):
                         l.set_color(colors[k])
+                        
+        return fig
 
     def __getitem__(self, feats):
         "Extract a sub-part of TRF instance as a new TRF instance (useful for plotting only some features...)"
