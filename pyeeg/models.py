@@ -549,4 +549,19 @@ class TRFEstimator(BaseEstimator):
         trf.intercept_ = self.intercept_
 
         return trf
-        
+
+    def __repr__(self):
+        obj = """TRFEstimator(
+            alpha=%.3e,
+            fit_intercept=%s,
+            srate=%d,
+            tmin=%.2f
+            tmax=%.2f,
+            n_feats=%d,
+            n_chans=%d,
+            n_lags=%d,
+            features : %s
+        )
+        """%(self.alpha, self.fit_intercept, self.srate, self.tmin, self.tmax,
+             self.n_feats_, self.n_chans_, len(self.lags), str(self.feat_names_))
+        return obj
