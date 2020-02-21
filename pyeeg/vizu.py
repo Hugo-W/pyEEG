@@ -76,6 +76,33 @@ def plot_filterbank_output(signals, spacing=None, axis=-1):
             filtered = filtered.T
         plt.plot(filtered + k*spacing*2)
 
+def topomap(arr, info, colorbar=True, ax=None, **kwargs):
+    """
+    Short-cut to mne topomap...
+
+    Parameters
+    ----------
+    arr : ndarray (nchan,)
+        Array of value to interpolate on a topographic map.
+    info : mne.Info instance
+        Contains EEG info (channel position for instance)
+    
+    Returns
+    -------
+    fig : Figure
+    """
+    if ax is None:
+        fig, ax = plt.subplots(1, 1)
+    else:
+        fig = ax.get_figure()
+    
+    im, _ = mne.viz.plot_topomap(arr, info, axes=ax, **kwargs)
+    if colorbar:
+        plt.colorbar(im, ax=ax)
+    return fig
+
+
+
 def topoplot_array(data, pos, n_topos=1, titles=None):
     """
     Plotting topographic plot.
@@ -141,7 +168,7 @@ def plots_topogrid(x, y, info, yerr=None, mask=None):
     y : ndarray
         Data, (ntimes, nchans)
     info : mne.info instance
-        info instance ocntaining channel locations
+        info instance containing channel locations
     yerr : ndarry
         Error for shaded areas
     mask : ndarray <bool>
