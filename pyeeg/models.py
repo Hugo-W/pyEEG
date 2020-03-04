@@ -27,7 +27,7 @@ from mne.decoding import BaseEstimator
 from .utils import lag_matrix, lag_span, lag_sparse, mem_check
 from .vizu import get_spatial_colors
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 LOGGER = logging.getLogger(__name__)
 
 def _svd_regress(x, y, alpha=0.):
