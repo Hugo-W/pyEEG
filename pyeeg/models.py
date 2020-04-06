@@ -415,7 +415,10 @@ class TRFEstimator(BaseEstimator):
         self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
         self.fitted = True
 
-        return scores, self.alpha[peaks]
+        if y.ndim == 3:
+            return scores, self.alpha[peaks]
+        else:
+            return scores, self.alpha[peaks[0]]
 
     def predict(self, X):
         """Compute output based on fitted coefficients and feature matrix X.
@@ -517,16 +520,16 @@ class TRFEstimator(BaseEstimator):
                     ax.set_title('TRF for {:s}'.format(self.feat_names_[feat]))
                 if spatial_colors:
                     lines = ax.get_lines()
-                    for k, l in enumerate(lines):
-                        l.set_color(colors[k])
+                    for kc, l in enumerate(lines):
+                        l.set_color(colors[kc])
             else:
                 ax[k].plot(self.times, self.coef_[:, feat, :])
                 if self.feat_names_:
                     ax[k].set_title('{:s}'.format(self.feat_names_[feat]))
                 if spatial_colors:
                     lines = ax[k].get_lines()
-                    for k, l in enumerate(lines):
-                        l.set_color(colors[k])
+                    for kc, l in enumerate(lines):
+                        l.set_color(colors[kc])
                         
         return fig
 
@@ -552,7 +555,7 @@ class TRFEstimator(BaseEstimator):
 
     def __repr__(self):
         obj = """TRFEstimator(
-            alpha=%.3e,
+            alpha=%s,
             fit_intercept=%s,
             srate=%d,
             tmin=%.2f
