@@ -319,7 +319,7 @@ class TRFEstimator(BaseEstimator):
 
         return self
 
-    def xfit(self, X, y, n_splits=5, lagged=False, drop=True, feat_names=(), plot=False):
+    def xfit(self, X, y, n_splits=5, lagged=False, drop=True, feat_names=(), plot=False, verbose=False):
         """Apply a cross-validation procedure to find the best regularisation parameters
         among the list of alphas given (ndim alpha must be == 1, and len(alphas)>1).
         If there are several subjects, will return a list of best alphas for each subjetc individually.
@@ -377,7 +377,7 @@ class TRFEstimator(BaseEstimator):
         if y.ndim == 2: # single-subject
             scores = np.zeros((n_splits, 1, len(self.alpha), self.n_chans_))
             for kfold, (train, test) in enumerate(kf.split(X)):
-                print("Training/Evaluating fold %d/%d"%(kfold+1, n_splits))
+                if verbose: print("Training/Evaluating fold %d/%d"%(kfold+1, n_splits))
                 betas = _svd_regress(X[train, :], y[train, :], self.alpha)
                 yhat = np.einsum('ij,jkl->ikl', X[test, :], betas)
                 for lamb in range(len(self.alpha)):
@@ -385,7 +385,7 @@ class TRFEstimator(BaseEstimator):
         else: # multi-subject
             scores = np.zeros((n_splits, y.shape[0], len(self.alpha), self.n_chans_))
             for kfold, (train, test) in enumerate(kf.split(X)):
-                print("Training/Evaluating fold %d/%d"%(kfold+1, n_splits))
+                if verbose: print("Training/Evaluating fold %d/%d"%(kfold+1, n_splits))
                 betas = _svd_regress(X[train, :], y[:, train, :], self.alpha)
                 yhat = np.einsum('ij,jkl->ikl', X[test, :], betas)
                 for ksubj, yy in enumerate(y[:, test, :]):
@@ -466,7 +466,7 @@ class TRFEstimator(BaseEstimator):
         ytrue : ndarray
             True target
         scoring : str (or func in future?)
-            Scoring function to be used
+            Scoring function to be used ("corr", "rmse")
 
         Returns
         -------
@@ -476,6 +476,8 @@ class TRFEstimator(BaseEstimator):
         yhat = self.predict(Xtest)
         if scoring == 'corr':
             return np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
+        if scoring == 'rmse':
+
         else:
             raise NotImplementedError("Only correlation score is valid for now...")
 
