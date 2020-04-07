@@ -476,8 +476,8 @@ class TRFEstimator(BaseEstimator):
         yhat = self.predict(Xtest)
         if scoring == 'corr':
             return np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
-        if scoring == 'rmse':
-
+        elif scoring == 'rmse':
+            return np.sqrt(np.mean((yhat-ytrue)**2, 0))
         else:
             raise NotImplementedError("Only correlation score is valid for now...")
 
