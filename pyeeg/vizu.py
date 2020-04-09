@@ -96,7 +96,7 @@ def topomap(arr, info, colorbar=True, ax=None, **kwargs):
     else:
         fig = ax.get_figure()
     
-    im, _ = mne.viz.plot_topomap(arr, info, axes=ax, **kwargs)
+    im, _ = mne.viz.plot_topomap(arr, info, axes=ax, show=False, **kwargs)
     if colorbar:
         plt.colorbar(im, ax=ax)
     return fig
