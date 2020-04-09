@@ -537,12 +537,23 @@ class TRFEstimator(BaseEstimator):
 
     def __getitem__(self, feats):
         "Extract a sub-part of TRF instance as a new TRF instance (useful for plotting only some features...)"
-        try:
-            len(feats)
-            assert all([f in self.feat_names_ for f in feats])
-        except:
-            raise AttributeError("feats must be a list, and each values must exist as a feat_name")
-        indices = [self.feat_names_.index(f) for f in feats]
+        # Argument check
+        if self.feat_names_ is None:
+            if np.ndim(feats) > 0:
+                assert isinstance(feats[0], int), "Type not understood, feat_names are ot defined, can only index with int"
+                indices = feats
+
+            else:
+                assert isinstance(feats, int), "Type not understood, feat_names are ot defined, can only index with int"
+                indices = [feats]
+        else:
+            if np.ndim(feats) > 0:
+                assert all([f in self.feat_names_ for f in feats]), "an element in argument %s in not present in %s"%(feats, self.feat_names_)
+                indices = [self.feat_names_.index(f) for f in feats]
+            else:
+                assert feats in self.feat_names_, "argument %s not present in %s"%(feats, self.feat_names)
+                indices = [self.feat_names_.index(feats)]
+
         trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
         trf.coef_ = self.coef_[:, indices]
         trf.feat_names_ = feats
