@@ -20,7 +20,7 @@ def _rgb(x, y, z):
     rgb /= np.maximum(rgb.max(0), 1e-16)  # avoid div by zero
     return rgb
 
-def colormap_masked(ncolors=256, knee_index=None):
+def colormap_masked(ncolors=256, knee_index=None, cmap='inferno', alpha=0.3):
     """
     Create a colormap with value below a threshold being greyed out and transparent.
     
@@ -30,18 +30,19 @@ def colormap_masked(ncolors=256, knee_index=None):
         default to 256
     knee_index : int
         index from which transparency stops
-        e.g. knee_idx = np.argmin(abs(np.linspace(0., 3.5, ncolors)+np.log10(0.05)))
+        e.g. knee_index = np.argmin(abs(np.linspace(0., 3.5, ncolors)+np.log10(0.05)))
     
     Returns
     -------
     cm : LinearSegmentedColormap
         Colormap instance
     """
-    cm = plt.cm.inferno(np.linspace(0, 1, ncolors))
+    cm = plt.cm.get_cmap(cmap)(np.linspace(0, 1, ncolors))
     if knee_index is None:
         # Then map to pvals, as -log(p) between 0 and 3.5, and threshold at 0.05
-        knee_idx = np.argmin(abs(np.linspace(0., 3.5, ncolors)+np.log10(0.05)))
-        cm[:knee_idx, :] = np.c_[cm[:knee_idx, 0], cm[:knee_idx, 1], cm[:knee_idx, 2], .3*np.ones((len(cm[:knee_idx, 1])))]
+        knee_index = np.argmin(abs(np.linspace(0., 3.5, ncolors)+np.log10(0.05)))
+    
+    cm[:knee_index, :] = np.c_[cm[:knee_index, 0], cm[:knee_index, 1], cm[:knee_index, 2], alpha*np.ones((len(cm[:knee_index, 1])))]
     return LinearSegmentedColormap.from_list('my_colormap', cm)
 
 def get_spatial_colors(info):
