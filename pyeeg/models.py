@@ -551,7 +551,7 @@ class TRFEstimator(BaseEstimator):
                 assert all([f in self.feat_names_ for f in feats]), "an element in argument %s in not present in %s"%(feats, self.feat_names_)
                 indices = [self.feat_names_.index(f) for f in feats]
             else:
-                assert feats in self.feat_names_, "argument %s not present in %s"%(feats, self.feat_names)
+                assert feats in self.feat_names_, "argument %s not present in %s"%(feats, self.feat_names_)
                 indices = [self.feat_names_.index(feats)]
 
         trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
