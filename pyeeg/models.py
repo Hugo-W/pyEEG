@@ -546,6 +546,7 @@ class TRFEstimator(BaseEstimator):
             else:
                 assert isinstance(feats, int), "Type not understood, feat_names are ot defined, can only index with int"
                 indices = [feats]
+                feats = [feats]
         else:
             if np.ndim(feats) > 0:
                 assert all([f in self.feat_names_ for f in feats]), "an element in argument %s in not present in %s"%(feats, self.feat_names_)
@@ -553,6 +554,7 @@ class TRFEstimator(BaseEstimator):
             else:
                 assert feats in self.feat_names_, "argument %s not present in %s"%(feats, self.feat_names_)
                 indices = [self.feat_names_.index(feats)]
+                feats = [feats]
 
         trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
         trf.coef_ = self.coef_[:, indices]
