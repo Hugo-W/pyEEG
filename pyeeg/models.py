@@ -513,7 +513,7 @@ class TRFEstimator(BaseEstimator):
 
         if ax is None:
             if 'figsize' not in kwargs.keys():
-                fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), figsize=(plt.rcParams['figure.figsize'][0] * np.size(feat_id)), plt.rcParams['figure.figsize'][1]), **kwargs)
+                fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), figsize=(plt.rcParams['figure.figsize'][0] * np.size(feat_id), plt.rcParams['figure.figsize'][1]), **kwargs)
             else:
                 fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), **kwargs)
 
