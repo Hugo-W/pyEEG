@@ -559,8 +559,8 @@ class CCA_Estimator(BaseEstimator):
         if self.feat_names_:
             plt.title('Time filter for {:s}'.format(self.feat_names_[0]))
         plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        plt.xlabel('Time (s)');
-        plt.ylim([-max(np.abs(self.coefStim_[:,dim,:n_comp].flatten())), max(np.abs(self.coefStim_[:,dim,:n_comp].flatten()))]);
+        plt.xlabel('Time (s)')
+        plt.ylim([-max(np.abs(self.coefStim_[:,dim,:n_comp].flatten())), max(np.abs(self.coefStim_[:,dim,:n_comp].flatten()))])
 
     def plot_spatial_filter(self, pos, n_comp=1):
         """Plot the topo of the feature requested.
@@ -606,7 +606,7 @@ class CCA_Estimator(BaseEstimator):
         """
         y = np.load(self.tempy_path_+'.npy')
         if n_comp <= 0:
-                print('Invalid number of components, must be a positive integer.')
+            print('Invalid number of components, must be a positive integer.')
         
         s_hat = y @ self.coefResponse_
         sigma_eeg = y.T @ y
