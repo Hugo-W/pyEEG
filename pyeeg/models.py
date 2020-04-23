@@ -512,7 +512,10 @@ class TRFEstimator(BaseEstimator):
         assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), "Feat ids not in range"
 
         if ax is None:
-            fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), **kwargs)
+            if 'figsize' not in kwargs.keys():
+                fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), figsize=(plt.rcParams['figure.figsize'][0] * np.size(feat_id)), plt.rcParams['figure.figsize'][1]), **kwargs)
+            else:
+                fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), **kwargs)
 
         if spatial_colors:
             assert info is not None, "To use spatial colouring, you must supply raw.info instance"
