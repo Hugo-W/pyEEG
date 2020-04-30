@@ -836,8 +836,8 @@ class WordLevelFeatures:
             features.remove('wordvectors')
 
         n_samples = int(np.ceil(srate * self.duration)) # +1 to account for 0th sample? /!\ No more + 1, since
-                                                        # in duration nowm I estimate correct the latter with (len(sound)-1)/srate
-                                                        # Indeed if sound is two samples, the duraiton id 1/srate, not 2/srate
+                                                        # in duration now I estimate correct the latter with (len(sound)-1)/srate
+                                                        # Indeed if sound is two samples, the duraiton is 1/srate, not 2/srate
         nfeat = wordonset_feature + len(features) + use_w2v * self.vectordim + len(custom_wordfeats)
         feat = np.zeros((n_samples, nfeat))
         onset_samples = np.round(self.wordonsets * srate).astype(int)
