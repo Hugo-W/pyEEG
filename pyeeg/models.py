@@ -589,3 +589,18 @@ class TRFEstimator(BaseEstimator):
         """%(self.alpha, self.fit_intercept, self.srate, self.tmin, self.tmax,
              self.n_feats_, self.n_chans_, len(self.lags), str(self.feat_names_))
         return obj
+
+    def __add__(self, other_trf):
+        "Make available the '+' operator. Will simply add coefficients. Be mindful of dividing by the number of elements later if you want the true mean."
+        assert (other_trf.n_feats_ == self.n_feats_ and other_trf.n_chans_ == self.n_chans_), "Both TRF objects must have the same number of features and channels"
+        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
+        trf.coef_ = np.sum([self.coef_, other_trf.coef_], 0)
+        trf.intercept_ = np.sum([self.intercept_, other_trf.intercept_], 0)
+        trf.feat_names_ = self.feat_names_
+        trf.n_feats_ = self.n_feats_
+        trf.n_chans_ = self.n_chans_
+        trf.fitted = True
+        trf.times = self.times
+        trf.lags = self.lags
+
+        return trf
