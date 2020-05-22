@@ -36,7 +36,7 @@ logging.getLogger('summarizer').setLevel(logging.WARNING)
 logging.getLogger('gensim').setLevel(logging.WARNING)
 logging.getLogger('smart_open').setLevel(logging.WARNING)
 logging.basicConfig(level=logging.DEBUG)
-LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__.split('.')[0])
 
 # Is sox library installed (also this will probably is False anyway on Windows):
 SOXI_PRESENT = shutil.which('soxi') is not None

@@ -28,7 +28,7 @@ from .utils import lag_matrix, lag_span, lag_sparse, mem_check
 from .vizu import get_spatial_colors
 
 logging.basicConfig(level=logging.WARNING)
-LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__.split('.')[0])
 
 def _svd_regress(x, y, alpha=0.):
     """Linear regression using svd.

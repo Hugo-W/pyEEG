@@ -9,6 +9,10 @@ from matplotlib.colors import LinearSegmentedColormap, to_rgb
 import numpy as np
 from scipy import signal
 import mne
+from .io import logging
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
+LOGGER = logging.getLogger(__name__.split('.')[0])
 
 PROP_CYCLE = plt.rcParams['axes.prop_cycle']
 COLORS = PROP_CYCLE.by_key()['color']
