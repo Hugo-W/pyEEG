@@ -175,8 +175,10 @@ def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./
     """
     if verbose is None:
         verbose = LOGGER.getEffectiveLevel()
+    if type(verbose) is str:
+        verbose = logging._nameToLevel[verbose]
     LOGGER.log(verbose, "Computing envelope")
-    
+
     if method.lower() == 'subs':
         raise NotImplementedError
     else:
