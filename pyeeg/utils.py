@@ -13,6 +13,7 @@ wiht the NumPy **side trick** see `the Python Cookbook recipee`_ for more detail
 
 #### Libraries
 import psutil
+import logging
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 from scipy import signal as scisig
@@ -20,6 +21,8 @@ from scipy import signal as scisig
 from sklearn.preprocessing import minmax_scale
 import pandas as pd
 import matplotlib.pyplot as plt
+
+LOGGER = logging.getLogger(__name__.split('.')[0])
 
 def print_title(msg, line='=', frame=True):
     """Printing function, allowing to print a titled message (underlined or framded)
@@ -137,7 +140,7 @@ def lag_sparse(times, srate=125):
     """
     return np.asarray([int(np.ceil(t * srate)) for t in times])
 
-def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./3, resample=125):
+def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./3, resample=125, verbose=None):
     """Compute the broadband envelope of the input signal.
     Several methods are available:
 
@@ -170,7 +173,10 @@ def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./
         Envelope
     
     """
-    print("Computing envelope...")
+    if verbose is None:
+        verbose = LOGGER.getEffectiveLevel()
+    LOGGER.log(verbose, "Computing envelope")
+    
     if method.lower() == 'subs':
         raise NotImplementedError
     else:
