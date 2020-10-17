@@ -501,13 +501,9 @@ class TRFEstimator(BaseEstimator):
         """
         if isinstance(feat_id, int):
             feat_id = list(feat_id) # cast into list to be able to use min, len, etc...
-            if ax is not None:
-                fig = ax.figure
         if not feat_id:
             feat_id = range(self.n_feats_)
-        if len(feat_id) > 1:
-            if ax is not None:
-                fig = ax[0].figure
+
         assert self.fitted, "Fit the model first!"
         assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), "Feat ids not in range"
 
@@ -516,6 +512,11 @@ class TRFEstimator(BaseEstimator):
                 fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), figsize=(plt.rcParams['figure.figsize'][0] * np.size(feat_id), plt.rcParams['figure.figsize'][1]), **kwargs)
             else:
                 fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), **kwargs)
+        else:
+            if hasattr(ax, '__len__'):
+                fig = ax[0].figure
+            else:
+                fig = ax.figure
 
         if spatial_colors:
             assert info is not None, "To use spatial colouring, you must supply raw.info instance"
