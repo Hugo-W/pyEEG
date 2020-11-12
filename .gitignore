@@ -4,9 +4,12 @@
 # Folders
 .ideas/*
 .vscode
+# Linux doc build
 docs/build/
 docs/source/_build/
 docs/source/generated/
+# Imperial doc build
+docs/_build/
 
 # Build from setup tool
 pyEEG.egg-info/*
