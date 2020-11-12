@@ -42,7 +42,7 @@ pyEEG requires:
 Install requirements:
 
 ```bash
-pip install requirements.txt
+pip install -r requirements.txt
 ```
 
 To generate the doc, Python package `sphinx` (>= 1.1.0), `sphinx_rtd_theme` and `nbsphinx` are required (`sphinx` can be installed from `conda` and the others from `pip`).
@@ -97,16 +97,17 @@ pip install sphinx_rtd_theme
 You can access the doc as HTML or PDF format.
 To generate the documentation HTML pages, type in a terminal:
 
-For Unix environment:
+For Unix environment (from root directory):
 
 ```bash
 make doc
 ```
 
-For Windows environment:
+For Windows environment (from `docs` folder):
 
 ```bash
-make.bat doc
+cd docs
+make.bat html
 ```
 
 Then you can open the `docs/build/html/index.html` page in your favourite browser.
