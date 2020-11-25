@@ -26,7 +26,7 @@ from scipy.io import loadmat
 from scipy.io.wavfile import read as wavread
 # MNE:
 import mne
-from mne.preprocessing.ica import ICA
+from mne.preprocessing.ica import ICA, read_ica_eeglab  
 #import os
 #os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
 # PyEEG:
@@ -205,18 +205,21 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
         raw = mne.io.read_raw_eeglab(input_fname=fname, preload=True)
     except NotImplementedError:
         print("Version 7.3 matlab file detected, will load 'by hand'")
-        eeg, srateate, _, _, _, ch_names = _load_eeglab_data(fname)
-        info = mne.create_info(ch_names=ch_names, sfreq=srateate, ch_types='eeg')
+        eeg, srate, _, _, _, ch_names = _load_eeglab_data(fname)
+        info = mne.create_info(ch_names=ch_names, sfreq=srate, ch_types='eeg')
         raw = mne.io.RawArray(eeg.T, info)
     # set up montage:
     raw.set_montage(montage_mne)
     
     if load_ica:
-        weights, winv, sphere = load_ica_matrices(fname)
-        ica = ICA(n_components=winv.shape[1], max_pca_components=winv.shape[1])
-        ica.fit(raw, decim=2, start=1., stop=60.)
-        ica.unmixing_matrix_ = weights.dot(sphere.dot(ica.pca_components_.T))
-        ica.mixing_matrix_ = np.linalg.pinv(ica.unmixing_matrix_)
+        # weights, winv, sphere = load_ica_matrices(fname)
+        # ica = ICA(n_components=winv.shape[1], max_pca_components=winv.shape[1])
+        # ica.fit(raw, decim=2, start=1., stop=60.)
+        # ica.unmixing_matrix_ = weights.dot(sphere.dot(ica.pca_components_.T))
+        # ica.mixing_matrix_ = np.linalg.pinv(ica.unmixing_matrix_)
+        ica = read_ica_eeglab(fname)
+        ica._update_ica_names()
+        ica.info = raw.info
 
         return raw, ica
     return raw
