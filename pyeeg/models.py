@@ -605,3 +605,16 @@ class TRFEstimator(BaseEstimator):
         trf.lags = self.lags
 
         return trf
+
+    def copy(self):
+        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
+        trf.coef_ = self.coef_
+        trf.intercept_ = self.intercept_
+        trf.feat_names_ = self.feat_names_
+        trf.n_feats_ = self.n_feats_
+        trf.n_chans_ = self.n_chans_
+        trf.fitted = True
+        trf.times = self.times
+        trf.lags = self.lags
+        return trf
+
