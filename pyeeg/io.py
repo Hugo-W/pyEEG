@@ -625,6 +625,9 @@ class AlignedSpeech:
     def __len__(self):
         return len(self.indices)
 
+    def __get__(self, fname, dtype=None):
+        return self.feats['fname'].to_numpy()
+
 
 class WordLevelFeatures:
     """Gather word-level linguistic features based on old and rigid files, generated from
@@ -881,3 +884,6 @@ class WordLevelFeatures:
 
     def __len__(self):
         return len(self.wordlist)
+
+    def __get__(self, fname, dtype=None):
+        return self.getattr(fname)
