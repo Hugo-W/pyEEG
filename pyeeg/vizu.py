@@ -208,14 +208,20 @@ def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05,
     """ 
     Annotate barplot (preferably, well but any type really) with p-values.
 
-    :param pval: string to write or p-value for generating asterixes
-    :param edges: data edge the bar
-    :param height: height
-    :param yerr: yerrs of all bars
-    :param dh: height offset over bar / bar + yerr in axes coordinates (0 to 1)
-    :param barh: bar height in axes coordinates (0 to 1)
-    :param fs: font size
-    :param maxasterix: maximum number of asterixes to write (for very small p-values)
+    Parameters
+    ----------
+        pval: string to write or p-value for generating asterixes
+        edges: data edge the bar
+        height: height
+        yerr: yerrs of all bars
+        dh: height offset over bar / bar + yerr in axes coordinates (0 to 1)
+        barh: bar height in axes coordinates (0 to 1)
+        fs: font size
+        maxasterix: maximum number of asterixes to write (for very small p-values)
+    Returns
+    -------
+        ax : plt.Axes
+            Axis used.
     """
     if ax is None:
         ax = plt.gca()
@@ -267,6 +273,8 @@ def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05,
         kwargs_t['fontsize'] = fs
 
     ax.text(*mid, text, color=color, **kwargs_t)
+
+    return ax
 
 
 def barplot_annotate_brackets(num1, num2, data, center, height, color='k', yerr=None, dh=.05, barh=.05, fs=None, maxasterix=None):
