@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# pylint: disable=invalid-name,wrong-import-position
+# pylint: disable=invalid-name,wrong-import-position,unsubscriptable-object
 """
 In this module, we can find different method to model the relationship
 between stimulus and (EEG) response. Namely there are wrapper functions
