@@ -589,7 +589,12 @@ class AlignedSpeech:
             - openning nodes
             - closing nodes
 
-        For any pther arbitrary word level features, one should attach it "by hand" to this instance.
+        For any other arbitrary word level features, one should attach it "by hand" to this instance using
+        :method:`add_word_level_features` or :method:`add_feature`.
+
+        see also::
+            - :func:`add_feature`
+            - :func:`add_word_level_features`
         """
         self.wordlevel = WordLevelFeatures(path_wordonsets=path_wordonsets, path_surprisal=path_surprisal,
                                            path_wordfrequency=path_wordfrequency, path_wordvectors=path_wordvectors,
@@ -626,7 +631,7 @@ class AlignedSpeech:
         return len(self.indices)
 
     def __get__(self, fname, dtype=None):
-        return self.feats['fname'].to_numpy()
+        return self._get_feat(self, fname)
 
 
 class WordLevelFeatures:
