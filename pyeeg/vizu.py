@@ -117,7 +117,7 @@ def topoplot_array(data, pos, n_topos=1, titles=None):
     for c in range(n_topos):
         inner_grid = outer_grid[c].subgridspec(1, 1)
         ax = plt.Subplot(fig, inner_grid[0])
-        im, _ = mne.viz.plot_topomap(data[:, c], pos, axes=ax, show=False)
+        mne.viz.plot_topomap(data[:, c], pos, axes=ax, show=False)
         ax.set(title=titles[c])
         fig.add_subplot(ax)
 
@@ -203,6 +203,70 @@ def plots_topogrid(x, y, info, yerr=None, mask=None):
                 for _, v in ax.spines.items():
                     v.set_color('C2')
     return fig
+
+def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05, barh=.05, fs=None, maxasterix=None, ax=None):
+    """ 
+    Annotate barplot (preferably, well but any type really) with p-values.
+
+    :param pval: string to write or p-value for generating asterixes
+    :param edges: data edge the bar
+    :param height: height
+    :param yerr: yerrs of all bars
+    :param dh: height offset over bar / bar + yerr in axes coordinates (0 to 1)
+    :param barh: bar height in axes coordinates (0 to 1)
+    :param fs: font size
+    :param maxasterix: maximum number of asterixes to write (for very small p-values)
+    """
+    if ax is None:
+        ax = plt.gca()
+    
+    if height is None:
+        height = ax.get_ylim()[1]
+
+    if type(pval) is str:
+        text = pval
+    else:
+        # * is p < 0.05
+        # ** is p < 0.005
+        # *** is p < 0.0005
+        # etc.
+        text = ''
+        p = .05
+
+        while pval < p:
+            text += '*'
+            p /= 10.
+
+            if maxasterix and len(text) == maxasterix:
+                break
+
+        if len(text) == 0:
+            text = 'n. s.'
+
+    lx, ly = edges[0], height
+    rx, ry = edges[0], height
+
+    if yerr:
+        ly += yerr[0]
+        ry += yerr[1]
+
+    ax_y0, ax_y1 = plt.gca().get_ylim()
+    dh *= (ax_y1 - ax_y0)
+    barh *= (ax_y1 - ax_y0)
+
+    y = max(ly, ry) + dh
+
+    barx = [lx, lx, rx, rx]
+    bary = [y, y+barh, y+barh, y]
+    mid = ((lx+rx)/2, y+barh)
+
+    ax.plot(barx, bary, c=color, linewidth=1.8)
+
+    kwargs_t = dict(ha='center', va='bottom')
+    if fs is not None:
+        kwargs_t['fontsize'] = fs
+
+    ax.text(*mid, text, color=color, **kwargs_t)
 
 
 def barplot_annotate_brackets(num1, num2, data, center, height, color='k', yerr=None, dh=.05, barh=.05, fs=None, maxasterix=None):
