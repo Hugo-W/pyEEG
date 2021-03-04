@@ -631,7 +631,7 @@ class AlignedSpeech:
         return len(self.indices)
 
     def __get__(self, fname, dtype=None):
-        return self._get_feat(self, fname)
+        return self._get_feat(fname)
 
 
 class WordLevelFeatures:
