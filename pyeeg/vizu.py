@@ -250,7 +250,7 @@ def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05,
             text = 'n. s.'
 
     lx, ly = edges[0], height
-    rx, ry = edges[0], height
+    rx, ry = edges[1], height
 
     if yerr:
         ly += yerr[0]
