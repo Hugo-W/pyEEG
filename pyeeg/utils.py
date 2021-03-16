@@ -22,6 +22,7 @@ from sklearn.preprocessing import minmax_scale
 import pandas as pd
 import matplotlib.pyplot as plt
 
+logging.basicConfig(level=logging.ERROR)
 LOGGER = logging.getLogger(__name__.split('.')[0])
 
 def print_title(msg, line='=', frame=True):
@@ -174,7 +175,7 @@ def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./
     
     """
     if verbose is None:
-        verbose = LOGGER.getEffectiveLevel()
+        verbose = 20 #  default to INFO?  or : LOGGER.getEffectiveLevel()
     if type(verbose) is str:
         verbose = logging._nameToLevel[verbose]
     LOGGER.log(verbose, "Computing envelope")

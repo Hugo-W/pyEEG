@@ -32,12 +32,12 @@ from mne.preprocessing.ica import ICA, read_ica_eeglab
 # PyEEG:
 from .utils import signal_envelope
 
-logging.getLogger('summarizer').setLevel(logging.WARNING)
-logging.getLogger('gensim').setLevel(logging.WARNING)
-logging.getLogger('smart_open').setLevel(logging.WARNING)
-logging.basicConfig(level=logging.DEBUG)
+#logging.getLogger('summarizer').setLevel(logging.WARNING)
+#logging.getLogger('gensim').setLevel(logging.WARNING)
+#logging.getLogger('smart_open').setLevel(logging.WARNING)
+logging.basicConfig(level=logging.ERROR)
 LOGGER = logging.getLogger(__name__.split('.')[0])
-LOGGER.setLevel('WARNING')
+LOGGER.setLevel('INFO')
 
 # Is sox library installed (also this will probably is False anyway on Windows):
 SOXI_PRESENT = shutil.which('soxi') is not None
@@ -46,7 +46,7 @@ try:
     import gensim
     GENSIM_IMPORTED = True
 except ImportError:
-    LOGGER.critical("Can't import Gensim (is it installed?) Will not load word vectors.")
+    LOGGER.debug("Can't import Gensim (is it installed?) Will not load word vectors.")
     GENSIM_IMPORTED = False
 
 def load_mat(fname):
