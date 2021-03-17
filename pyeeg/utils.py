@@ -25,6 +25,11 @@ import matplotlib.pyplot as plt
 logging.basicConfig(level=logging.ERROR)
 LOGGER = logging.getLogger(__name__.split('.')[0])
 
+def set_log_level(lvl):
+    "Sets the log level globally across the PyEEG library."
+    if isinstance(lvl, str): lvl = lvl.upper()
+    logging.getLogger(__name__.split('.')[0]).setLevel(lvl)
+
 def print_title(msg, line='=', frame=True):
     """Printing function, allowing to print a titled message (underlined or framded)
 
