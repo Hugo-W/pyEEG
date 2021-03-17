@@ -186,7 +186,7 @@ class TRFEstimator(BaseEstimator):
         :func:`trf.fit` is called.
         
         """
-        if self.tmin and self.tmax:
+        if (self.tmin is not None) and (self.tmax is not None):
             LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
             self.lags = lag_span(self.tmin, self.tmax, srate=self.srate)[::-1] #pylint: disable=invalid-unary-operand-type
             #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
