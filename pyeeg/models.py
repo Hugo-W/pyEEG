@@ -456,7 +456,7 @@ class TRFEstimator(BaseEstimator):
 
         return X.dot(betas)
 
-    def score(self, Xtest, ytrue, scoring="corr"):
+    def score(self, Xtest, ytrue, scoring="corr", reduce_multi=None):
         """Compute a score of the model given true target and estimated target from Xtest.
 
         Parameters
@@ -466,7 +466,13 @@ class TRFEstimator(BaseEstimator):
         ytrue : ndarray
             True target
         scoring : str (or func in future?)
-            Scoring function to be used ("corr", "rmse")
+            Scoring function to be used ("corr", "rmse", "mse")
+        reduce_multi : None or callable or str
+            The score by default return the score for each output (channel). However, sklearn pipelines
+            for cross-validation might require a single number from the scorring function.
+            This can be achieved by _reducing_ the scores either by taking the mean or the sum across channels
+            (respectively with 'mean' or 'sum'). If a callable is used, its signature must be (1d-ndarray) -> float,
+            similar to func:`np.mean`.
 
         Returns
         -------
@@ -475,11 +481,20 @@ class TRFEstimator(BaseEstimator):
         """
         yhat = self.predict(Xtest)
         if scoring == 'corr':
-            return np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
+            score =  np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
         elif scoring == 'rmse':
-            return np.sqrt(np.mean((yhat-ytrue)**2, 0))
+            score = np.sqrt(np.mean((yhat-ytrue)**2, 0))
+        elif scoring == "mse":
+            score = np.mean((yhat-ytrue)**2, 0)
         else:
-            raise NotImplementedError("Only correlation score is valid for now...")
+            raise NotImplementedError("Only correlation score or (r)mse is valid for now...")
+        if reduce_multi is None:
+            return score
+        else:
+            if isinstance(reduce_multi, str):
+                return getattr(np, reduce_multi)(score)
+            elif callable(reduce_multi):
+                return reduce_multi(score)
 
 
     def plot(self, feat_id=None, ax=None, spatial_colors=False, info=None, **kwargs):
