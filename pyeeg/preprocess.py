@@ -12,6 +12,7 @@ from scipy.linalg import eigh as geigh
 from joblib import Parallel, delayed
 #import matplotlib.pyplot as plt
 from sklearn.covariance import oas, ledoit_wolf, fast_mcd, empirical_covariance
+from sklearn.base import TransformerMixin, BaseEstimator
 
 # My libraries
 
@@ -73,17 +74,38 @@ def _check_est(est):
     return est
 
 def covariances(X, estimator='cov'):
-    """Estimation of covariance matrices."""
+    """Estimation of covariance matrices from a list of "trials".
+    
+    Parameters
+    ----------
+    X : array-like (ntrials, nsamples, nchannels) or list
+        If list, each element can also have different number of samples, but the number of
+        channels must be the same for all trials.
+    estimator : str
+        One of covariance estimator from sklearn. See also :func:`_check_est`.
+
+    Returns
+    -------
+    C : array-like (ntrials, nchannels, nchannels)
+        The list of covariance matrices for each trial.
+    """
     est = _check_est(estimator)
-    assert X.ndim == 3, "Data must be 3d (trials, samples, channels)"
-    Ntrials, Nsamples, Nchans = X.shape
+    if isinstance(X, list):
+        Ntrials = len(X)
+        Nchans = X[0].shape[1]
+    else: # here we assume X is then composed of similar length trials
+        X = np.asarray(X)
+        assert X.ndim == 3, "Data must be 3d (trials, samples, channels)"
+        Ntrials, _, Nchans = X.shape
     covmats = np.zeros((Ntrials, Nchans, Nchans))
     for i in range(Ntrials):
-        covmats[i, :, :] = est(X[i, :, :])
+        covmats[i, :, :] = est(X[i])
     return covmats
 
 def covariance(X, estimator='cov'):
-    """Estimation of one covariance matrix on whole dataset"""
+    """Estimation of one covariance matrix on whole dataset. If X is of shape (trials, samples, channels)
+    Will concatenate all trials together to compute a single covariance matrix across all of them.
+    """
     est = _check_est(estimator)
     if X.ndim == 3:
         nchans = X.shape[2]
@@ -157,7 +179,7 @@ def get_power(signals, decibels=False, win=125, axis=-1, n_jobs=-1):
 
     return out
 
-class MultichanWienerFilter():
+class MultichanWienerFilter(BaseEstimator, TransformerMixin):
     '''
     This class implements a multichannel Wiener Filter for artifact removal.
     The method is detailed in the reference paper *A generic EEG artifact removal algorithm based on the multi-channel
