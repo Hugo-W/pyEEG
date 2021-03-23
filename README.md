@@ -1,10 +1,10 @@
 # pyEEG
 
-> v1.1
+> v1.2
 
-pyEEG is a library fo processing EEG data build mostly on top of MNE-py and scikit-learn. It allows anlaysis of raw data and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level features).
+pyEEG is a library fo processing EEG data build mostly on top of MNE-py and scikit-learn. It is framed to work with data collected with naturalsistic stimuli, therefore with continuous recordings rather than trial-based designs. It allows analysis of continuous m/eeg and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level or phoneme-level features).
 
-If on the network of Imperial College, you can access the documentation here: [pyeeg-docs](http://bg-hw2512.bg.ic.ac.uk).
+The documentation is not hosted anywhere, in order to read through it, it has to be build locally either as a PDF stand-alone or as a set of html files that can be browse using any internet browser.
 
 ------
 
@@ -13,12 +13,12 @@ If on the network of Imperial College, you can access the documentation here: [p
 ### Priority
 
 - [ ] Use [doctest](https://docs.python.org/2/library/doctest.html) for systematic testing of some functions
-- [ ] fix imports (for now, cannot do `import pyeeg` to access all modules...)
+- [x] fix imports (for now, cannot do `import pyeeg` to access all modules...)
 
-### Future enhancements
+### Enhancements
 
 - [ ] Functional connectivity methods:
-  - [ ] Estimate connectivity
+  - [x] Estimate connectivity (**in construction**)
   - [ ] Graph theory metrics (path length, clustering coeff.)
 - [ ] Pipeline `pyRiemann` and `pyeeg` [this one](https://github.com/freole/pyeeg) into some workflows..
 
@@ -81,8 +81,7 @@ See [examples/import_WordVectors.ipynb](docs/source/examples/importWordVectors.i
 
 ## Documentation
 
-The simplest way is to access it from Imperial College Network (or via VPN) [here](http://bg-hw2512.bg.ic.ac.uk/).
-But you can also generate an _offline_ HTML version, or a PDF file of all the docs by following the following instructions (I reckon the HTML pages are easier to navigate in and prettier than the PDF thanks to the nice theme brought by `sphinx_rtd_theme`).
+You can generate an _offline_ HTML version, or a PDF file of all the docs by following the following instructions (HTML pages are easier to navigate in and prettier than the PDF thanks to the nice theme brought by `sphinx_rtd_theme`).
 
 ### Generate the documentation
 
@@ -115,7 +114,7 @@ Then you can open the `docs/build/html/index.html` page in your favourite browse
 And for PDF version, simply use `docpdf` instead of `doc` above.
 Then open `docs/build/latex/pyEEG.pdf` in a PDF viewer.
 
-**The PDF documentation can only be generated if `latex` and `latxmk` are present on the machine**
+> **Note:** The PDF documentation can only be generated if `latex` and `latxmk` are present on the machine
 
 To clean files created during build process (can be necessary to re-build the documentation):
 
