@@ -1,5 +1,9 @@
 # Binaries
 *.pyc
+__pycache__/
+
+# Notebook cache
+.ipynb_checkpoints/
 
 # Folders
 .ideas/*
