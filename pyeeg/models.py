@@ -21,11 +21,12 @@ import logging
 import numpy as np
 from scipy import stats
 from sklearn.model_selection import KFold
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
+#logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
 from .utils import lag_matrix, lag_span, lag_sparse, mem_check
 from .vizu import get_spatial_colors
+from .preprocess import covariances
 
 logging.basicConfig(level=logging.WARNING)
 LOGGER = logging.getLogger(__name__.split('.')[0])
@@ -35,7 +36,10 @@ def _svd_regress(x, y, alpha=0.):
 
     Parameters
     ----------
-    x : ndarray (nsamples, nfeats)
+    x : ndarray (nsamples, nfeats) or list of such
+        If a list of such is given (with possibly different nsamples), covariance matrices
+        will be computed by accumulating them for each trials. The number of samples must then be the same
+        in both x and y per each trial.
     y : ndarray (nsamples, nchans) or list of such
         If a list of such arrays is given, each element of the
         list is treated as an individual subject, the resulting `betas` coefficients
@@ -52,8 +56,8 @@ def _svd_regress(x, y, alpha=0.):
     ------
     ValueError
         If alpha < 0 (coefficient of L2 - regularization)
-    NotImplementedError
-        If len(alpha) > 1 (later will do several fits)
+    AssertionError
+        If trial length for each x and y differ.
 
     Notes
     -----
@@ -75,23 +79,36 @@ def _svd_regress(x, y, alpha=0.):
     except AssertionError:
         raise ValueError
 
-    [U, s, V] = np.linalg.svd(x, full_matrices=False)
-    if np.ndim(y) == 3:
-        Uty = np.zeros((U.shape[1], y.shape[2]))
-        for Y in y:
-            Uty += U.T @ Y
-        Uty /= len(y)
+    if np.ndim(x) == 3: # will accumulate covariances
+        assert all([xtr.shape[0] == ytr.shape[0] for xtr, ytr in zip(x, y)]), "Inconsistent trial lengths!"
+        XtX = covariances(x).mean(0)
+        [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
+        XtY = np.zeros((XtX.shape[0], y[0].shape[1]))
+        for X, Y in zip(x, y):
+            XtY += X.T @ Y
+        XtY /= len(x)
+        
+        betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
     else:
-        Uty = U.T @ y
-    # Cast all alpha (regularization param) in a 3D matrix,
-    # each slice being a diagonal matrix of s/(s**2+lambda)
-    eigenvals_scaled = np.zeros((*V.shape, np.size(alpha)))
-    eigenvals_scaled[range(len(V)), range(len(V)), :] = np.repeat(s[:, None], np.size(alpha), axis=1) / \
-        (np.repeat(s[:, None]**2, np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
-    # A dot product instead of matmul allows to repeat multiplication alike across third dimension (alphas)
-    Vsreg = np.dot(V.T, eigenvals_scaled) #np.diag(s/(s**2 + alpha))
-    # Using einsum to control which access get multiplied, again leaving alpha's dimension "untouched"
-    betas = np.einsum('...jk, jl -> ...lk', Vsreg, Uty) #Vsreg @ Uty
+        [U, s, V] = np.linalg.svd(x, full_matrices=False)
+        if np.ndim(y) == 3:
+            Uty = np.zeros((U.shape[1], y.shape[2]))
+            for Y in y:
+                Uty += U.T @ Y
+            Uty /= len(y)
+        else:
+            Uty = U.T @ y
+
+        # Broadcast all alphas (regularization param) in a 3D matrix,
+        # each slice being a diagonal matrix of s/(s**2+lambda)
+        eigenvals_scaled = np.zeros((*V.shape, np.size(alpha)))
+        eigenvals_scaled[range(len(V)), range(len(V)), :] = np.repeat(s[:, None], np.size(alpha), axis=1) / \
+            (np.repeat(s[:, None]**2, np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
+        # A dot product instead of matmul allows to repeat multiplication alike across third dimension (alphas)
+        Vsreg = np.dot(V.T, eigenvals_scaled) # np.diag(s/(s**2 + alpha))
+        # Using einsum to control which access get multiplied, again leaving alpha's dimension "untouched"
+        betas = np.einsum('...jk, jl -> ...lk', Vsreg, Uty) #Vsreg @ Uty
+    
     return betas
 
 class TRFEstimator(BaseEstimator):
