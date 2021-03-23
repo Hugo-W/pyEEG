@@ -38,7 +38,8 @@ def _svd_regress(x, y, alpha=0.):
     x : ndarray (nsamples, nfeats)
     y : ndarray (nsamples, nchans) or list of such
         If a list of such arrays is given, each element of the
-        list is treated as an individual subject
+        list is treated as an individual subject, the resulting `betas` coefficients
+        are thus computed on the averaged covariance matrices.
     alpha : float or array-like
         If array, will compute betas for every regularisation parameters at once
 
@@ -64,6 +65,10 @@ def _svd_regress(x, y, alpha=0.):
         alpha = np.asarray([alpha])
     else:
         alpha = np.asarray(alpha)
+
+    if np.ndim(x) == 2:
+        if x.shape[1] < x.shape[0]:
+            LOGGER.warning("Less samples than features! The linear problem is not stable in that form. Consider using partial regression instead.")
 
     try:
         assert np.all(alpha >= 0), "Alpha must be positive"
