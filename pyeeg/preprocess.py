@@ -93,6 +93,7 @@ def covariances(X, estimator='cov'):
     if isinstance(X, list):
         Ntrials = len(X)
         Nchans = X[0].shape[1]
+        assert all([x.shape[1] == Nchans for x in X]), "Inconsistent number of channels across trials."
     else: # here we assume X is then composed of similar length trials
         X = np.asarray(X)
         assert X.ndim == 3, "Data must be 3d (trials, samples, channels)"
