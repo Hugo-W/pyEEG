@@ -71,7 +71,7 @@ def _svd_regress(x, y, alpha=0.):
         alpha = np.asarray(alpha)
 
     if np.ndim(x) == 2:
-        if x.shape[1] < x.shape[0]:
+        if x.shape[0] < x.shape[1]:
             LOGGER.warning("Less samples than features! The linear problem is not stable in that form. Consider using partial regression instead.")
 
     try:
