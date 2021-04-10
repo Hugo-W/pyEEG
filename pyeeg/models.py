@@ -613,20 +613,34 @@ class TRFEstimator(BaseEstimator):
         return trf
 
     def __repr__(self):
-        obj = """TRFEstimator(
-            alpha=%s,
-            fit_intercept=%s,
-            srate=%d,
-            tmin=%.2f
-            tmax=%.2f,
-            n_feats=%d,
-            n_chans=%d,
-            n_lags=%d,
-            features : %s
-        )
-        """%(self.alpha, self.fit_intercept, self.srate, self.tmin, self.tmax,
-             self.n_feats_, self.n_chans_, len(self.lags), str(self.feat_names_))
-        return obj
+        if self.fitted:
+            obj = """TRFEstimator(
+                alpha=%s,
+                fit_intercept=%s,
+                srate=%d,
+                tmin=%.2f
+                tmax=%.2f,
+                n_feats=%d,
+                n_chans=%d,
+                n_lags=%d,
+                features : %s
+            )
+            """%(self.alpha, self.fit_intercept, self.srate, self.tmin, self.tmax,
+                self.n_feats_, self.n_chans_, len(self.lags), str(self.feat_names_))
+            return obj
+        else:
+            obj = """TRFEstimator(
+                alpha=%s,
+                fit_intercept=%s,
+                srate=%d,
+                tmin=%.2f
+                tmax=%.2f,
+                
+                Not fitted yet.
+            )
+            """%(self.alpha, self.fit_intercept, self.srate, self.tmin, self.tmax,
+                self.n_feats_, self.n_chans_, len(self.lags), str(self.feat_names_))
+            return obj
 
     def __add__(self, other_trf):
         "Make available the '+' operator. Will simply add coefficients. Be mindful of dividing by the number of elements later if you want the true mean."
