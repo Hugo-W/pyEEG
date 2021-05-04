@@ -65,8 +65,8 @@ def _svd_regress(x, y, alpha=0.):
     should rather use partial regression.
     """
     # cast alpha in ndarray
-    if isinstance(alpha, float):
-        alpha = np.asarray([alpha])
+    if np.isscalar(alpha):
+        alpha = np.asarray([alpha], dtype=float)
     else:
         alpha = np.asarray(alpha)
 
