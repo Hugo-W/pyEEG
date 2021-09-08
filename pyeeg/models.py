@@ -31,7 +31,7 @@ from .preprocess import covariances
 logging.basicConfig(level=logging.WARNING)
 LOGGER = logging.getLogger(__name__.split('.')[0])
 
-def _svd_regress(x, y, alpha=0.):
+def _svd_regress(x, y, alpha=0., verbose=False):
     """Linear regression using svd.
 
     Parameters
@@ -70,7 +70,7 @@ def _svd_regress(x, y, alpha=0.):
     else:
         alpha = np.asarray(alpha)
 
-    if np.ndim(x) == 2:
+    if not isinstance(x, list) and np.ndim(x) == 2:
         if x.shape[0] < x.shape[1]:
             LOGGER.warning("Less samples than features! The linear problem is not stable in that form. Consider using partial regression instead.")
 
@@ -79,13 +79,16 @@ def _svd_regress(x, y, alpha=0.):
     except AssertionError:
         raise ValueError
 
-    if np.ndim(x) == 3: # will accumulate covariances
+    if len(x) == len(y): # will accumulate covariances
         assert all([xtr.shape[0] == ytr.shape[0] for xtr, ytr in zip(x, y)]), "Inconsistent trial lengths!"
         XtX = covariances(x).mean(0)
         [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
         XtY = np.zeros((XtX.shape[0], y[0].shape[1]))
+        count = 1
         for X, Y in zip(x, y):
+            if verbose: LOGGER.info("Accumulating segment %d/%d", count, len(x))
             XtY += X.T @ Y
+            count += 1
         XtY /= len(x)
         
         betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY

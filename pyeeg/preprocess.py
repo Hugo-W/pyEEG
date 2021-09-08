@@ -10,6 +10,7 @@ import numpy as np
 from scipy import signal
 from scipy.linalg import eigh as geigh
 from joblib import Parallel, delayed
+from mne.time_frequency import morlet
 #import matplotlib.pyplot as plt
 from sklearn.covariance import oas, ledoit_wolf, fast_mcd, empirical_covariance
 from sklearn.base import TransformerMixin, BaseEstimator
@@ -179,6 +180,32 @@ def get_power(signals, decibels=False, win=125, axis=-1, n_jobs=-1):
         out[k, :, :] = feat
 
     return out
+
+class WaveletTransform(TransformerMixin):
+    '''
+    This class creates a list of wavelet tranfsform (complex Morlet wavelet)
+    and applies it to a multi-channel signal.
+    '''
+    def __init__(self, freqs, sfreq, n_cycles=7):
+        self.wavelets = morlet(sfreq, freqs, n_cycles=7)
+        self.nfreqs = len(freqs)
+        self.sfreq = sfreq
+        self.n_cycles = 7
+        
+    def transform(self, X, n_jobs=1):
+        """
+        Parameters
+        ----------
+        X : ndarray (ntimes, nchannels)
+        
+        Returns
+        -------
+        Y : ndarray (nfreqs, ntimes, nchannels)
+        """
+        Y = np.zeros(self.nfreq, X.shape[0], X.shape[1])
+        for k in range(X.shape[1]):
+            Y[..., k] = Parallel(backend='multiprocessing', n_jobs=n_jobs)(delayed(np.convolve)(X[:, k], w, 'same') for w in self.wavelets)
+        return Y
 
 class MultichanWienerFilter(BaseEstimator, TransformerMixin):
     '''
