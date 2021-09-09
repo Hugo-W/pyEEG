@@ -79,9 +79,9 @@ def _svd_regress(x, y, alpha=0., verbose=False):
     except AssertionError:
         raise ValueError
 
-    if len(x) == len(y): # will accumulate covariances
+    if len(x) == len(y) and np.ndim(x)==3: # will accumulate covariances
         assert all([xtr.shape[0] == ytr.shape[0] for xtr, ytr in zip(x, y)]), "Inconsistent trial lengths!"
-        XtX = covariances(x).mean(0)
+        XtX = covariances(x).sum(0)
         [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
         XtY = np.zeros((XtX.shape[0], y[0].shape[1]))
         count = 1
@@ -89,7 +89,7 @@ def _svd_regress(x, y, alpha=0., verbose=False):
             if verbose: LOGGER.info("Accumulating segment %d/%d", count, len(x))
             XtY += X.T @ Y
             count += 1
-        XtY /= len(x)
+        # XtY /= len(x) # NO IT SHOULD BE A SUM
         
         betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
     else:
