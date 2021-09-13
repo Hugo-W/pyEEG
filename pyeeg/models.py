@@ -19,6 +19,7 @@ and we would have in `__init__.py` an entry to load all architectures.
 """
 import logging
 import numpy as np
+from functools import reduce
 from scipy import stats
 from sklearn.model_selection import KFold
 #logging.getLogger('matplotlib').setLevel(logging.WARNING)
@@ -26,7 +27,6 @@ import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
 from .utils import lag_matrix, lag_span, lag_sparse, mem_check
 from .vizu import get_spatial_colors
-from .preprocess import covariances
 
 logging.basicConfig(level=logging.WARNING)
 LOGGER = logging.getLogger(__name__.split('.')[0])
@@ -79,9 +79,9 @@ def _svd_regress(x, y, alpha=0., verbose=False):
     except AssertionError:
         raise ValueError
 
-    if len(x) == len(y) and np.ndim(x)==3: # will accumulate covariances
+    if (len(x) == len(y)) and np.ndim(x[0])==2: # will accumulate covariances
         assert all([xtr.shape[0] == ytr.shape[0] for xtr, ytr in zip(x, y)]), "Inconsistent trial lengths!"
-        XtX = covariances(x).sum(0)
+        XtX = reduce(lambda x, y: x + y, [xx.T @ xx for xx in x])
         [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
         XtY = np.zeros((XtX.shape[0], y[0].shape[1]))
         count = 1
@@ -251,7 +251,7 @@ class TRFEstimator(BaseEstimator):
 
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
-        estimated_mem_usage = X.nbytes * (len(self.lags) if not lagged else 1) + y_memory
+        estimated_mem_usage = (sum([x.nbytes for x in X]) if np.ndim(X) == 3 else X.nbytes)* (len(self.lags) if not lagged else 1) + y_memory
         if estimated_mem_usage/1024.**3 > mem_check():
             raise MemoryError("Not enough RAM available! (needed %.1fGB, but only %.1fGB available)"%(estimated_mem_usage/1024.**3, mem_check()))
 
