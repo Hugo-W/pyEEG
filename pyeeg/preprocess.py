@@ -202,7 +202,7 @@ class WaveletTransform(TransformerMixin):
         -------
         Y : ndarray (nfreqs, ntimes, nchannels)
         """
-        Y = np.zeros(self.nfreq, X.shape[0], X.shape[1])
+        Y = np.zeros(self.nfreqs, X.shape[0], X.shape[1])
         for k in range(X.shape[1]):
             Y[..., k] = Parallel(backend='multiprocessing', n_jobs=n_jobs)(delayed(np.convolve)(X[:, k], w, 'same') for w in self.wavelets)
         return Y
