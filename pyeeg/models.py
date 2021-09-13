@@ -91,7 +91,13 @@ def _svd_regress(x, y, alpha=0., verbose=False):
             count += 1
         # XtY /= len(x) # NO IT SHOULD BE A SUM
         
-        betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
+        #betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
+        
+        eigenvals_scaled = np.zeros((*V.shape, np.size(alpha)))
+        eigenvals_scaled[range(len(V)), range(len(V)), :] = 1 / \
+            (np.repeat(s[:, None], np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
+        Vsreg = np.dot(V.T, eigenvals_scaled) # np.diag(1/(s + alpha))
+        betas = np.einsum('...jk, jl -> ...lk', Vsreg, U.T @ XtY) #Vsreg @ Ut
     else:
         [U, s, V] = np.linalg.svd(x, full_matrices=False)
         if np.ndim(y) == 3:
