@@ -19,6 +19,7 @@ and we would have in `__init__.py` an entry to load all architectures.
 """
 import logging
 import numpy as np
+from tqdm import tqdm
 from functools import reduce
 from scipy import stats
 from sklearn.model_selection import KFold
@@ -85,7 +86,7 @@ def _svd_regress(x, y, alpha=0., verbose=False):
         [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
         XtY = np.zeros((XtX.shape[0], y[0].shape[1]))
         count = 1
-        for X, Y in zip(x, y):
+        for X, Y in tqdm(zip(x, y), total=len(x)):
             if verbose: LOGGER.info("Accumulating segment %d/%d", count, len(x))
             XtY += X.T @ Y
             count += 1
@@ -255,13 +256,13 @@ class TRFEstimator(BaseEstimator):
             self.lags = lag_sparse(self.times, self.srate)[::-1]
         
 
-    def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=()):
+    def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=(), verbose=True):
         """Fit the TRF model.
 
         Parameters
         ----------
         X : ndarray (nsamples x nfeats)
-            Array of features (time-lagged)
+            Array of features (time-lagged or not, if it is, then second dim's shape should be nfeats*nlags)
         y : ndarray (nsamples x nchans)
             EEG data
         lagged : bool
@@ -278,11 +279,17 @@ class TRFEstimator(BaseEstimator):
 
         Returns
         -------
-        coef_ : ndarray (nlags x nfeats)
-        intercept_ : ndarray (nfeats x 1)
+        coef_ : ndarray (nlags x nfeats x nchans)
+        intercept_ : ndarray (nchans x 1)
         """
         self.fill_lags()
 
+        if isinstance(y, list) and isinstance(X, list):
+            if verbose: LOGGER.info("Supplied a list of data portions... Will compute covariance matrices by 'accumulating' them.")
+            assert len(y) == len(X), "Both lists (X and y) should have the same number of elements"
+            assert all([len(yy)==len(xx) for xx,yy in zip(X,y)]), "Each data portion should have the same number of samples"
+            return self._fitlists(X, y, drop, feat_names, lagged, verbose)
+        
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
         estimated_mem_usage = (sum([x.nbytes for x in X]) if np.ndim(X) == 3 else X.nbytes)* (len(self.lags) if not lagged else 1) + y_memory
@@ -308,6 +315,7 @@ class TRFEstimator(BaseEstimator):
             self.valid_samples_ = np.ones((n_samples_all,), dtype=bool)
 
         # Creating lag-matrix droping NaN values if necessary
+        if verbose: LOGGER.info("Lagging matrix...")
         y = y[self.valid_samples_, :] if y.ndim == 2 else y[:, self.valid_samples_, :]
         if not lagged:
             X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.)
@@ -333,9 +341,10 @@ class TRFEstimator(BaseEstimator):
             X = np.hstack([np.ones((len(X), 1)), X])
 
         # Solving with svd or least square:
+        if verbose: LOGGER.info("Computing coefficients..")
         if self.use_regularisation or np.ndim(y) == 3:
             # svd method:
-            betas = _svd_regress(X, y, self.alpha)[..., 0]
+            betas = _svd_regress(X, y, self.alpha, verbose)[..., 0]
         else:
             betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
 
@@ -358,6 +367,7 @@ class TRFEstimator(BaseEstimator):
 
         # Get t-statistic and p-vals if regularization is ommited
         if not self.use_regularisation:
+            if verbose: LOGGER.info("Computing statistics...")
             cov_betas = X.T @ X
             # Compute variance sigma (MSE)
             if np.ndim(y) == 3:
@@ -377,6 +387,62 @@ class TRFEstimator(BaseEstimator):
             self.pvals_ = 2 * (1-stats.t.cdf(abs(self.tvals_), df=dof))
 
         return self
+    
+    def _fitlists(self, X, y, drop=True, feat_names=(), lagged=False, verbose=True):
+        """
+        Fit the TRF by accumulating the covariance matrices of each item in the 
+        list of arrays in X and Y.
+        This is more memory efficient and can follow nicely an experiment design
+        where several audio clips of variable length are aligned with M/EEG.
+
+        Parameters
+        ----------
+        X : list of ndarray of shape (nsamples, nfeats) or (nsamples, nfeats*nlags)
+            List of predictor data
+        y : list of ndarray, shape (nsamples, nchans)
+            List of M/EEG data
+        drop : bool, optional
+            Whether to drop invalid samples on lagged matrices. The default is True.
+        feat_names : tuple (str), optional
+            Feature names. The default is ().
+        lagged : Bool, optional
+            Whether the predictor matrices have been lagged already. The default is False.
+        verbose : bool, optional
+            The default is True.
+
+        Returns
+        -------
+        TRFEstimator
+            Fitted instance of TRF model.
+
+        """
+        self.n_chans_ = y[0].shape[1]
+        self.n_feats_ = X[0].shape[1] if not lagged else X[0].shape[1]//len(self.lags)
+        if feat_names:
+            err_msg = "Length of feature names does not match number of columns from feature matrix"
+            if lagged:
+                assert len(feat_names) == X.shape[1] // len(self.lags), err_msg
+            else:
+                assert len(feat_names) == X.shape[1], err_msg
+            self.feat_names_ = feat_names
+            
+        if lagged:
+            betas = _svd_regress(np.hstack([np.ones((len(X), 1)), X]) if self.fit_intercept else X, y, self.alpha, verbose)[..., 0]
+        else:
+            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), lag_matrix(x, self.lags, filling=0., drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=0., drop_missing=drop)
+                                  for x in X], y, self.alpha, verbose)[..., 0]
+        
+        if self.fit_intercept:
+            self.intercept_ = betas[0, :]
+            betas = betas[1:, :]
+
+        self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
+        self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
+        
+        
+        self.fitted = True
+        return self
+    
 
     def xfit(self, X, y, n_splits=5, lagged=False, drop=True, feat_names=(), plot=False, verbose=False):
         """Apply a cross-validation procedure to find the best regularisation parameters
