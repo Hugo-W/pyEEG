@@ -171,6 +171,34 @@ class TRFEstimator(BaseEstimator):
     >>> y = np.random.randn(1000, 2)
     >>> trf.fit(x, y, lagged=False)
     """
+    
+    def fromArray(arr, tmin, tmax, fs):
+        """
+        Creates a TRF instance from a 3D array.
+
+        Parameters
+        ----------
+        arr : ndarray (nlags, nfeats, nchans)
+            TRF weights.
+        tmin : float
+            Minimum lag in sec.
+        tmax : float
+            Maximum lag in sec.
+        fs : float
+            Sampling rate.
+
+        Returns
+        -------
+        trf : TRFEstimator instance
+        """
+        trf = TRFEstimator(tmin=tmin, tmax=tmax, srate=fs)
+        trf.fill_lags()
+        assert arr.shape[0] == len(trf.lags), "Mismatch in lags! Supplied array has %d in first dimension, while %d lags were spanned"%(arr.shape[0], len(trf.lags))
+        trf.coef_ = arr
+        trf.n_chans_ = arr.shape[-1]
+        trf.n_feats_ = arr.shape[1]
+        trf.fitted = True
+        return trf
 
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
                  alpha=0., fit_intercept=True):
