@@ -416,6 +416,8 @@ class TRFEstimator(BaseEstimator):
             Fitted instance of TRF model.
 
         """
+        if drop:
+            raise NotImplementedError("Please use drop=False, this feature has not been implemented yet")
         self.n_chans_ = y[0].shape[1]
         self.n_feats_ = X[0].shape[1] if not lagged else X[0].shape[1]//len(self.lags)
         if feat_names:
@@ -429,7 +431,8 @@ class TRFEstimator(BaseEstimator):
         if lagged:
             betas = _svd_regress(np.hstack([np.ones((len(X), 1)), X]) if self.fit_intercept else X, y, self.alpha, verbose)[..., 0]
         else:
-            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), lag_matrix(x, self.lags, filling=0., drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=0., drop_missing=drop)
+            filling = np.nan if drop else 0.
+            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), lag_matrix(x, self.lags, filling=filling, drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=0., drop_missing=drop)
                                   for x in X], y, self.alpha, verbose)[..., 0]
         
         if self.fit_intercept:
