@@ -27,7 +27,7 @@ from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
 from .utils import lag_matrix, lag_span, lag_sparse, mem_check
-from .vizu import get_spatial_colors
+from .vizu import get_spatial_colors, plot_interactive
 
 logging.basicConfig(level=logging.WARNING)
 LOGGER = logging.getLogger(__name__.split('.')[0])
@@ -86,7 +86,7 @@ def _svd_regress(x, y, alpha=0., verbose=False):
         [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
         XtY = np.zeros((XtX.shape[0], y[0].shape[1]))
         count = 1
-        for X, Y in tqdm(zip(x, y), total=len(x)):
+        for X, Y in tqdm(zip(x, y), total=len(x), leave=False):
             if verbose: LOGGER.info("Accumulating segment %d/%d", count, len(x))
             XtY += X.T @ Y
             count += 1
@@ -429,7 +429,7 @@ class TRFEstimator(BaseEstimator):
             self.feat_names_ = feat_names
             
         if lagged:
-            betas = _svd_regress(np.hstack([np.ones((len(X), 1)), X]) if self.fit_intercept else X, y, self.alpha, verbose)[..., 0]
+            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, y, self.alpha, verbose)[..., 0]
         else:
             filling = np.nan if drop else 0.
             betas = _svd_regress([np.hstack([np.ones((len(x), 1)), lag_matrix(x, self.lags, filling=filling, drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=0., drop_missing=drop)
@@ -625,7 +625,7 @@ class TRFEstimator(BaseEstimator):
                 return reduce_multi(score)
 
 
-    def plot(self, feat_id=None, ax=None, spatial_colors=False, info=None, **kwargs):
+    def plot(self, feat_id=None, ax=None, spatial_colors=False, info=None, picks=None, **kwargs):
         """Plot the TRF of the feature requested as a *butterfly* plot.
 
         Parameters
@@ -660,6 +660,11 @@ class TRFEstimator(BaseEstimator):
                 fig = ax[0].figure
             else:
                 fig = ax.figure
+        
+        if info is not None:
+            for k, feat in enumerate(feat_id):        
+                plot_interactive(self.coef_[:, feat, :].T, info=info, ax=ax[k], tmin=self.tmin, picks=picks)
+            return fig
 
         if spatial_colors:
             assert info is not None, "To use spatial colouring, you must supply raw.info instance"
