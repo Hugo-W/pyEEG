@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
 import numpy as np
 from scipy import signal
+from scipy.stats import ttest_rel
 import mne
 from .io import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
@@ -164,6 +165,45 @@ def plot_trf_signi(trf, reject, time_highlight=None, spatial_colors=True, info=N
                 l.set_color(colors[k])
     if ax is None:
         return plt.gcf()
+    
+def pairwise_boxplots(arr1, arr2, labels=['1', '2'], ax=None, linealpha=0.5,
+                      boxalpha=0.5, add_signi=False):
+    """
+    Plot two boxplot of supplied series with small lines indicating pairwise 
+    change between the two series.
+
+    Parameters
+    ----------
+    arr1 : 1darray
+        First series.
+    arr2 : 1darray
+        Second series.
+    labels : TYPE, list[str]
+        Xticklabels. The default is ['1', '2'].
+
+    Returns
+    -------
+    Boxes, lines
+    """
+    if ax is None:
+        f, ax = plt.subplots(1, 1)
+    
+    props = {'widths': 0.4, 'patch_artist': True, 'showcaps': False, 'medianprops': {'color': 'k'}}
+    b1 = ax.boxplot(arr1, positions=[0], **props)
+    b2 = ax.boxplot(arr2, positions=[1], **props)
+    for b in b1['boxes'] + b2['boxes']:
+        b.set_facecolor(next(ax._get_lines.prop_cycler)['color'])
+        b.set_alpha(boxalpha)
+        
+    lines = ax.plot(np.asarray([arr1[:], arr2[:]]), alpha=linealpha, zorder=10, marker='o', ms=5)
+    
+    if add_signi:
+        pval = ttest_rel(arr1, arr2).pvalue
+        significance_overlay(pval, [0, 1])
+    
+    ax.set_xticklabels(labels)
+    
+    return {**b1, **b2}, lines
 
 def plots_topogrid(x, y, info, yerr=None, mask=None):
     """
