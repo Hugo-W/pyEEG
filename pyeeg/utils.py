@@ -17,6 +17,7 @@ import logging
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 from scipy import signal as scisig
+from scipy.fftpack import next_fast_len
 #from numba import jit
 from sklearn.preprocessing import minmax_scale
 import pandas as pd
@@ -190,7 +191,7 @@ def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./
     else:
         if method.lower() == 'hilbert':
             # Get modulus of hilbert transform
-            out = abs(scisig.hilbert(signal))
+            out = abs(scisig.hilbert(signal, N=next_fast_len(len(signal))))[:len(signal)]
         elif method.lower() == 'rectify':
             # Rectify signal
             out = abs(signal)
@@ -349,7 +350,7 @@ def shift_array(arr, win=2, overlap=0, padding=False, axis=0):
         raise NotImplementedError("As a workaround, please pad array beforehand...")
 
     if not _is_1d(arr):
-        if axis is not 0:
+        if axis != 0:
             arr = np.swapaxes(arr, 0, axis)
         return chunk_data(arr, win, overlap, padding)
 
