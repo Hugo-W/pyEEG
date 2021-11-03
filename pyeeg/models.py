@@ -652,7 +652,9 @@ class TRFEstimator(BaseEstimator):
 
         if ax is None:
             if 'figsize' not in kwargs.keys():
-                fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), figsize=(plt.rcParams['figure.figsize'][0] * np.size(feat_id), plt.rcParams['figure.figsize'][1]), **kwargs)
+                fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), squeeze=False,
+                                       figsize=(plt.rcParams['figure.figsize'][0] * np.size(feat_id), plt.rcParams['figure.figsize'][1]), **kwargs)
+                ax = ax.ravel()
             else:
                 fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), **kwargs)
         else:
@@ -671,22 +673,13 @@ class TRFEstimator(BaseEstimator):
             colors = get_spatial_colors(info)
             
         for k, feat in enumerate(feat_id):
-            if len(feat_id) == 1:
-                ax.plot(self.times, self.coef_[:, feat, :])
-                if self.feat_names_:
-                    ax.set_title('TRF for {:s}'.format(self.feat_names_[feat]))
-                if spatial_colors:
-                    lines = ax.get_lines()
-                    for kc, l in enumerate(lines):
-                        l.set_color(colors[kc])
-            else:
-                ax[k].plot(self.times, self.coef_[:, feat, :])
-                if self.feat_names_:
-                    ax[k].set_title('{:s}'.format(self.feat_names_[feat]))
-                if spatial_colors:
-                    lines = ax[k].get_lines()
-                    for kc, l in enumerate(lines):
-                        l.set_color(colors[kc])
+            ax[k].plot(self.times, self.coef_[:, feat, :])
+            if self.feat_names_:
+                ax[k].set_title('{:s}'.format(self.feat_names_[feat]))
+            if spatial_colors:
+                lines = ax[k].get_lines()
+                for kc, l in enumerate(lines):
+                    l.set_color(colors[kc])
                         
         return fig
 

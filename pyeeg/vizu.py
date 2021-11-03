@@ -185,6 +185,9 @@ def pairwise_boxplots(arr1, arr2, labels=['1', '2'], ax=None, linealpha=0.5,
     -------
     Boxes, lines
     """
+    assert len(arr1) == len(arr2), "Arrays must be of the same length"
+    arr1 = np.asarray(arr1)
+    arr2 = np.asarray(arr2)
     if ax is None:
         f, ax = plt.subplots(1, 1)
     
