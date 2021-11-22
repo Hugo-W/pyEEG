@@ -663,6 +663,7 @@ class TRFEstimator(BaseEstimator):
                 fig = ax[0].figure
             else:
                 fig = ax.figure
+                ax = [ax]
         
         if info is not None:
             for k, feat in enumerate(feat_id):        
