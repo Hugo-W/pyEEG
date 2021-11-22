@@ -202,7 +202,7 @@ class TRFEstimator(BaseEstimator):
         return trf
 
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
-                 alpha=0., fit_intercept=True):
+                 alpha=0., fit_intercept=True, verbose=True):
 
         # if tmin and tmax:
         #     LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
@@ -218,6 +218,7 @@ class TRFEstimator(BaseEstimator):
         self.times = times
         self.srate = srate
         self.alpha = alpha
+        self.verbose = verbose
         if np.ndim(alpha) == 0:
             self.use_regularisation = alpha > 0.
         else:
@@ -256,7 +257,7 @@ class TRFEstimator(BaseEstimator):
             self.lags = lag_sparse(self.times, self.srate)[::-1]
         
 
-    def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=(), verbose=True):
+    def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=()):
         """Fit the TRF model.
 
         Parameters
@@ -285,10 +286,10 @@ class TRFEstimator(BaseEstimator):
         self.fill_lags()
 
         if isinstance(y, list) and isinstance(X, list):
-            if verbose: LOGGER.info("Supplied a list of data portions... Will compute covariance matrices by 'accumulating' them.")
+            if self.verbose: LOGGER.info("Supplied a list of data portions... Will compute covariance matrices by 'accumulating' them.")
             assert len(y) == len(X), "Both lists (X and y) should have the same number of elements"
             assert all([len(yy)==len(xx) for xx,yy in zip(X,y)]), "Each data portion should have the same number of samples"
-            return self._fitlists(X, y, drop, feat_names, lagged, verbose)
+            return self._fitlists(X, y, drop, feat_names, lagged, self.verbose)
         
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
@@ -315,7 +316,7 @@ class TRFEstimator(BaseEstimator):
             self.valid_samples_ = np.ones((n_samples_all,), dtype=bool)
 
         # Creating lag-matrix droping NaN values if necessary
-        if verbose: LOGGER.info("Lagging matrix...")
+        if self.verbose: LOGGER.info("Lagging matrix...")
         y = y[self.valid_samples_, :] if y.ndim == 2 else y[:, self.valid_samples_, :]
         if not lagged:
             X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.)
@@ -341,10 +342,10 @@ class TRFEstimator(BaseEstimator):
             X = np.hstack([np.ones((len(X), 1)), X])
 
         # Solving with svd or least square:
-        if verbose: LOGGER.info("Computing coefficients..")
+        if self.verbose: LOGGER.info("Computing coefficients..")
         if self.use_regularisation or np.ndim(y) == 3:
             # svd method:
-            betas = _svd_regress(X, y, self.alpha, verbose)[..., 0]
+            betas = _svd_regress(X, y, self.alpha, self.verbose)[..., 0]
         else:
             betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
 
@@ -367,7 +368,7 @@ class TRFEstimator(BaseEstimator):
 
         # Get t-statistic and p-vals if regularization is ommited
         if not self.use_regularisation:
-            if verbose: LOGGER.info("Computing statistics...")
+            if self.verbose: LOGGER.info("Computing statistics...")
             cov_betas = X.T @ X
             # Compute variance sigma (MSE)
             if np.ndim(y) == 3:
@@ -576,7 +577,7 @@ class TRFEstimator(BaseEstimator):
 
         # Check if input has been lagged already, if not, do it:
         if X.shape[1] != int(self.fit_intercept) + len(self.lags) * self.n_feats_:
-            LOGGER.info("Creating lagged feature matrix...")
+            if self.verbose: LOGGER.info("Creating lagged feature matrix...")
             X = lag_matrix(X, lag_samples=self.lags, filling=0.)
             # Adding intercept feature:
             if self.fit_intercept:
