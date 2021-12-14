@@ -140,7 +140,7 @@ class TRFEstimator(BaseEstimator):
         Array of `float`, corresponding to lag in seconds at which the TRF coefficients are computed
     srate : float
         Sampling rate
-    use_reularisation : bool
+    use_regularisation : bool
         Whether ot not the Ridge regularisation is used to compute the TRF
     fit_intercept : bool
         Whether a column of ones should be added to the design matrix to fit an intercept
@@ -773,4 +773,60 @@ class TRFEstimator(BaseEstimator):
         trf.times = self.times
         trf.lags = self.lags
         return trf
+    
+    def save(self, filename):
+        """
+        Save the current trf object to file.
+        Format used is Numpy's binary npz.
+
+        Parameters
+        ----------
+        filename : str
+            Full path name.
+
+        Returns
+        -------
+        None.
+        
+        Raise
+        -----
+        AssertionError: if trf is empty (not fitted).
+        """
+        assert self.fitted, "Fit TRF before saving it."
+        trf = {'coef_': self.coef_,
+               'intercept_': self.intercept_,
+               'feat_names_': self.feat_names_,
+               'srate': self.srate,
+               'tmin': self.tmin,
+               'tmax': self.tmax,
+               'times': self.times,
+                'alpha':self.alpha}
+        np.savez(filename, **trf)
+        
+    def load(filename):
+        """
+        Load and return a TRF instance from numpy archive file (created with trf.save)
+
+        Parameters
+        ----------
+        filename : str
+            Full path name.
+
+        Returns
+        -------
+        TRFEstimator instance
+        """
+        npzdata = np.load(filename)
+        trf = TRFEstimator(tmin=npzdata['tmin'], tmax=npzdata['tmax'], srate=npzdata['srate'],
+                           alpha=npzdata['alpha'])
+        trf.fill_lags()
+        trf.intercept_ = npzdata['intercept_']
+        trf.feat_names_ = npzdata['feat_names_']
+        trf.coef_ = npzdata['coef_']
+        trf.n_chans_ = trf.coef_.shape[-1]
+        trf.n_feats_ = trf.coef_.shape[1]
+        trf.fitted = True
+        return trf
+        
+        
 
