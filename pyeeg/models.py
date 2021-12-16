@@ -666,8 +666,11 @@ class TRFEstimator(BaseEstimator):
                 ax = [ax]
         
         if info is not None:
+            info['sfreq'] = self.srate # need that fix in case info is from some other processed data
             for k, feat in enumerate(feat_id):        
                 plot_interactive(self.coef_[:, feat, :].T, info=info, ax=ax[k], tmin=self.tmin, picks=picks)
+                if self.feat_names_:
+                    ax[k].set_title('{:s}'.format(self.feat_names_[feat]))
             return fig
 
         if spatial_colors:
@@ -816,7 +819,7 @@ class TRFEstimator(BaseEstimator):
         -------
         TRFEstimator instance
         """
-        npzdata = np.load(filename)
+        npzdata = np.load(filename, allow_pickle=True)
         trf = TRFEstimator(tmin=npzdata['tmin'], tmax=npzdata['tmax'], srate=npzdata['srate'],
                            alpha=npzdata['alpha'])
         trf.fill_lags()

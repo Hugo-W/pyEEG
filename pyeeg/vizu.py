@@ -59,7 +59,9 @@ def get_spatial_colors(info):
 def plot_interactive(data, info, ax=None, tmin=0., spatial_colors=True, picks=None):
     if ax is None:
         f, ax = plt.subplots(1, 1)
-    mne.viz.plot_evoked(mne.EvokedArray(data, info=info, tmin=tmin), axes=ax, spatial_colors=spatial_colors, picks=picks)
+    mne.viz.plot_evoked(mne.EvokedArray(data, info=info, tmin=tmin), axes=ax, spatial_colors=spatial_colors, picks=picks, show=False)
+    # Remove N_ave: 
+    for t in list(ax.texts): t.remove()
 
 def plot_filterbank(fbank):
     """
