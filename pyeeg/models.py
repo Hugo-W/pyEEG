@@ -345,7 +345,10 @@ class TRFEstimator(BaseEstimator):
         if self.verbose: LOGGER.info("Computing coefficients..")
         if self.use_regularisation or np.ndim(y) == 3:
             # svd method:
-            betas = _svd_regress(X, y, self.alpha, self.verbose)[..., 0]
+            betas = _svd_regress(X, y, self.alpha, self.verbose)
+            self.all_betas = betas
+            # Storing only the first as the main
+            betas = betas[..., 0]
         else:
             betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
 
@@ -430,11 +433,15 @@ class TRFEstimator(BaseEstimator):
             self.feat_names_ = feat_names
             
         if lagged:
-            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, y, self.alpha, verbose)[..., 0]
+            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, y, self.alpha, verbose)
         else:
             filling = np.nan if drop else 0.
             betas = _svd_regress([np.hstack([np.ones((len(x), 1)), lag_matrix(x, self.lags, filling=filling, drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=0., drop_missing=drop)
-                                  for x in X], y, self.alpha, verbose)[..., 0]
+                                  for x in X], y, self.alpha, verbose)
+        # Storing all alpha's betas
+        self.all_betas = betas
+        # Storing only the first as the main
+        betas = betas[..., 0]
         
         if self.fit_intercept:
             self.intercept_ = betas[0, :]
@@ -447,6 +454,90 @@ class TRFEstimator(BaseEstimator):
         self.fitted = True
         return self
     
+    def select_best_coefs(self, best_index, in_place=False):
+        """
+        This method can be used to select the best set of coefficients when the
+        TRF model has been trained with several regularisation parmaters.
+
+        Parameters
+        ----------
+        best_index : int
+            Index of best model (w.r.t alpha array/list).
+        in_place : bool
+            Whether to operate in-place (default to False).
+
+        Returns
+        -------
+        TRFEstimator instance
+        """
+        trf = self if in_place else self.copy()
+        betas = self.betas[..., best_index]
+        if trf.fit_intercept:
+            trf.intercept_ = betas[0, :]
+            betas = betas[1:, :]
+        trf.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
+        trf.coef_ = trf.coef_[::-1, :, :]
+        return trf
+    
+    def plot_multialpha_scores(self, X, y):
+        """
+        Plot the score against different alphas to visualise effect of 
+        regularisation.
+
+        Parameters
+        ----------
+        X : TYPE
+            DESCRIPTION.
+        y : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        assert hasattr(self, 'all_betas'), "TRF must be fitted with several regularisation values alpha at once."
+        scores = self.multialpha_score(X, y)
+        scores_toplot = scores.mean(0).mean(-1).T
+        # Best alpha
+        peaks = scores.mean(0).mean(-1).argmax(1)
+        lines = plt.semilogx(self.alpha, scores_toplot)
+        if y.ndim == 3: # multi-subject (search best alpha PER subject)
+            for k, p in enumerate(peaks):
+                plt.semilogx(self.alpha[p], scores_toplot[p, k], '*', ms=10, color=lines[k].get_color())
+        else:
+            plt.semilogx(self.alpha[scores.mean(0).mean(-1).argmax()],
+                        scores_toplot[scores.mean(0).mean(-1).argmax()], '*k', ms=10,)
+        
+    def multialpha_score(self, X, y):
+        assert hasattr(self, 'all_betas'), "TRF must be fitted with several regularisation values alpha at once."
+        # For several story-parts
+        if isinstance(X, list) and len(X)==len(y):
+            scores = np.mean([self.multialpha_score(x, yy)for x, yy in zip(X, y)], 0)
+            return scores
+        else:
+            # Lag X if necessary, and add intercept
+            if X.shape[1] != (len(self.lags) * self.n_feats_ + int(self.fit_intercept)):
+                X = lag_matrix(X, lag_samples=self.lags, drop_missing=False, filling=0.)
+                if self.fit_intercept:
+                    X = np.hstack([np.ones((len(X), 1)), X]) 
+            
+            # Estimate yhat
+            yhat = np.einsum('ij,jkl->ikl', X, self.all_betas)
+            y = np.asarray(y)
+            
+            # Compute scores
+            # A single X and a single y
+            if y.ndim == 2: # single-subject
+                scores = np.zeros((1, len(self.alpha), self.n_chans_))
+                for lamb in range(len(self.alpha)):
+                    scores[0, lamb, :] = np.diag(np.corrcoef(yhat[..., lamb], y, rowvar=False), k=self.n_chans_)
+            else: # multi-subject (one X several ys)
+                scores = np.zeros((y.shape[0], len(self.alpha), self.n_chans_))
+                for ksubj, yy in enumerate(y):
+                    for lamb in range(len(self.alpha)):
+                        scores[ksubj, lamb, :] = np.diag(np.corrcoef(yhat[..., lamb], yy, rowvar=False), k=self.n_chans_)
+            return scores
 
     def xfit(self, X, y, n_splits=5, lagged=False, drop=True, feat_names=(), plot=False, verbose=False):
         """Apply a cross-validation procedure to find the best regularisation parameters
@@ -454,7 +545,7 @@ class TRFEstimator(BaseEstimator):
         If there are several subjects, will return a list of best alphas for each subjetc individually.
         User is expected to re-fit TRF fr each subject using their best individual alpha.
 
-        For a singly subject (y 2-dimensional), the TRF stored is the one with best alpha.
+        For a single subject (y is 2-dimensional), the TRF stored is the one with best alpha.
 
         Notes
         -----
