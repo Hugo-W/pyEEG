@@ -29,8 +29,8 @@ def colormap_masked(ncolors=256, knee_index=None, cmap='inferno', alpha=0.3):
     """
     Create a colormap with value below a threshold being greyed out and transparent.
     
-    Params
-    ------
+    Parameters
+    ----------
     ncolors : int
         default to 256
     knee_index : int

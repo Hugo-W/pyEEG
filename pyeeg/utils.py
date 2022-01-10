@@ -5,7 +5,7 @@ signal processing or/and text processing.
 For instance function to create a matrix of lagged-time series for input to our
 forward and backward models.
 
-Also, utilities functions to apply _rolling_ methods (rolling average, variance, or so on)
+Also, utilities functions to apply *rolling* methods (rolling average, variance, or so on)
 wiht the NumPy **side trick** see `the Python Cookbook recipee`_ for more details.
 
 .. _the Python Cookbook recipee: https://ipython-books.github.io/47-implementing-an-efficient-rolling-average-algorithm-with-stride-tricks/

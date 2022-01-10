@@ -8,7 +8,7 @@ Input/output of data from files:
      - import features (word level features, envelopes, etc.)
 
 Module to correctly extract Matlab files,
-especially EEGLAB .set files no matter if the version is >=7.3 and
+especially EEGLAB `.set` files no matter if the version is >=7.3 and
 take the data to MNE format.
 
 Another important part are classes to handle continuous stimuli aligned with EEG recording.
@@ -186,10 +186,11 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
     ----
     ICA matrices in ICA MNE object might not entirely capture the decomposition.
     To apply projections (i.e. remove some components from observed EEG data) it
-    might be better to load directly the matrices and do it by hand, where:
+    might be better to load directly the matrices and do it by hand, where (see [#]_
+    and [#]_)
 
-        - icawinv = pinv(icaweights * icasphere)
-        - ica_act = icaweights * icasphere * eegdata
+    * ``icawinv = pinv(icaweights * icasphere)``
+    * ``ica_act = icaweights * icasphere * eegdata``
 
     References
     ----------
@@ -633,20 +634,23 @@ class AlignedSpeech:
                                    path_wordfrequency=None, path_syntactic=None, use_wordonsets=False):
         """Create a new word level feature object attached to this instance.
         The word feature object might contains the following features:
-            - wordonsets
-            - surprisal
-            - word frequency
-            - word vectors values
-            - syntactic depth
-            - openning nodes
-            - closing nodes
 
+        * wordonsets
+        * surprisal
+        * word frequency
+        * word vectors values
+        * syntactic depth
+        * openning nodes
+        * closing nodes
+
+        
         For any other arbitrary word level features, one should attach it "by hand" to this instance using
-        :method:`add_word_level_features` or :method:`add_feature`.
+        :meth:`add_word_level_features` or :meth:`add_feature`.
 
-        see also::
-            - :func:`add_feature`
-            - :func:`add_word_level_features`
+        seealso::
+            * :func:`add_feature`
+            * :func:`add_word_level_features`
+
         """
         self.wordlevel = WordLevelFeatures(path_wordonsets=path_wordonsets, path_surprisal=path_surprisal,
                                            path_wordfrequency=path_wordfrequency, path_wordvectors=path_wordvectors,

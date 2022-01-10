@@ -17,7 +17,6 @@ Classes
    :template: class.rst
 
    pyeeg.models.TRFEstimator
-   pyeeg.models.mCCA
    
 .. currentmodule:: pyeeg.cca
 

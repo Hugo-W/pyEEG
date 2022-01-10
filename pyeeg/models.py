@@ -5,10 +5,10 @@ In this module, we can find different method to model the relationship
 between stimulus and (EEG) response. Namely there are wrapper functions
 implementing:
 
-    - Forward modelling (stimulus -> EEG), a.k.a _TRF_ (Temporal Response Functions)
-    - Backward modelling (EEG -> stimulus)
-    - CCA (in cca.py)
-    - ...
+* Forward modelling (stimulus -> EEG), a.k.a _TRF_ (Temporal Response Functions)
+* Backward modelling (EEG -> stimulus)
+* CCA (in :mod:pyeeg.cca)
+* ...
 
 TODO
 ''''
@@ -125,19 +125,20 @@ class TRFEstimator(BaseEstimator):
     """Temporal Response Function (TRF) Estimator Class.
 
     This class allows to estimate TRF from a set of feature signals and an EEG dataset in the same fashion
-    than ReceptiveFieldEstimator does in MNE.
-    However, an arbitrary set of lags can be given. Namely, it can be used in two ways:
+    than :class:`mne.decoding.ReceptiveFieldEstimator` does in **MNE**.
+    However, an arbitrary set of lags can be given. Namely, it can be used in two ways
 
-    - calling with `tmin` and tmax` arguments will compute lags spanning from `tmin` to `tmax`
-    - with the `times` argument, one can request an arbitrary set of time lags at which to compute
-    the coefficients of the TRF
+    - calling with ``tmin`` and ``tmax`` arguments will compute lags spanning from ``tmin`` to ``tmax``.
+    - with the ``times`` argument, one can request an arbitrary set of time lags at which to compute \
+    the coefficients of the TRF.
+
 
     Attributes
     ----------
     lags : 1d-array
-        Array of `int`, corresponding to lag in samples at which the TRF coefficients are computed
+        Array of ``int``, corresponding to lag in samples at which the TRF coefficients are computed
     times : 1d-array
-        Array of `float`, corresponding to lag in seconds at which the TRF coefficients are computed
+        Array of ``float``, corresponding to lag in seconds at which the TRF coefficients are computed
     srate : float
         Sampling rate
     use_regularisation : bool
@@ -159,11 +160,12 @@ class TRFEstimator(BaseEstimator):
 
     Notes
     -----
-        - Attributes with a `_` suffix are only set once the TRF has been fitted on EEG data (i.e. after
-        the method :meth:`TRFEstimator.fit` has been called).
-        - Can fit on a list of multiple dataset, where we have a list of target Y and
-        a single stimulus matrix of features X, then the computation is made such that
-        the coefficients computed are similar to those obtained by concatenating all matrices
+    * Attributes with a ``_`` suffix are only set once the TRF has been fitted on EEG data (i.e. after \
+    the method :meth:`TRFEstimator.fit` has been called).
+    * Can fit on a list of multiple dataset, where we have a list of target ``Y`` and \
+    a single stimulus matrix of features ``X``, then the computation is made such that \
+    the coefficients computed are similar to those obtained by concatenating all matrices
+   
 
     Examples
     --------
@@ -171,6 +173,9 @@ class TRFEstimator(BaseEstimator):
     >>> x = np.random.randn(1000, 3)
     >>> y = np.random.randn(1000, 2)
     >>> trf.fit(x, y, lagged=False)
+
+    .. seealso::
+        :func:`_svd_regress`
     """
     
     def fromArray(arr, tmin, tmax, fs):
@@ -395,7 +400,7 @@ class TRFEstimator(BaseEstimator):
     def _fitlists(self, X, y, drop=True, feat_names=(), lagged=False, verbose=True):
         """
         Fit the TRF by accumulating the covariance matrices of each item in the 
-        list of arrays in X and Y.
+        list of arrays in ``X`` and ``Y``.
         This is more memory efficient and can follow nicely an experiment design
         where several audio clips of variable length are aligned with M/EEG.
 
@@ -468,7 +473,7 @@ class TRFEstimator(BaseEstimator):
 
         Returns
         -------
-        TRFEstimator instance
+        :class:`TRFEstimator` instance
         """
         assert hasattr(self, 'all_betas'), "TRF must be fitted with several regularisation values alpha at once."
         trf = self if in_place else self.copy()
@@ -679,7 +684,7 @@ class TRFEstimator(BaseEstimator):
         return X.dot(betas)
 
     def score(self, Xtest, ytrue, scoring="corr", reduce_multi=None):
-        """Compute a score of the model given true target and estimated target from Xtest.
+        """Compute a score of the model given true target and estimated target from ``Xtest``.
 
         Parameters
         ----------
@@ -694,7 +699,7 @@ class TRFEstimator(BaseEstimator):
             for cross-validation might require a single number from the scorring function.
             This can be achieved by _reducing_ the scores either by taking the mean or the sum across channels
             (respectively with 'mean' or 'sum'). If a callable is used, its signature must be (1d-ndarray) -> float,
-            similar to func:`np.mean`.
+            similar to :func:`np.mean`.
 
         Returns
         -------
@@ -724,17 +729,17 @@ class TRFEstimator(BaseEstimator):
 
         Parameters
         ----------
-        feat_id : list or int
+        feat_id : ``list`` | ``int``
             Index of the feature requested or list of features.
             Default is to use all features.
         ax : array of axes (flatten)
             list of subaxes
-        **kwargs : **dict
+        **kwargs : ``**dict``
             Parameters to pass to :func:`plt.subplots`
 
         Returns
         -------
-        fig : figure
+        fig : :class:`plt.Figure`
         """
         if isinstance(feat_id, int):
             feat_id = list(feat_id) # cast into list to be able to use min, len, etc...
