@@ -204,7 +204,7 @@ def pairwise_boxplots(arr1, arr2, labels=['1', '2'], ax=None, linealpha=0.5,
     
     if add_signi:
         pval = ttest_rel(arr1, arr2).pvalue
-        significance_overlay(pval, [0, 1])
+        significance_overlay(pval, [0, 1], ax=ax, barh=0.007, dh=0.01,)
     
     ax.set_xticklabels(labels)
     

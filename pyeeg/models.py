@@ -470,8 +470,10 @@ class TRFEstimator(BaseEstimator):
         -------
         TRFEstimator instance
         """
+        assert hasattr(self, 'all_betas'), "TRF must be fitted with several regularisation values alpha at once."
         trf = self if in_place else self.copy()
-        betas = self.betas[..., best_index]
+        betas = self.all_betas[..., best_index]
+        trf.alpha = self.alpha[best_index]
         if trf.fit_intercept:
             trf.intercept_ = betas[0, :]
             betas = betas[1:, :]
@@ -513,7 +515,7 @@ class TRFEstimator(BaseEstimator):
         assert hasattr(self, 'all_betas'), "TRF must be fitted with several regularisation values alpha at once."
         # For several story-parts
         if isinstance(X, list) and len(X)==len(y):
-            scores = np.mean([self.multialpha_score(x, yy)for x, yy in zip(X, y)], 0)
+            scores = np.mean([self.multialpha_score(x, yy)for x, yy in tqdm(zip(X, y), total=len(X), desc='Scoring each segment ')], 0)
             return scores
         else:
             # Lag X if necessary, and add intercept
