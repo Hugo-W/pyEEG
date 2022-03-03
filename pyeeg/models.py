@@ -84,7 +84,7 @@ def _svd_regress(x, y, alpha=0., verbose=False):
         assert all([xtr.shape[0] == ytr.shape[0] for xtr, ytr in zip(x, y)]), "Inconsistent trial lengths!"
         XtX = reduce(lambda x, y: x + y, [xx.T @ xx for xx in x])
         [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
-        XtY = np.zeros((XtX.shape[0], y[0].shape[1]))
+        XtY = np.zeros((XtX.shape[0], y[0].shape[1]), dtype=y[0].dtype)
         count = 1
         for X, Y in tqdm(zip(x, y), total=len(x), leave=False):
             if verbose: LOGGER.info("Accumulating segment %d/%d", count, len(x))
