@@ -6,6 +6,8 @@ Simply.
 """
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
+import seaborn as sns
+from matplotlib.patches import PathPatch
 import numpy as np
 from scipy import signal
 from scipy.stats import ttest_rel
@@ -325,3 +327,23 @@ def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05,
     ax.text(*mid, text, color=color, **kwargs_t)
 
     return ax
+
+
+def prettify_boxplot(ax):
+    """
+    Renders a prettier boxplot.
+    
+    The original boxplot ideally was drawn with ``seaborn``, or with :func:`plt.boxplot`
+    while using ``patch_artist=True``.
+    
+    Parameters
+    ----------
+    ax : :class:`plt.AxesSubplot`
+        Axis in which the boxplot is drawn.
+    """
+    patch = [p for p in ax.get_children() if isinstance(ax, PathPatch)]
+    lines = ax.get_lines()
+    for p,l3 in zip(patch, np.reshape(lines, (-1, 3))):
+        c = p.get_facecolor()
+        p.set_edgecolor(sns.desaturate(c, 0.65))
+        for l in l3[:-1]: l.set_color(c)
