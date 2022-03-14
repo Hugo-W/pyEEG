@@ -723,6 +723,26 @@ class TRFEstimator(BaseEstimator):
             elif callable(reduce_multi):
                 return reduce_multi(score)
 
+    def apply_func(self, func):
+        """
+        Apply a function over all values in `coef_` and `intercept_`.
+
+        Parameters
+        ---------
+        func : callable
+            The funciton must take an array as an input and return an array of same size.
+
+        Returns
+        -------
+        trf : TRFEstimator
+            A new instance with transformed values.
+        """
+        trf = self.copy()
+        trf.coef_ = func(self.coef_)
+        assert trf.coef_.shape == self.coef_.shape, f"{func} must apply to array and return an array of same shape."
+        trf.intercept_ = func(self.intercept_)
+        return trf
+
 
     def plot(self, feat_id=None, ax=None, spatial_colors=False, info=None, picks=None, **kwargs):
         """Plot the TRF of the feature requested as a *butterfly* plot.
