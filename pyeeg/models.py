@@ -19,7 +19,7 @@ and we would have in `__init__.py` an entry to load all architectures.
 """
 import logging
 import numpy as np
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from functools import reduce
 from scipy import stats
 from sklearn.model_selection import KFold
