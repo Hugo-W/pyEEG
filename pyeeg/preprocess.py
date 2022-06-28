@@ -190,7 +190,7 @@ class WaveletTransform(TransformerMixin):
         self.wavelets = morlet(sfreq, freqs, n_cycles=7)
         self.nfreqs = len(freqs)
         self.sfreq = sfreq
-        self.n_cycles = 7
+        self.n_cycles = n_cycles
         
     def transform(self, X, n_jobs=1):
         """
@@ -308,3 +308,4 @@ class MultichanWienerFilter(BaseEstimator, TransformerMixin):
         '''
         self.fit(y_clean, y_artifact, cov_data=cov_data)
         return self.transorm(x)
+
