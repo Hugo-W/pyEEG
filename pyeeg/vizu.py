@@ -76,7 +76,7 @@ def plot_filterbank(fbank):
     plt.xlabel('Normalized Frequency')
     plt.ylabel('Amplitude (not in dB)')
 
-def plot_filterbank_output(signals, spacing=None, axis=-1):
+def plot_filterbank_output(signals, x=None, spacing=None, axis=-1):
     """
     Plot output coming out of a filterbank
     Each output of each channel is displayed on top of each other.
@@ -85,6 +85,9 @@ def plot_filterbank_output(signals, spacing=None, axis=-1):
     if spacing is None:
         spacing = signals.max()
 
+    if x is None:
+        x=range(signals.shape[axis])
+        
     for k, filtered in enumerate(signals):
         plt.gca().set_prop_cycle(plt.cycler('color', COLORS[:signals.shape[2]]))
         if axis == -1:

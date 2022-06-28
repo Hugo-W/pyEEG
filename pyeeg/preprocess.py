@@ -190,7 +190,7 @@ class WaveletTransform(TransformerMixin):
         self.wavelets = morlet(sfreq, freqs, n_cycles=7)
         self.nfreqs = len(freqs)
         self.sfreq = sfreq
-        self.n_cycles = 7
+        self.n_cycles = n_cycles
         
     def transform(self, X, n_jobs=1):
         """
