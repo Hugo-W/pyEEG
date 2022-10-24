@@ -449,11 +449,11 @@ class TRFEstimator(BaseEstimator):
             self.feat_names_ = feat_names
             
         if lagged:
-            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, verbose)
+            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, self.verbose)
         else:
             filling = np.nan if drop else 0.
             betas = _svd_regress([np.hstack([np.ones((sum(s), 1)), lag_matrix(x, self.lags, filling=filling, drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=filling, drop_missing=drop)
-                                  for s,x in zip(valid_samples, X)], [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, verbose)
+                                  for s,x in zip(valid_samples, X)], [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, self.verbose)
         # Storing all alpha's betas
         self.all_betas = betas
         # Storing only the first as the main
