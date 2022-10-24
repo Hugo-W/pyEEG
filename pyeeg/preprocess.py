@@ -181,6 +181,59 @@ def get_power(signals, decibels=False, win=125, axis=-1, n_jobs=-1):
 
     return out
 
+class Whitener(TransformerMixin):
+    """
+    A data whitener (via either PCA or ZCA).
+    """
+    def __init__(self, axis=0, zca=False, bias=True):
+        self.zca = zca
+        self.axis = axis
+        self.bias = bias
+
+        self.mu = None
+        self.sigma = None
+        self.W = None
+        self.scale = None # 1/np.sqrt(eignval)
+        self.U = None # eigenvectors
+
+    def demean(self, data, axis=None):
+        if axis is None: axis = self.axis
+        self.mu = data.mean(axis=axis)
+        return data - self.mu
+    def cov(self, data, axis=None):
+        debias = 1. - int(self.bias)
+        if axis is None: axis = self.axis
+        if axis != 0: data = np.swapaxes(data, 0, axis)
+        self.sigma = data .T @ data / (len(data) - debias)
+        return self.sigma
+
+    def compute_rotation(self, C=None):
+        assert self.sigma is not None, "Compute covariance matrix first"
+        if C is None:
+            e, V = np.linalg.eigh(self.sigma)
+        else:
+            e, V = np.linalg.eigh(C)
+        e = np.diag(1/np.sqrt(e))
+        self.scale = e
+        self.U = V
+        if self.zca:
+            self.W = V @ e @ V.T
+        else:
+            self.W = e @ V.T
+
+    def fit(self, X, y=None, axis=None):
+        self.cov(self.demean(X, axis=axis), axis=axis)
+        self.compute_rotation()
+        return self
+
+    def transform(self, X, y=None):
+        return (X - self.mu) @ self.W.T
+    def fit_transform(self, X, y=None, axis=None):
+        self.fit(X, axis=axis)
+        return self.transform(X)
+    def inverse(self, X, axis=None):
+        return (X @ np.linalg.pinv(self.W.T)) + self.mu
+
 class WaveletTransform(TransformerMixin):
     '''
     This class creates a list of wavelet tranfsform (complex Morlet wavelet)

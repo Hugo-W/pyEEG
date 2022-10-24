@@ -432,11 +432,11 @@ class TRFEstimator(BaseEstimator):
         valid_samples = []
         for yy in y:
             n_samples_all = yy.shape[0]
-        if drop:
-            valid_samples.append(np.logical_not(np.logical_or(np.arange(n_samples_all) < abs(max(self.lags)),
-                                                               np.arange(n_samples_all)[::-1] < abs(min(self.lags)))))
-        else:
-            valid_samples.append(np.ones((n_samples_all,), dtype=bool))
+            if drop:
+                valid_samples.append(np.logical_not(np.logical_or(np.arange(n_samples_all) < abs(max(self.lags)),
+                                                                np.arange(n_samples_all)[::-1] < abs(min(self.lags)))))
+            else:
+                valid_samples.append(np.ones((n_samples_all,), dtype=bool))
 
         self.n_chans_ = y[0].shape[1]
         self.n_feats_ = X[0].shape[1] if not lagged else X[0].shape[1]//len(self.lags)
@@ -452,8 +452,8 @@ class TRFEstimator(BaseEstimator):
             betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, verbose)
         else:
             filling = np.nan if drop else 0.
-            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), lag_matrix(x, self.lags, filling=filling, drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=filling, drop_missing=drop)
-                                  for x in X], [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, verbose)
+            betas = _svd_regress([np.hstack([np.ones((sum(s), 1)), lag_matrix(x, self.lags, filling=filling, drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=filling, drop_missing=drop)
+                                  for s,x in zip(valid_samples, X)], [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, verbose)
         # Storing all alpha's betas
         self.all_betas = betas
         # Storing only the first as the main
