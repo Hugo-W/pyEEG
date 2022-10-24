@@ -253,7 +253,7 @@ class TRFEstimator(BaseEstimator):
         
         """
         if (self.tmin is not None) and (self.tmax is not None):
-            LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
+            #LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
             self.lags = lag_span(self.tmin, self.tmax, srate=self.srate)[::-1] #pylint: disable=invalid-unary-operand-type
             #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
             self.times = self.lags[::-1] / self.srate
@@ -425,8 +425,19 @@ class TRFEstimator(BaseEstimator):
             Fitted instance of TRF model.
 
         """
+        #if drop:
+            #raise NotImplementedError("Please use drop=False, this feature has not been implemented yet")
+
+        # For each element (subject or segment) in Y list, check which sample to drop
+        valid_samples = []
+        for yy in y:
+            n_samples_all = yy.shape[0]
         if drop:
-            raise NotImplementedError("Please use drop=False, this feature has not been implemented yet")
+            valid_samples.append(np.logical_not(np.logical_or(np.arange(n_samples_all) < abs(max(self.lags)),
+                                                               np.arange(n_samples_all)[::-1] < abs(min(self.lags)))))
+        else:
+            valid_samples.append(np.ones((n_samples_all,), dtype=bool))
+
         self.n_chans_ = y[0].shape[1]
         self.n_feats_ = X[0].shape[1] if not lagged else X[0].shape[1]//len(self.lags)
         if feat_names:
@@ -438,11 +449,11 @@ class TRFEstimator(BaseEstimator):
             self.feat_names_ = feat_names
             
         if lagged:
-            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, y, self.alpha, verbose)
+            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, verbose)
         else:
             filling = np.nan if drop else 0.
-            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), lag_matrix(x, self.lags, filling=filling, drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=0., drop_missing=drop)
-                                  for x in X], y, self.alpha, verbose)
+            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), lag_matrix(x, self.lags, filling=filling, drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=filling, drop_missing=drop)
+                                  for x in X], [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, verbose)
         # Storing all alpha's betas
         self.all_betas = betas
         # Storing only the first as the main
