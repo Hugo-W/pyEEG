@@ -547,11 +547,11 @@ class TRFEstimator(BaseEstimator):
             # Compute scores
             # A single X and a single y
             if y.ndim == 2: # single-subject
-                scores = np.zeros((1, len(self.alpha), self.n_chans_))
+                scores = np.zeros((1, len(self.alpha), self.n_chans_), dtype=y.dtype)
                 for lamb in range(len(self.alpha)):
                     scores[0, lamb, :] = np.diag(np.corrcoef(yhat[..., lamb], y, rowvar=False), k=self.n_chans_)
             else: # multi-subject (one X several ys)
-                scores = np.zeros((y.shape[0], len(self.alpha), self.n_chans_))
+                scores = np.zeros((y.shape[0], len(self.alpha), self.n_chans_), dtype=y[0].dtype)
                 for ksubj, yy in enumerate(y):
                     for lamb in range(len(self.alpha)):
                         scores[ksubj, lamb, :] = np.diag(np.corrcoef(yhat[..., lamb], yy, rowvar=False), k=self.n_chans_)
