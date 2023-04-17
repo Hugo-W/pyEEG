@@ -86,10 +86,15 @@ def _svd_regress(x, y, alpha=0., verbose=False):
         [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
         XtY = np.zeros((XtX.shape[0], y[0].shape[1]), dtype=y[0].dtype)
         count = 1
-        for X, Y in tqdm(zip(x, y), total=len(x), leave=False):
-            if verbose: LOGGER.info("Accumulating segment %d/%d", count, len(x))
+        if verbose:
+            pbar = tqdm(total=len(x), leave=False, desc='Covariance accumulation')
+        for X, Y in zip(x, y):
+            if verbose:
+                LOGGER.info("Accumulating segment %d/%d", count, len(x))
+                pbar.update()
             XtY += X.T @ Y
             count += 1
+        if verbose: pbar.close()
         # XtY /= len(x) # NO IT SHOULD BE A SUM
         
         #betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
