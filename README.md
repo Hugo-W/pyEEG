@@ -2,7 +2,7 @@
 
 > v1.2
 
-pyEEG is a library for processing EEG data build mostly on top of MNE-py and scikit-learn. It is framed to work with data collected with naturalsistic stimuli, therefore with continuous recordings rather than trial-based designs. It allows analysis of continuous m/eeg and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level or phoneme-level features).
+pyEEG is a library for processing EEG data built mostly on top of MNE-py and scikit-learn. It is framed to work with data collected with naturalistic stimuli, therefore with continuous recordings rather than trial-based designs. It allows analysis of continuous m/eeg and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level or phoneme-level features).
 
 You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.html).
 
