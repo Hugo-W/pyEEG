@@ -4,7 +4,9 @@
 
 pyEEG is a library fo processing EEG data build mostly on top of MNE-py and scikit-learn. It is framed to work with data collected with naturalsistic stimuli, therefore with continuous recordings rather than trial-based designs. It allows analysis of continuous m/eeg and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level or phoneme-level features).
 
-The documentation is not hosted anywhere, in order to read through it, it has to be build locally either as a PDF stand-alone or as a set of html files that can be browse using any internet browser.
+You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.html).
+
+> Note that this code repository is relatively old and **unmaintained**. Most useful code about computing TRF is contained in `pyeeg/models.py`, especially in the class `TRFEstimator` and the function `_svd_regress`: the latter implements TRF estimation with memory efficient and accelerated computation for handling multiple epochs or multiple subjects ocmputation.
 
 ------
 
