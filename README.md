@@ -6,7 +6,7 @@ pyEEG is a library fo processing EEG data build mostly on top of MNE-py and scik
 
 You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.html).
 
-> Note that this code repository is relatively old and **unmaintained**. Most useful code about computing TRF is contained in `pyeeg/models.py`, especially in the class `TRFEstimator` and the function `_svd_regress`: the latter implements TRF estimation with memory efficient and accelerated computation for handling multiple epochs or multiple subjects ocmputation.
+> Note that this code repository is relatively old and **unmaintained**. Most useful code about computing TRF is contained in `pyeeg/models.py`, especially in the class `TRFEstimator` and the function `_svd_regress`: the latter implements TRF estimation with memory efficient and accelerated computation for handling multiple epochs or multiple subjects.
 
 ------
 
