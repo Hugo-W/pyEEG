@@ -11,10 +11,32 @@ Available metrics:
 TODO:
     - PDC
     - Epoch based vs Continuous !?
+    - Phase Transfer entropy!!! ()
 """
 import numpy as np
 from scipy.signal import hilbert, csd
 from scipy.fftpack import fft, fftfreq
+
+def phase_transfer_entropy(x, y, fs=1, nfft=None, fbands=None):
+    """
+    Compute phase transfer entropy between two signals x and y.
+    """
+    if nfft is None: nfft = x.shape[0]
+    freqs = fftfreq(nfft, d=1/fs)
+    if fbands is not None:
+        fsel = np.where((freqs > fbands[0]) & (freqs < fbands[1]))
+        freqs = freqs[fsel]
+    else:
+        fsel = slice(None)
+    # compute phase of x and y
+    phx = np.angle(hilbert(x, axis=0))
+    phy = np.angle(hilbert(y, axis=0))
+    # compute phase transfer entropy
+    pte = np.zeros_like(freqs)
+    for i, f in enumerate(freqs):
+        # compute phase transfer entropy
+        pte[i] = np.mean(np.abs(np.exp(1j*(phx[fsel, f] - phy[fsel, f]))))
+    return pte
 
 def jackknife_resample(data):
     """
