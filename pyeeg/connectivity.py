@@ -44,6 +44,40 @@ def phase_transfer_entropy(x, y, fs=1, nfft=None, fbands=None):
         pte[i] = np.mean(np.abs(np.exp(1j*(phx[fsel, f] - phy[fsel, f]))))
     return pte
 
+def pte_draft(data, delay=None, binsize='scott'):
+    """
+    Compute Phase Transfer Entropy between each pair of channels in data.
+
+    ---
+    Original MATLAB code from Matteo Fraschini, Arjan Hillebrand (VERSION 2.5 /2017)
+    accessed at: https://figshare.com/articles/Phase_Transfer_Entropy/3847086
+    Cite:
+    Fraschini, Matteo; Hillebrand, Arjan (2017). Phase Transfer Entropy in Matlab. figshare. Dataset. https://doi.org/10.6084/m9.figshare.3847086.v12
+
+    Following description of PTE from:
+    M Lobier, F Siebenhuhner, S Palva, JM Palva (2014) Phase transfer entropy: a novel phase-based measure for directed connectivity in networks coupled by oscillatory interactions. Neuroimage 85, 853-872
+    with implemementation inspired by Java code by C.J. Stam (https://home.kpn.nl/stam7883/brainwave.html)
+    Note that implementations differ in normalisation, as well as choices for binning and delay
+    """
+    assert len(np.atleast_2d(data).shape) == 2, "data must be a 2d array"
+    if delay is not None: assert isinstance(delay, int), "delay must be an integer"
+    N, chan = data.shape
+    PTE = np.zeros((chan, chan)) # Phase Transfer Entropy matrix
+    dPTE = np.zeros_like(PTE) # directed PTE
+
+    cpx_data = hilbert(data, axis=0) # compute complex signal
+    phi = np.angle(cpx_data) # compute phase (between -pi and pi)
+    phi += np.pi # shift phase between 0 and 2pi
+
+    # Compute delay if not provided
+    if delay is None:
+        # delay is based on the number of times the phase flips across time and channels, as in Brainwave (C.J. Stam)
+        n1, n2 = 0, 0
+        for i in range(chan):
+            for j in range(i+1, chan):
+                n1 += np.sum(np.abs(np.diff(np.sign(np.diff(phi[:, i])))))
+                n2 += np.sum(np.abs(np.diff(np.sign(np.diff(phi[:, j])))))
+
 def jackknife_resample(data):
     """
     Performs jackknife resampling on numpy array.
