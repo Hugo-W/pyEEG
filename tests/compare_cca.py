@@ -82,4 +82,5 @@ def plot(x, y, Ax1, Ay1, R1, Ax2, Ay2, R2, impl_names):
             ax.set_title(r'$A_y$')
 
     fig.tight_layout()
+    plt.show()
     return fig

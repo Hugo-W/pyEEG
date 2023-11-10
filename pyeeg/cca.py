@@ -131,7 +131,7 @@ def cca_svd(x, y, opt={}):
     >>> x = np.random.randn(1000,10)
     >>> y = np.random.randn(1000,8)
     >>> opt = {'x': {'nKeep': 3}, 'y': {'var': 0.99}}
-    >>> Ax, Ay, R = myCCA.cca_svd(x, y, opt)
+    >>> Ax, Ay, R = cca_svd(x, y, opt)
 
     CCA between x and y, while keeping only 3 top PCs for x and dimensions
     accounting for 99 % the total variance for y.
@@ -147,7 +147,7 @@ def cca_svd(x, y, opt={}):
     if not 'y' in opt:
         opt['y'] = {}
 
-    # same as below with a for loop, curtesy of Hugo
+    # same as below with a for loop, courtesy of Hugo
     #    S, V = {}, {}
     #    for k, mat in zip(opt.keys(), [x, y]):
     #        S[k] = regEigen(mat, opt[k])

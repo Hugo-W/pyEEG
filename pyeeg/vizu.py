@@ -261,7 +261,7 @@ def plots_topogrid(x, y, info, yerr=None, mask=None):
 
 def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05, barh=.05, fs=None, maxasterix=None, ax=None):
     """ 
-    Annotate barplot (preferably, well but any type really) with p-values.
+    Annotate barplot (preferably, but any type really) with p-values.
 
     Parameters
     ----------

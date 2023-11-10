@@ -440,6 +440,44 @@ def find_knee_point(x, y, tol=0.95, plot=False):
 
     return x[np.argmin(minmax_scale(np.asarray(angles)/np.pi)<=tol) + 1]
 
+def design_lagmatrix(x, nlags=1, time_axis=0):
+    """
+    Design a matrix of lagged time series.
+    This is a helper function for autoregressive models estimation (so it will design a matrix of its own signal
+    and will not use lag 0, only negative lag, i.e. to use for AR models and not ARMA).
+    """
+    if x.ndim == 1:
+        time_axis = 1
+    x = np.atleast_2d(x)
+    if time_axis == 1: # transpose if time is in columns
+        x = x.T
+    n, k = x.shape # n: number of observations, k: number of dimensions
+    X = np.zeros((n-nlags, nlags, k))
+    for i in range(nlags):
+        # X[:, i, :] = x[i+1:n-nlags+i+1]
+        X[:, i, :] = np.roll(x, (i+1), axis=0)[nlags:, :]
+    return X.squeeze(-1) if k==1 else X
+
+def log_likelihood_lm(y, X, beta):
+    """
+    Compute the log likelihood of a linear model given the data and the parameters.
+
+    Parameters
+    ----------
+    y : array_like
+        The dependent variable. Shape (n, k), with n number of samples.
+    X : array_like
+        The independent variables. Shape (n, p), with p number of predictors.
+    beta : array_like
+        The parameters of the model. Shape (p, k), with k number of dependent variables.
+
+    """
+    n = len(y)
+    residuals = y - X @ beta
+    sigma2 = np.var(residuals, axis=0)
+    log_likelihood = -n/2 * np.log(2*np.pi) - n/2 * np.log(sigma2) - 1/(2*sigma2) * np.sum(residuals.T @ residuals, axis=0)
+    return log_likelihood
+
 def mem_check(units='Gb'):
     "Get available RAM"
     stats = psutil.virtual_memory()
