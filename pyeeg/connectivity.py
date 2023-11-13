@@ -17,32 +17,20 @@ Some utilities:
 TODO:
     - PDC
     - Epoch based vs Continuous !?
-    - Phase Transfer entropy!!! (in progress)
+    - Coherence
+    - Imaginary Coherence
+    - Phase Coherence
+    - SL (Synchronization Likelihood)
+    - PLT (Phase Lag Time)
+    - AEC (amplitude envelope correlation)
+
+Update: 
+- 2021/03/11: Added phase_transfer_entropy, simulate_ar, simulate_var
 """
 import numpy as np
 from scipy.signal import hilbert, csd
 from scipy.fftpack import fft, fftfreq
 
-def phase_transfer_entropy(x, y, fs=1, nfft=None, fbands=None):
-    """
-    Compute phase transfer entropy between two signals x and y.
-    """
-    if nfft is None: nfft = x.shape[0]
-    freqs = fftfreq(nfft, d=1/fs)
-    if fbands is not None:
-        fsel = np.where((freqs > fbands[0]) & (freqs < fbands[1]))
-        freqs = freqs[fsel]
-    else:
-        fsel = slice(None)
-    # compute phase of x and y
-    phx = np.angle(hilbert(x, axis=0))
-    phy = np.angle(hilbert(y, axis=0))
-    # compute phase transfer entropy
-    pte = np.zeros_like(freqs)
-    for i, f in enumerate(freqs):
-        # compute phase transfer entropy
-        pte[i] = np.mean(np.abs(np.exp(1j*(phx[fsel, f] - phy[fsel, f]))))
-    return pte
 
 def pte_draft(data, delay=None, binsize='scott'):
     """
@@ -56,27 +44,82 @@ def pte_draft(data, delay=None, binsize='scott'):
 
     Following description of PTE from:
     M Lobier, F Siebenhuhner, S Palva, JM Palva (2014) Phase transfer entropy: a novel phase-based measure for directed connectivity in networks coupled by oscillatory interactions. Neuroimage 85, 853-872
-    with implemementation inspired by Java code by C.J. Stam (https://home.kpn.nl/stam7883/brainwave.html)
+    with implemementation inspired by Java code by C.J. Stam (https://web.archive.org/web/20200711091249/https://home.kpn.nl/stam7883/brainwave.html)
     Note that implementations differ in normalisation, as well as choices for binning and delay
     """
     assert len(np.atleast_2d(data).shape) == 2, "data must be a 2d array"
     if delay is not None: assert isinstance(delay, int), "delay must be an integer"
     N, chan = data.shape
-    PTE = np.zeros((chan, chan)) # Phase Transfer Entropy matrix
-    dPTE = np.zeros_like(PTE) # directed PTE
 
-    cpx_data = hilbert(data, axis=0) # compute complex signal
-    phi = np.angle(cpx_data) # compute phase (between -pi and pi)
-    phi += np.pi # shift phase between 0 and 2pi
+    # Compute phase
+    phi = np.angle(hilbert(data, axis=0))
 
-    # Compute delay if not provided
-    if delay is None:
-        # delay is based on the number of times the phase flips across time and channels, as in Brainwave (C.J. Stam)
-        n1, n2 = 0, 0
-        for i in range(chan):
-            for j in range(i+1, chan):
-                n1 += np.sum(np.abs(np.diff(np.sign(np.diff(phi[:, i])))))
-                n2 += np.sum(np.abs(np.diff(np.sign(np.diff(phi[:, j])))))
+    # Compute ideal delay
+    count1, count2 = 0, 0
+    for j in range(chan):
+        for i in range(1, N-1):
+            count1 += 1
+            if (phi[i-1, j] * phi[i+1, j]) < 0:
+                count2 += 1
+    print(np.round(count1/count2))
+    delay = int(np.round(count1/count2))
+
+    phi += np.pi # get it between 0 and 2pi
+
+    # Binsize
+    method = 'scott'
+    if method=='scott':
+        binsize = 3.49*np.std(phi, 0).mean()/np.power(N, 1/3) # binsize as in Scott et al. 2014
+    elif method=='fd':
+        binsize = 2*(np.percentile(phi, 75) - np.percentile(phi, 25))*np.power(N, -1/3) # binsize as in Freedman et al. 1981
+    elif method=='otnes':
+        # binsize based on Otnes R. and Enochson (1972) Digital Time Series Analysis. Wiley.
+        # as in Brainwave (C.J. Stam)
+        # Nbins = np.round(np.log2(N)) + 1
+        Nbins = np.exp(0.626 + 0.4*np.log(N-(delay+1)))
+        binsize = 2*np.pi/Nbins
+
+    # get the bins
+    bins_w = np.arange(0, 2*np.pi, binsize)
+    bins_w = np.r_[np.arange(0, 2*np.pi, binsize), 2*np.pi] # add the last bin
+    Nbins = len(bins_w) - 1
+    
+    PTE = np.zeros((chan, chan))
+    for i in range(chan):
+        for j in range(chan):
+            # Compute phase transfer entropy between i and j: namely x -> y (x causes y)
+            if i==j: continue
+            # Using numpy's histogram is much faster and gives the same result
+            # ypr stands for "y predicted", i.e. ahead from y (such that P(ypr|y) is the probability of y given y past)
+            Py = np.histogram(phi[:-delay, j], bins_w)[0].astype(float)
+            Py_x = np.histogram2d(phi[:-delay, j], phi[:-delay, i], bins_w)[0].astype(float)
+            Pypr_y = np.histogram2d(phi[delay:, j], phi[:-delay, j], bins_w)[0].astype(float) # conditioned on y past
+            # And conditionned on both x and y past:
+            Pypr_yx, edges = np.histogramdd(np.c_[phi[delay:, j], phi[:-delay, j], phi[:-delay, i]], bins=(bins_w, bins_w, bins_w))
+            Pypr_yx = Pypr_yx.astype(float)
+
+            # Normalise probabilities:
+            Py /= N - delay
+            Py_x /= N - delay
+            Pypr_y /= N - delay
+            Pypr_yx /= N - delay
+
+            # Compute entropies
+            Hy = -np.nansum(Py*np.log2(Py))
+            Hy_x = -np.nansum(Py_x*np.log2(Py_x))
+            Hypr_y = -np.nansum(Pypr_y*np.log2(Pypr_y))
+            Hypr_yx = -np.nansum(Pypr_yx*np.log2(Pypr_yx))
+
+            # Compute PTE
+            PTE[i, j] = (Hy - Hy_x - Hypr_y + Hypr_yx)/np.log2(Nbins) # normalising by log2(Nbins) as in Brainwave (C.J. Stam) ?
+            # matlab version as its opposite:
+            # PTE[i, j] = Hypr_y + Hy_x - Hy - Hypr_yx # and no normalisation
+
+    # Compute dPTE
+    tmp = np.triu(PTE) + np.tril(PTE).T
+    dPTE = np.tril(PTE/tmp.T, -1) + np.triu(PTE/tmp, 1)
+    return dPTE, PTE
+
 
 def jackknife_resample(data):
     """
