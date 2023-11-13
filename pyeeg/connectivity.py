@@ -8,6 +8,7 @@ Available metrics:
     - WPLI (weighted phase lag index)
     - PLM (phase linearity measurement)
     - phase transfer entropy (PTE)
+    - Granger Causality
 
 Some utilities:
     - jackknife resampling
@@ -24,15 +25,16 @@ TODO:
     - PLT (Phase Lag Time)
     - AEC (amplitude envelope correlation)
 
-Update: 
-- 2021/03/11: Added phase_transfer_entropy, simulate_ar, simulate_var
+Update:
+    - 10/11/2023: moved simulate_(V)ar to pyeeg.simulate, added Granger Causality
+    - 09/11/2023 Added phase_transfer_entropy, simulate_ar, simulate_var
 """
 import numpy as np
 from scipy.signal import hilbert, csd
 from scipy.fftpack import fft, fftfreq
 
 
-def pte_draft(data, delay=None, binsize='scott'):
+def phase_transfer_entropy(data, delay=None, binsize='scott'):
     """
     Compute Phase Transfer Entropy between each pair of channels in data.
 
@@ -151,69 +153,6 @@ def csd_ndarray(x, fs=1, nfft=None):
             S[i, j] = c
             S[j, i] = c
     return S
-
-def simulate_ar(order, coefs, n, sigma=1, seed=42):
-    """
-    Simulate an autoregressive process of order `order`.
-
-    Parameters
-    ----------
-    order : int
-        The order of the autoregressive process.
-    coefs : array_like
-        The coefficients of the autoregressive process. The first element is the coefficient of the lag (t-1).
-    n : int
-        The number of samples to simulate.
-    sigma : float
-        The standard deviation of the additive noise process.
-    
-    Returns
-    -------
-    x : array_like
-        The simulated time series. Shape (n,).
-    """
-    rng = np.random.default_rng(seed)
-    x = np.zeros(n + order)
-    for i in range(n+order):
-        if i < order:
-            x[i] = rng.standard_normal()* sigma
-        else:
-            x[i] = np.dot(coefs[::-1], x[i-order:i]) + rng.standard_normal()*sigma
-    return x[order:]
-
-
-def simulate_var(order, coef, nobs=500, ndim=2, seed=42, verbose=False):
-    """
-    Simulate a VAR model of order `order`.
-
-    The VAR model is defined as:
-
-    .. math::
-        x_t = A_1 x_{t-1} + A_2 x_{t-2} + ... + A_p x_{t-p} + \\epsilon_t
-        x_t = \\sum_{i=1}^p A_i x_{t-i} + \\epsilon_t
-
-    where :math:`x_t` is a vector of shape (ndim, 1), :math:`A_i` is a matrix of shape (ndim, ndim)
-
-    .. note::
-        The coefficients at a given lag are such as :math:`C_ij` is i->j, so it will be the coefficients for dimension j!
-        For example, each row of the first column are determining the contributions of each component onto the first component.
-    """
-    rng = np.random.default_rng(seed)
-    if order == 1 and coef.ndim == 2:
-        coef = coef[None, :, :]
-    assert coef.shape == (order, ndim, ndim), "coef must be of shape (order, ndim, ndim)"
-    data = np.zeros((nobs+order, ndim))
-
-    if verbose:
-        print(f"Simulating VAR({order}) model with {ndim} dimensions and {nobs} observations")
-        print(f"Data shape: {data.shape}")
-
-    data[:, :] = rng.standard_normal(size=data.shape) # initialize with noise
-    for t in range(order, nobs+order):
-        for lag in range(order):
-            data[t] += data[t-(lag+1)] @ coef[lag] # here if I multiply from the left, I get the contributions row wise instead of column wise
-
-    return data[order:, :] # remove the first order samples
 
 def wPLI(x, fs=1, nfft=None, fbands=None):
     # see https://github.com/fieldtrip/fieldtrip/blob/master/connectivity/ft_connectivity_wpli.m for variance estimation of jackknife
