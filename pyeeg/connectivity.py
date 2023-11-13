@@ -7,7 +7,7 @@ Connectivity measures
 Available metrics:
     - WPLI (weighted phase lag index)
     - PLM (phase linearity measurement)
-    - phase transfer entropy (PTE)
+    - phase transfer entropy (PTE): https://www.sciencedirect.com/science/article/pii/S1053811913009191#s0120
     - Granger Causality
 
 Some utilities:
