@@ -31,6 +31,62 @@ Update:
 import numpy as np
 from scipy.signal import hilbert, csd
 from scipy.fftpack import fft, fftfreq
+from itertools import combinations
+
+from .utils import design_lagmatrix
+from .models import fit_ar, fit_var
+
+def granger_causality(X, nlags=1, time_axis=0, verbose=False):
+    """
+    Compute the Granger causality matrix of a multivariate time series.
+
+    Parameters
+    ----------
+    X : ndarray, shape (nsamples, nchannels)
+        Input data.
+    nlags : int
+        Number of lags to use in the model. (model order)
+    time_axis : int
+        Axis along which time runs. Default is 0.
+
+    Returns
+    -------
+    GC : ndarray, shape (nchannels, nchannels)
+        Granger causality matrix.
+
+
+    TODO: now apparently I am computing whether all signals are causing each other, but I should compute
+    whether each signal is causing the others, so I should loop over the dimensions and compute the GC
+    for each pair of signals??....
+    """
+    if time_axis == 1:
+        X = X.T
+    n, k = X.shape # n: number of observations, k: number of channels
+    if verbose:
+        print(f"Fitting AR({nlags}) model for each {k} channels and one VAR({nlags}) model with {k} channels")
+    # Fit AR to every single time series
+    beta_single = fit_ar(X, nlags=nlags, time_axis=0)
+    # Fit VAR to the multivariate time series
+    beta_multi = fit_var(X, nlags=nlags, time_axis=0)
+
+    # This is redundant, as it's calculated already twice in the function above
+    # TODO: if necessary, rewrite the function to avoid this
+    Xlagged = design_lagmatrix(X, nlags=nlags, time_axis=0)
+    # Compute the residuals
+    if verbose: print("Computing residuals")
+    residuals_single = []
+    for c in range(k):
+        residuals_single.append(X[nlags:, c] - Xlagged[..., c] @ beta_single[c])
+    residuals_single = np.asarray(residuals_single).T
+    residuals_multi = X[nlags:, :] - Xlagged.reshape(-1, nlags*k) @ beta_multi.reshape(nlags*k, k)
+
+    GC = np.zeros((k, k))
+    for i in range(k):
+        for j in range(k):
+            if i != j:
+                # np.log(np.var(ex)/np.var(exy[:, 0])), np.log(np.var(ey)/np.var(exy[:, 1]))
+                GC[i, j] = np.log(np.var(residuals_single[:, j]) / np.var(residuals_multi[:, j]))
+    return GC
 
 
 def phase_transfer_entropy(data, delay=None, binsize='scott'):
