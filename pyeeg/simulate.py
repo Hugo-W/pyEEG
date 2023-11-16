@@ -19,6 +19,7 @@ Update:
     - 10/11/2023: initial commit
 """
 import numpy as np
+from .utils import sigmoid
 
 def simulate_ar(order, coefs, n, sigma=1, seed=42):
     """
@@ -113,3 +114,200 @@ def simulate_var_from_cov(cov, nobs=500, ndim=2, seed=42, verbose=False):
             data[t] += data[t-(lag+1)] @ np.linalg.cholesky(cov[lag]) # here if I multiply from the left, I get the contributions row wise instead of column wise
 
     return data[order:, :]
+
+class NeuralMassModel(object):
+    """
+    Abstract class for neural mass models.
+    Defines the function to be implemented for the simulation.
+    """
+    def __init__(self, N, dt=0.001, seed=42):
+        self.N = N # number of neurons/nodes
+        self.dt = dt # sampling rate
+        self.seed = seed # random seed
+
+    def simulate(self):
+        raise NotImplementedError("This method must be implemented in the child class")
+    
+    def step(self):
+        raise NotImplementedError("This method must be implemented in the child class")
+    
+class CTRNN(NeuralMassModel):
+    """
+    Continuous Time Recurrent Neural Network (CTRNN) model.
+
+    .. math::
+        \\tau \\dot{x} = -x + W o + I + \\theta
+
+    """
+    def __init__(self, N, W, dt=0.001, seed=42, nonlinearity=sigmoid, theta=None):
+        """
+        Parameters
+        ----------
+        N : int
+            The number of neurons/nodes.
+        W : array_like
+            The connectivity matrix. Shape (N, N).
+        nonlinearity : callable
+            The nonlinearity function to apply to the network. Default is sigmoid (e.g. can use func:`np.tanh`)    
+        """
+        super().__init__(N, dt, seed)
+        self.nonlinearity = nonlinearity # nonlinearity function
+        self.W = W # connectivity matrix
+        self.readout_W = np.zeros((N,)) # readout matrix
+        self.input_W = np.zeros((N,)) # input matrix
+        self.theta = theta if theta is not None else np.zeros((N,))
+        self.x = np.zeros((N,)) # state of the network
+        self.o = np.zeros((N,)) # output of the network
+
+    def step(self, I=None, noise=0.):
+        """
+        Compute one step of the CTRNN model.
+        """
+        if I is None:
+            I = np.zeros((self.N,))
+        self.x = self.x + self.dt * (-self.x + self.W @ self.o + self.input_W @ I) + noise
+        self.o = self.nonlinearity(self.x + self.theta)
+
+    def read_out(self):
+        return 2 * self.nonlinearity( self.readout_W @ self.o) - 1 # this is in the range -1 to 1 if the nonlinearity is sigmoid
+
+    def simulate(self, x0, tmax=1, noise=0.):
+        """
+        Simulate the CTRNN model and monitor the output.
+
+        Parameters
+        ----------
+        x0 : array_like
+            The initial state of the system. Shape (N,).
+        tmax : float
+            The maximum time to simulate.
+        noise : float
+            The standard deviation of the noise to add to the system.
+        
+        Returns
+        -------
+        x : array_like
+            The simulated time series. Shape (n, N).
+        """
+        rng = np.random.default_rng(self.seed)
+        n = int(tmax / self.dt)
+        x = np.zeros((n, self.N))
+        o = np.zeros((n, self.N))
+        O = np.zeros((n,))
+        x[0] = x0
+        self.x = x0
+        dt_noise = np.sqrt(self.dt) * noise
+        for i in range(1, n):
+            self.step(noise = rng.standard_normal(size=self.x.shape) * dt_noise)
+            x[i] = self.x
+            o[i] = self.o
+            O[i] = self.read_out()
+            
+        return O, x, o
+    
+    def read_out(self):
+        return 2 * self.nonlinearity( self.readout_W @ self.o) - 1
+    
+class JansenRit(NeuralMassModel):
+    """
+    Jansen-Rit model.
+
+    3 populations: excitatory, inhibitory and pyramidal:
+    
+    ```ascii
+    ___________    ___________
+    |         |    |         |
+    !  Inhib  !    !  Excit  !    
+    |         |    |         |
+    -----------    -----------
+    C2,C4 \             / C1, C3
+           \___________/
+            |         |
+            ! Pyramid !
+            |         |
+            -----------
+    ```
+
+    Parameters and typical values as in Grimbert & Faugeras, 2006:
+    - C1, C2, C3, C4	Average number of synapses between populations	135 * [1 0.8 0.25 0.25]
+    - Beta_E	        Time scale for excitatory population	        100 ms
+    - Beta_I	        Time scale for inhibitory population	        50 ms
+    - A	                Average excitatory synaptic gain	            3.25
+    - B	                Average inhibitory synaptic gain	            22
+    - nu	            Threshold of sigmoid	                        5 s^-1
+    - r	                Slope of sigmoid	                            0.56 mV^-1
+    - theta	            Amplitude of sigmoid	                        6 mV
+    - Conduction velocity	 	                                        10 m/s
+    - Fs	            Sample frequency	                            1250 Hz
+    - h	                Integration time step	                        0.0001
+    - T	                Observation time	                            20 s
+    - P	                External input to each of the neural masses	    150
+    - Coupling	        Coupling between the neural masses	            [0.1:0.012:0.292]
+
+    This table is from the paper:
+    [This paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10473283/)
+    
+    """
+    def __init__(self, dt=0.0001, seed=42, nonlinearity=sigmoid):
+        super().__init__(1, dt, seed) # this is a single node (cortical column with 3 sub-populations)
+        self.C_1 = 135 # number of synapses between populations
+        self.C_2 = 108
+        self.C_3 = 33.75
+        self.C_4 = 33.75
+        self.tau_exc = 100 # time scale for excitatory population
+        self.tau_inh = 50 # time scale for inhibitory population
+        self.G_exc = 3.25 # average excitatory synaptic gain
+        self.G_inh = 22 # average inhibitory synaptic gain
+        self.rmax = 5 # amplitude of sigmoid in Hz
+        self.beta = 0.56 # slope of sigmoid
+        self.theta = 6 # threshold of sigmoid
+        self.v = 10 # conduction velocity
+        self.P = 150 # external input to each of the neural masses
+        #self.Coupling = 0.1 # coupling between the neural masses (global coupling strength)
+
+        self.x = np.zeros((6,)) # state of the network
+        self.S = nonlinearity # nonlinearity function
+
+    def step(self, I=0.):
+        """
+        Compute one step of the Jansen-Rit model.
+        """
+        x0, x1, x2, xdot0, xdot1, xdot2 = self.x
+        xdot0 = (self.G_exc * self.S(x1 - x2) - 2 * self.beta * xdot0 - x0) / self.tau_exc
+        xdot1 = (self.G_inh * self.S(x0) - 2 * self.beta * xdot1 - x1) / self.tau_inh
+        xdot2 = (self.G_inh * self.S(x0) - 2 * self.beta * xdot2 - x2) / self.tau_inh
+        x0 += xdot0 * self.dt
+        x1 += xdot1 * self.dt
+        x2 += xdot2 * self.dt
+        self.x = np.array([x0, x1, x2, xdot0, xdot1, xdot2])
+
+    def simulate(self, x0, tmax=1, noise=0.):
+        """
+        Simulate the Jansen-Rit model and monitor the output.
+
+        Parameters
+        ----------
+        x0 : array_like
+            The initial state of the system. Shape (N,).
+        tmax : float
+            The maximum time to simulate.
+        noise : float
+            The standard deviation of the noise to add to the system.
+        
+        Returns
+        -------
+        x : array_like
+            The simulated time series. Shape (n, N).
+        """
+        rng = np.random.default_rng(self.seed)
+        n = int(tmax / self.dt)
+        x = np.zeros((n, 6))
+        x[0] = x0
+        self.x = x0
+        dt_noise = np.sqrt(self.dt) * noise
+        for i in range(1, n):
+            self.step()
+            # noise = rng.standard_normal(size=self.x.shape) * dt_noise
+            x[i] = self.x            
+        return x
+        

@@ -483,11 +483,11 @@ def log_likelihood_lm(y, X, beta):
         log_likelihood = -n/2 * np.log(np.linalg.det(sigma_hat)) - 1/2 * np.trace(np.linalg.inv(sigma_hat) @ (residuals.T @ residuals))
     return log_likelihood
 
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+def sigmoid(x, rmax=1, beta=1, x0=0):
+    return rmax / (1 + np.exp(beta*(x0-x)))
 
-def sigmoid_derivative(x):
-    return sigmoid(x) * (1 - sigmoid(x))
+def sigmoid_derivative(x, rmax=1, beta=1, x0=0):
+    return beta * sigmoid(x, rmax, beta, x0) * (1 - sigmoid(x, rmax, beta, x0))
 
 def mem_check(units='Gb'):
     "Get available RAM"

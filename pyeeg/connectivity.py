@@ -25,7 +25,8 @@ TODO:
     - AEC (amplitude envelope correlation)
 
 Update:
-    - 10/11/2023: moved simulate_(V)ar to pyeeg.simulate, added Granger Causality
+    - 16/11/2023: added Granger Causality
+    - 10/11/2023: moved simulate_(V)ar to pyeeg.simulate
     - 09/11/2023 Added phase_transfer_entropy, simulate_ar, simulate_var
 """
 import numpy as np
@@ -62,6 +63,7 @@ def granger_causality(X, nlags=1, time_axis=0, verbose=False):
     if time_axis == 1:
         X = X.T
     n, k = X.shape # n: number of observations, k: number of channels
+    channel_pairs = list(combinations(range(k), k-1))[::-1]
     if verbose:
         print(f"Fitting AR({nlags}) model for each {k} channels and one VAR({nlags}) model with {k} channels")
     # Fit AR to every single time series
@@ -84,7 +86,9 @@ def granger_causality(X, nlags=1, time_axis=0, verbose=False):
     for i in range(k):
         for j in range(k):
             if i != j:
-                # np.log(np.var(ex)/np.var(exy[:, 0])), np.log(np.var(ey)/np.var(exy[:, 1]))
+                # This computes the GC from i to j with the ratio of the variances of the residuals
+                # But it considers all variables as potential causes of j, so it's not really
+                # the GC from i to j, but the GC from all variables to j
                 GC[i, j] = np.log(np.var(residuals_single[:, j]) / np.var(residuals_multi[:, j]))
     return GC
 
