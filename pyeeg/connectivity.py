@@ -13,7 +13,6 @@ Available metrics:
 Some utilities:
     - jackknife resampling
     - cross-spectral density (CSD)
-    - simulation of VAR model signals
 
 TODO:
     - PDC
@@ -38,7 +37,30 @@ def phase_transfer_entropy(data, delay=None, binsize='scott'):
     """
     Compute Phase Transfer Entropy between each pair of channels in data.
 
-    ---
+    Parameters
+    ----------
+    data : ndarray, shape (nsamples, nchannels)
+        Input data.
+    delay : int
+        Delay between channels. If None, it is estimated from the data.
+    binsize : str
+        Method to estimate binsize. Can be 'scott', 'fd' or 'otnes'.
+
+    Returns
+    -------
+    dPTE : ndarray, shape (nchannels, nchannels)
+        Directional PTE (x -> y)
+    PTE : ndarray, shape (nchannels, nchannels)
+        Undirectional PTE (x <-> y)
+
+    References
+    ----------
+     - [`1`_]
+
+    .. 1_: Lobier, M., Siebenhühner, F., Palva, S., & Palva, J. M. (2014). Phase transfer entropy: A novel phase-based measure for directed connectivity in networks coupled by oscillatory interactions. NeuroImage, 85, 853–872. https://doi.org/10.1016/j.neuroimage.2013.04.090
+
+    Notes
+    -----
     Original MATLAB code from Matteo Fraschini, Arjan Hillebrand (VERSION 2.5 /2017)
     accessed at: https://figshare.com/articles/Phase_Transfer_Entropy/3847086
     Cite:

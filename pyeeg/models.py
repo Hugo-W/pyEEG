@@ -23,7 +23,7 @@ from sklearn.model_selection import KFold
 #logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 from mne.decoding import BaseEstimator
-from .utils import lag_matrix, lag_span, lag_sparse, mem_check
+from .utils import lag_matrix, lag_span, lag_sparse, mem_check, design_lagmatrix
 from .vizu import get_spatial_colors, plot_interactive
 
 logging.basicConfig(level=logging.WARNING)
@@ -130,6 +130,20 @@ def fit_ar(x, nlags=1, time_axis=0):
 
     If fed with a multidimensional time series, it will fit a model for each
     dimension.
+
+    Parameters
+    ----------
+    x : ndarray (nsamples, nchans) or (nsamples, )
+        Time series to fit.
+    nlags : int
+        Number of lags to use in the model (model order).
+    time_axis : int
+        Axis of the time series.
+
+    Returns
+    -------
+    betas : ndarray (nchans, nlags)
+        Coefficients of the autoregressive model.
     """
     if x.ndim == 1:
         time_axis = 1
@@ -154,6 +168,20 @@ def fit_var(x, nlags=1, time_axis=0):
 
     Instead of fitting k independent models as in `fit_ar`, this function fits a single model
     but with multivariate regressors.
+
+    Parameters
+    ----------
+    x : ndarray (nsamples, nchans) or (nsamples, )
+        Time series to fit.
+    nlags : int
+        Number of lags to use in the model (model order).
+    time_axis : int
+        Axis of the time series.
+
+    Returns
+    -------
+    betas : ndarray (nchans, nlags)
+        Coefficients of the autoregressive model.
     """
     if x.ndim == 1:
         time_axis = 1

@@ -474,8 +474,13 @@ def log_likelihood_lm(y, X, beta):
     """
     n = len(y)
     residuals = y - X @ beta
-    sigma2 = np.var(residuals, axis=0)
-    log_likelihood = -n/2 * np.log(2*np.pi) - n/2 * np.log(sigma2) - 1/(2*sigma2) * np.sum(residuals.T @ residuals, axis=0)
+    if y.ndim ==1:
+        sigma2 = np.var(residuals, axis=0)
+        log_likelihood = -n/2 * np.log(2*np.pi) - n/2 * np.log(sigma2) - 1/(2*sigma2) * np.sum(residuals.T @ residuals, axis=0)
+    else:
+        sigma_hat = np.cov(residuals.T)  # Covariance matrix
+        # Multivariate normal log-likelihood
+        log_likelihood = -n/2 * np.log(np.linalg.det(sigma_hat)) - 1/2 * np.trace(np.linalg.inv(sigma_hat) @ (residuals.T @ residuals))
     return log_likelihood
 
 def mem_check(units='Gb'):
