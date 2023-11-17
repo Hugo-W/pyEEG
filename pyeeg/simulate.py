@@ -9,13 +9,14 @@ Simulate MEEG-like signals with different connectivity patterns or methods.
 TODO:
     - Simulation based on connectivity matrix
     - Neural mass models:
-        - Jansen-Rit -> See https://pdf.sciencedirectassets.com/272508/1-s2.0-S1053811900X00973/1-s2.0-S1053811903006566/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEAAaCXVzLWVhc3QtMSJHMEUCIEBRfmnMkb2j8ut2p46cc2y6emk9Jl4srBYEgaVRmPS%2FAiEAtKpadf9qZgbW0vxfxuG0FxR2CXU8iGh9M9VZ6T36r%2BMqswUISBAFGgwwNTkwMDM1NDY4NjUiDAOu3ZZjVACJ4G%2B%2F4yqQBbt8wNEj1LK7ozKjn8OBKbG3gcdZaU0Sg%2FLJMMQfgZnBK0iFT%2BHicPKc%2BEzpvhyikXNHGv%2FXtokrD%2Favx5YbL%2B7rKox9FRVvl9pVFrdaSkf%2BhkE2ACQM6nxOFXVbfpsd0QSEGYH40O8EL%2F5FQOxBcuLU2SE1wA9xSjpHnQB0CM1Q2WxF67v0WAkiSIuwAA5hwfscGL%2BUzRidKmTWC8B8lzPKki0D0jZVngPHRHuawuZbmR07LHye1pgPBacqY%2B3DBrOrIjgZXU%2FMzPw1kgcou%2Fd0nJnJgfEFotmAuhj%2FgbLPuOu0ROhYeJeCUTFQ9cXwaIkN%2FpGPwV3EtLvkH7QvEpsfKDMOR1iB4YYMh1oe75O7lx6hJ5qWpHCFgEh0Xg5Z%2BatTlrifNzMyr5isVLVrUZElzdY%2B3ZCZKaX%2FA6zJBp0Y%2FsDCvV4IU5K2GHOzTWyimbTQd2WUk%2BM4FEpn9U38zsTnEA5I5%2F5il8dMHS4fRDCF0dEarsdRbi%2BRXuLnFU8%2FTkkRyMGeqh4nIt8%2F7MyvrWE5D2YqSwImBeknhAVQ%2BF%2BHUWqU9tNVrnbuchks%2BZWB4E2%2BkEJeUBtFlswq5W5DuPMVAzT0IbCkITPSLvHtyAuAvPD2S3zfduMgPu98lwYfijcDEdS58uc05WQiUIHg8H3u%2F46DHT8MbHFp7B8FgkWqYWzof1yCIA6dOzjD9AvkSjGCxtbUqiDgGV88pzvnS9CKEX%2BKt1k5bLebz6MERTnPBd%2BTbrFGpHJlzKB%2FCbfVIkEzqvZQIKCkMUm7I8JfainxdL3y4JjKMxi75aoenMZSPOhBRPNQFglT43ZYjuZXNitc4P1KpEDkIGkS7iSdeU5576MRicX3fID9feeeMGlYMPf8yKoGOrEBRrcOQuw9PMvlCvY0kUumTwNahcqJuAbPVCj5UFZKOf9bBMEOcC1Xbi5r%2FCoOYPPf9yyQIuQ4pk5UTOs3E%2BBHrMqCboKDNcLFdkc6oWOtD8yF%2BaZddbsrfT2%2FdIWe80mM65qPFbm374EtTfoo8mGY%2F8QwlzJfEUYFSUgpZr5%2B32O2pJNnNIGQxL3suTL9hEGSvZAaxEgE3TcP073vpVxDHZzWPai90pW%2FtrJCH0v9vkdi&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20231113T164609Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTYRX55LHJ7%2F20231113%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=efb4397d32d0283d891f7f7b6b54cf6086f166c7f49d7c73cd85383c2ace1215&hash=c12ba03b2ecaf8322bf34c85889ef48d9263bd5c22c8fe4fdc4fd77c9ddd950c&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S1053811903006566&tid=spdf-fd17f1b2-9263-4484-94b2-caa5ff6aeb65&sid=1f34fbf92ab4c94b979becc2279c4fddfea3gxrqb&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=080f56555356560150&rr=82587d3bad7f66a5&cc=nl
-        or https://pdf.sciencedirectassets.com/272508/1-s2.0-S1053811900X00924/1-s2.0-S1053811903004579/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEAAaCXVzLWVhc3QtMSJIMEYCIQCLOeRLcqnzm1kuLuu9gAR4xW20REgfwC%2BUG7p0FPu14gIhANRW6LXlFS2LON%2F%2BgS1jbn%2F7a8w6IHV7gKbTbNV5wqjnKrIFCEkQBRoMMDU5MDAzNTQ2ODY1Igy1V1bpLECYjeUFuUEqjwVSOS4pH6j2ew1gfsyDFISqu%2FmCuyDnXJ%2BkanuTqSOt35WOcurB7Pczd0RdZV4dTzoTbW0ZoPMv6dCNi8tfQ4oaeaxWA3mN0Vs%2FIaYMy8eyCOkgxTFBPEOxGmXFV1hBWQhmske05vPkhjTf37BfdI7Ipik7o%2BHMGfIKoQKO8zybRghfnsSyV3crhDAbQx9GF%2BOe%2FKNp7X5Yx06OV953HqhGiu%2Fs5wITv2fSRaAvoLHoMkiYLo8B0jNIynMY71cB9p68YgUPZ%2FAxfUiSHT%2FwjTywZO1sPhVSB0Bm2HqCDh5soRiZ07MylsEDbYbnrW%2B7aCVBRKykjaQ9IFK4OwiaE%2BK7WQm6pdztg3oLmY5Su%2FWU90iUY41Ju1dUGmhsFfO8Q8WTlnnZ5GBRzGcgqKxuYcKHWxUBieD5U6w2FSynBti2ryxOFiiGtXI%2BeODXN1Ea0qoR9cT7HLExDbFyL101aLiyP%2FTSFjq%2Buygyfwl0yk6%2FkJdgWZYB3Xllmi9s7uc3sZ3KsZo5P4m8we2fz5XrMDpCLsiuTMfUwfZatWon8GXyysOSOHwoCVvS%2Btn%2BnZxRGbNTcNvvRmSQz5TGJ02lKzNOC5Bd0y9fKCfuNSXVcL1FutS2oJtonpy0iiLc3mgczpXspnK3kJaSAJo%2FFXaW8OVupYm3C8hQx5E9wCb1c%2FdSCLcaitk%2FZA3eGjbIXjcUiTHuiit6N20F6VhzUNTkSuM7FZzNH%2Fkl7Cmt72Z13TDiG%2BUkrD3RA2dePMS5XvqkwiWvLWK%2Bbljweot6RbbwfRoLc4ouc8Fy4pVsUhlABP6iAFGRpz7lGEUDo6cxpYp1J8aoUbpnibvPR1SdHUSz%2BGbq7PXxmjEO%2Bu0Lu2D7JZqAMO2LyaoGOrABbIrfm40nIMybDuTZ4mK%2BoaIvNb9Vc0xLy1Nypl6sNZoLJl4oVqI0WYNwtHXNhpbGBR8jq2%2F%2FL24tih289cLG8S5GV07PE5oeIJj7DfywGo8PPko2O6vViv9%2BZo4i5RIEn259RUd2IXplHZd57rggnFTY4ac8m9CEbjtk7gTW7HF7DNFaFMRv6D8K%2F5hpLKGHjyF%2BZhxZ79fcAN%2B5TgvVIBYRWS4Qi%2F%2B6NMhnU28QTVo%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20231113T164603Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTY742FACEQ%2F20231113%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=da2d7fe1b02d5c068a1f3c7c8f2fdc64b8350e1f909000d3d6906267796778a2&hash=82bcc505cc92fe4f322349938bc58f4add1575143448707ba5b16def04ceade7&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S1053811903004579&tid=spdf-2c8c5161-288d-41b8-83ac-547a9870612e&sid=1f34fbf92ab4c94b979becc2279c4fddfea3gxrqb&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=080f56555356560152&rr=82587d1569b866a5&cc=nl
         - Wilson-Cowan
-        - Wong-Wang
-    - covariance-based simulation to be checked!!!
+
+References:
+    - Janseen-Rit model: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10473283/, See https://pdf.sciencedirectassets.com/272508/1-s2.0-S1053811900X00973/1-s2.0-S1053811903006566/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEAAaCXVzLWVhc3QtMSJHMEUCIEBRfmnMkb2j8ut2p46cc2y6emk9Jl4srBYEgaVRmPS%2FAiEAtKpadf9qZgbW0vxfxuG0FxR2CXU8iGh9M9VZ6T36r%2BMqswUISBAFGgwwNTkwMDM1NDY4NjUiDAOu3ZZjVACJ4G%2B%2F4yqQBbt8wNEj1LK7ozKjn8OBKbG3gcdZaU0Sg%2FLJMMQfgZnBK0iFT%2BHicPKc%2BEzpvhyikXNHGv%2FXtokrD%2Favx5YbL%2B7rKox9FRVvl9pVFrdaSkf%2BhkE2ACQM6nxOFXVbfpsd0QSEGYH40O8EL%2F5FQOxBcuLU2SE1wA9xSjpHnQB0CM1Q2WxF67v0WAkiSIuwAA5hwfscGL%2BUzRidKmTWC8B8lzPKki0D0jZVngPHRHuawuZbmR07LHye1pgPBacqY%2B3DBrOrIjgZXU%2FMzPw1kgcou%2Fd0nJnJgfEFotmAuhj%2FgbLPuOu0ROhYeJeCUTFQ9cXwaIkN%2FpGPwV3EtLvkH7QvEpsfKDMOR1iB4YYMh1oe75O7lx6hJ5qWpHCFgEh0Xg5Z%2BatTlrifNzMyr5isVLVrUZElzdY%2B3ZCZKaX%2FA6zJBp0Y%2FsDCvV4IU5K2GHOzTWyimbTQd2WUk%2BM4FEpn9U38zsTnEA5I5%2F5il8dMHS4fRDCF0dEarsdRbi%2BRXuLnFU8%2FTkkRyMGeqh4nIt8%2F7MyvrWE5D2YqSwImBeknhAVQ%2BF%2BHUWqU9tNVrnbuchks%2BZWB4E2%2BkEJeUBtFlswq5W5DuPMVAzT0IbCkITPSLvHtyAuAvPD2S3zfduMgPu98lwYfijcDEdS58uc05WQiUIHg8H3u%2F46DHT8MbHFp7B8FgkWqYWzof1yCIA6dOzjD9AvkSjGCxtbUqiDgGV88pzvnS9CKEX%2BKt1k5bLebz6MERTnPBd%2BTbrFGpHJlzKB%2FCbfVIkEzqvZQIKCkMUm7I8JfainxdL3y4JjKMxi75aoenMZSPOhBRPNQFglT43ZYjuZXNitc4P1KpEDkIGkS7iSdeU5576MRicX3fID9feeeMGlYMPf8yKoGOrEBRrcOQuw9PMvlCvY0kUumTwNahcqJuAbPVCj5UFZKOf9bBMEOcC1Xbi5r%2FCoOYPPf9yyQIuQ4pk5UTOs3E%2BBHrMqCboKDNcLFdkc6oWOtD8yF%2BaZddbsrfT2%2FdIWe80mM65qPFbm374EtTfoo8mGY%2F8QwlzJfEUYFSUgpZr5%2B32O2pJNnNIGQxL3suTL9hEGSvZAaxEgE3TcP073vpVxDHZzWPai90pW%2FtrJCH0v9vkdi&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20231113T164609Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTYRX55LHJ7%2F20231113%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=efb4397d32d0283d891f7f7b6b54cf6086f166c7f49d7c73cd85383c2ace1215&hash=c12ba03b2ecaf8322bf34c85889ef48d9263bd5c22c8fe4fdc4fd77c9ddd950c&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S1053811903006566&tid=spdf-fd17f1b2-9263-4484-94b2-caa5ff6aeb65&sid=1f34fbf92ab4c94b979becc2279c4fddfea3gxrqb&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=080f56555356560150&rr=82587d3bad7f66a5&cc=nl
+        or https://pdf.sciencedirectassets.com/272508/1-s2.0-S1053811900X00924/1-s2.0-S1053811903004579/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEAAaCXVzLWVhc3QtMSJIMEYCIQCLOeRLcqnzm1kuLuu9gAR4xW20REgfwC%2BUG7p0FPu14gIhANRW6LXlFS2LON%2F%2BgS1jbn%2F7a8w6IHV7gKbTbNV5wqjnKrIFCEkQBRoMMDU5MDAzNTQ2ODY1Igy1V1bpLECYjeUFuUEqjwVSOS4pH6j2ew1gfsyDFISqu%2FmCuyDnXJ%2BkanuTqSOt35WOcurB7Pczd0RdZV4dTzoTbW0ZoPMv6dCNi8tfQ4oaeaxWA3mN0Vs%2FIaYMy8eyCOkgxTFBPEOxGmXFV1hBWQhmske05vPkhjTf37BfdI7Ipik7o%2BHMGfIKoQKO8zybRghfnsSyV3crhDAbQx9GF%2BOe%2FKNp7X5Yx06OV953HqhGiu%2Fs5wITv2fSRaAvoLHoMkiYLo8B0jNIynMY71cB9p68YgUPZ%2FAxfUiSHT%2FwjTywZO1sPhVSB0Bm2HqCDh5soRiZ07MylsEDbYbnrW%2B7aCVBRKykjaQ9IFK4OwiaE%2BK7WQm6pdztg3oLmY5Su%2FWU90iUY41Ju1dUGmhsFfO8Q8WTlnnZ5GBRzGcgqKxuYcKHWxUBieD5U6w2FSynBti2ryxOFiiGtXI%2BeODXN1Ea0qoR9cT7HLExDbFyL101aLiyP%2FTSFjq%2Buygyfwl0yk6%2FkJdgWZYB3Xllmi9s7uc3sZ3KsZo5P4m8we2fz5XrMDpCLsiuTMfUwfZatWon8GXyysOSOHwoCVvS%2Btn%2BnZxRGbNTcNvvRmSQz5TGJ02lKzNOC5Bd0y9fKCfuNSXVcL1FutS2oJtonpy0iiLc3mgczpXspnK3kJaSAJo%2FFXaW8OVupYm3C8hQx5E9wCb1c%2FdSCLcaitk%2FZA3eGjbIXjcUiTHuiit6N20F6VhzUNTkSuM7FZzNH%2Fkl7Cmt72Z13TDiG%2BUkrD3RA2dePMS5XvqkwiWvLWK%2Bbljweot6RbbwfRoLc4ouc8Fy4pVsUhlABP6iAFGRpz7lGEUDo6cxpYp1J8aoUbpnibvPR1SdHUSz%2BGbq7PXxmjEO%2Bu0Lu2D7JZqAMO2LyaoGOrABbIrfm40nIMybDuTZ4mK%2BoaIvNb9Vc0xLy1Nypl6sNZoLJl4oVqI0WYNwtHXNhpbGBR8jq2%2F%2FL24tih289cLG8S5GV07PE5oeIJj7DfywGo8PPko2O6vViv9%2BZo4i5RIEn259RUd2IXplHZd57rggnFTY4ac8m9CEbjtk7gTW7HF7DNFaFMRv6D8K%2F5hpLKGHjyF%2BZhxZ79fcAN%2B5TgvVIBYRWS4Qi%2F%2B6NMhnU28QTVo%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20231113T164603Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTY742FACEQ%2F20231113%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=da2d7fe1b02d5c068a1f3c7c8f2fdc64b8350e1f909000d3d6906267796778a2&hash=82bcc505cc92fe4f322349938bc58f4add1575143448707ba5b16def04ceade7&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S1053811903004579&tid=spdf-2c8c5161-288d-41b8-83ac-547a9870612e&sid=1f34fbf92ab4c94b979becc2279c4fddfea3gxrqb&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=080f56555356560152&rr=82587d1569b866a5&cc=nl
 
 Update:
+    - 17/11/2023: added Jansen-Rit model
     - 10/11/2023: initial commit
 """
 import numpy as np
@@ -250,38 +251,46 @@ class JansenRit(NeuralMassModel):
     """
     def __init__(self, dt=0.0001, seed=42, nonlinearity=sigmoid):
         super().__init__(1, dt, seed) # this is a single node (cortical column with 3 sub-populations)
-        self.C_1 = 135 # number of synapses between populations
-        self.C_2 = 108
-        self.C_3 = 33.75
-        self.C_4 = 33.75
-        self.tau_exc = 100 # time scale for excitatory population
-        self.tau_inh = 50 # time scale for inhibitory population
-        self.G_exc = 3.25 # average excitatory synaptic gain
+        n_synapses = 135 # number of synapses between populations
+        self.C_1 = 1. * n_synapses # probability of connection between excitatory and pyramidal populations
+        self.C_2 = 0.8 * n_synapses
+        self.C_3 = 0.25 * n_synapses
+        self.C_4 = 0.25 * n_synapses
+        self.tau_exc = 1/100 # time scale for excitatory population ~10ms
+        self.tau_inh = 1/50 # time scale for inhibitory population ~20ms
+        self.G_exc = 3.25 # average excitatory synaptic gain (mV)
         self.G_inh = 22 # average inhibitory synaptic gain
-        self.rmax = 5 # amplitude of sigmoid in Hz
-        self.beta = 0.56 # slope of sigmoid
-        self.theta = 6 # threshold of sigmoid
+        self.rmax = 5 # amplitude of sigmoid in Hz (max firing rate)
+        self.beta = 0.56 # slope of sigmoid (mV^-1)
+        self.theta = 6 # threshold of sigmoid (mV)
         self.v = 10 # conduction velocity
         self.P = 150 # external input to each of the neural masses
         #self.Coupling = 0.1 # coupling between the neural masses (global coupling strength)
 
         self.x = np.zeros((6,)) # state of the network
-        self.S = nonlinearity # nonlinearity function
+        self.S = lambda x: nonlinearity(x, rmax=self.rmax, beta=self.beta, x0=self.theta) # nonlinearity function
 
     def step(self, I=0.):
         """
         Compute one step of the Jansen-Rit model.
         """
-        x0, x1, x2, xdot0, xdot1, xdot2 = self.x
-        xdot0 = (self.G_exc * self.S(x1 - x2) - 2 * self.beta * xdot0 - x0) / self.tau_exc
-        xdot1 = (self.G_inh * self.S(x0) - 2 * self.beta * xdot1 - x1) / self.tau_inh
-        xdot2 = (self.G_inh * self.S(x0) - 2 * self.beta * xdot2 - x2) / self.tau_inh
-        x0 += xdot0 * self.dt
-        x1 += xdot1 * self.dt
-        x2 += xdot2 * self.dt
-        self.x = np.array([x0, x1, x2, xdot0, xdot1, xdot2])
+        # 0: pyramidal, 1: excitatory, 2: inhibitory
+        x0, x1, x2, xdot0, xdot1, xdot2 = self.x # unpack the state
+        # Input received by each population
+        # x1 - x2: difference between excitatory and inhibitory activity, which is the input received by the pyramidal population interpreted as the average potential of pyramidal populations
+        # self.C_1 * x0: input received by the excitatory population
+        # self.C_3 * x0: input received by the inhibitory population
+        firing_rates = self.S(np.asarray([x1 -x2, self.C_1 * x0, self.C_3 * x0]))
+        xdot0_next = xdot0 + self.dt * (self.G_exc * 1.0      * firing_rates[0] - 2 * xdot0 - x0/self.tau_exc ) / self.tau_exc
+        input_excitatory = self.C_2 * firing_rates[1] + I # contribution from other nodes will go here
+        xdot1_next = xdot1 + self.dt * (self.G_exc * input_excitatory - 2 * xdot1 - x1/self.tau_exc) / self.tau_exc
+        xdot2_next = xdot2 + self.dt * (self.G_inh * self.C_4 * firing_rates[2] - 2 * xdot2 - x2/self.tau_inh) / self.tau_inh
+        x0_next = x0 + xdot0 * self.dt
+        x1_next = x1 + xdot1 * self.dt
+        x2_next = x2 + xdot2 * self.dt
+        self.x = np.array([x0_next, x1_next, x2_next, xdot0_next, xdot1_next, xdot2_next])
 
-    def simulate(self, x0, tmax=1, noise=0.):
+    def simulate(self, x0, tmax=1, noise=0., P=None):
         """
         Simulate the Jansen-Rit model and monitor the output.
 
@@ -306,7 +315,7 @@ class JansenRit(NeuralMassModel):
         self.x = x0
         dt_noise = np.sqrt(self.dt) * noise
         for i in range(1, n):
-            self.step()
+            self.step(I = self.P if P is None else P[i])
             # noise = rng.standard_normal(size=self.x.shape) * dt_noise
             x[i] = self.x            
         return x
