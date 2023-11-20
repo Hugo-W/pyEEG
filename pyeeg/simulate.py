@@ -116,13 +116,12 @@ def simulate_var_from_cov(cov, nobs=500, ndim=2, seed=42, verbose=False):
 
     return data[order:, :]
 
-class NeuralMassModel(object):
+class NeuralMassNode(object):
     """
     Abstract class for neural mass models.
     Defines the function to be implemented for the simulation.
     """
-    def __init__(self, N, dt=0.001, seed=42):
-        self.N = N # number of neurons/nodes
+    def __init__(self, dt=0.001, seed=42):
         self.dt = dt # sampling rate
         self.seed = seed # random seed
 
@@ -132,7 +131,31 @@ class NeuralMassModel(object):
     def step(self):
         raise NotImplementedError("This method must be implemented in the child class")
     
-class CTRNN(NeuralMassModel):
+class NeuralMassNetwork(object):
+    """
+    Abstract class for neural mass models.
+    Defines the function to be implemented for the simulation.
+    """
+    def __init__(self, N, W, node_dynamics=None, dt=0.001, seed=42):
+        self.rng = np.random.default_rng(seed)
+        self.N = N # number of neurons/nodes
+        self.W = W # connectivity matrix
+        self.dt = dt # sampling rate
+        self.seed = seed # random seed
+        self.node_dynamics = node_dynamics # node dynamics instance
+        self.nodes = [node_dynamics(self.rng.randint(k)) for k in range(N)] # get different systems/rng for each node
+
+    def simulate(self):
+        raise NotImplementedError("This method must be implemented in the child class")
+    
+    def step(self):
+        outs = []
+        for n in self.nodes:
+            outs.append(n.read_out())
+            # incorporate delays here
+            n.step(I=self.W @ np.asarray(outs)) # the input to each node is the output of all the other nodes
+    
+class CTRNN(NeuralMassNetwork):
     """
     Continuous Time Recurrent Neural Network (CTRNN) model.
 
@@ -151,9 +174,8 @@ class CTRNN(NeuralMassModel):
         nonlinearity : callable
             The nonlinearity function to apply to the network. Default is sigmoid (e.g. can use func:`np.tanh`)    
         """
-        super().__init__(N, dt, seed)
+        super().__init__(N, W, dt, seed)
         self.nonlinearity = nonlinearity # nonlinearity function
-        self.W = W # connectivity matrix
         self.readout_W = np.zeros((N,)) # readout matrix
         self.input_W = np.zeros((N,)) # input matrix
         self.theta = theta if theta is not None else np.zeros((N,))
@@ -209,7 +231,7 @@ class CTRNN(NeuralMassModel):
     def read_out(self):
         return 2 * self.nonlinearity( self.readout_W @ self.o) - 1
     
-class JansenRit(NeuralMassModel):
+class JansenRit(NeuralMassNode):
     """
     Jansen-Rit model.
 
@@ -231,18 +253,16 @@ class JansenRit(NeuralMassModel):
 
     Parameters and typical values as in Grimbert & Faugeras, 2006:
     - C1, C2, C3, C4	Average number of synapses between populations	135 * [1 0.8 0.25 0.25]
-    - Beta_E	        Time scale for excitatory population	        100 ms
-    - Beta_I	        Time scale for inhibitory population	        50 ms
-    - A	                Average excitatory synaptic gain	            3.25
-    - B	                Average inhibitory synaptic gain	            22
-    - nu	            Threshold of sigmoid	                        5 s^-1
-    - r	                Slope of sigmoid	                            0.56 mV^-1
-    - theta	            Amplitude of sigmoid	                        6 mV
+    - tau_e             Time scale for excitatory population	        100 ms
+    - tau_i	            Time scale for inhibitory population	        50 ms
+    - G_exc	            Average excitatory synaptic gain	            3.25
+    - G_inh	            Average inhibitory synaptic gain	            22
+    - rmax	            Amplitude of sigmoid	                        5 s^-1
+    - beta	            Slope of sigmoid	                            0.56 mV^-1
+    - theta	            Threshold of sigmoid	                        6 mV
     - Conduction velocity	 	                                        10 m/s
-    - Fs	            Sample frequency	                            1250 Hz
-    - h	                Integration time step	                        0.0001
-    - T	                Observation time	                            20 s
-    - P	                External input to each of the neural masses	    150
+    - h	                Integration time step	                        0.0001 (s) by default
+    - P	                External input to each of the neural masses	    150 (Hz, whihc is a contant input)
     - Coupling	        Coupling between the neural masses	            [0.1:0.012:0.292]
 
     This table is from the paper:
@@ -250,7 +270,7 @@ class JansenRit(NeuralMassModel):
     
     """
     def __init__(self, dt=0.0001, seed=42, nonlinearity=sigmoid):
-        super().__init__(1, dt, seed) # this is a single node (cortical column with 3 sub-populations)
+        super().__init__(dt, seed) # this is a single node (cortical column with 3 sub-populations)
         n_synapses = 135 # number of synapses between populations
         self.C_1 = 1. * n_synapses # probability of connection between excitatory and pyramidal populations
         self.C_2 = 0.8 * n_synapses
@@ -281,14 +301,17 @@ class JansenRit(NeuralMassModel):
         # self.C_1 * x0: input received by the excitatory population
         # self.C_3 * x0: input received by the inhibitory population
         firing_rates = self.S(np.asarray([x1 -x2, self.C_1 * x0, self.C_3 * x0]))
-        xdot0_next = xdot0 + self.dt * (self.G_exc * 1.0      * firing_rates[0] - 2 * xdot0 - x0/self.tau_exc ) / self.tau_exc
         input_excitatory = self.C_2 * firing_rates[1] + I # contribution from other nodes will go here
-        xdot1_next = xdot1 + self.dt * (self.G_exc * input_excitatory - 2 * xdot1 - x1/self.tau_exc) / self.tau_exc
-        xdot2_next = xdot2 + self.dt * (self.G_inh * self.C_4 * firing_rates[2] - 2 * xdot2 - x2/self.tau_inh) / self.tau_inh
+        xdot0_next = xdot0 + self.dt * (self.G_exc * 1.0      * firing_rates[0] - 2 * xdot0 - x0/self.tau_exc ) / self.tau_exc # pyramidal cell
+        xdot1_next = xdot1 + self.dt * (self.G_exc * input_excitatory           - 2 * xdot1 - x1/self.tau_exc) / self.tau_exc  # excitatory stellate cell
+        xdot2_next = xdot2 + self.dt * (self.G_inh * self.C_4 * firing_rates[2] - 2 * xdot2 - x2/self.tau_inh) / self.tau_inh # inhibitory interneuron
         x0_next = x0 + xdot0 * self.dt
         x1_next = x1 + xdot1 * self.dt
         x2_next = x2 + xdot2 * self.dt
         self.x = np.array([x0_next, x1_next, x2_next, xdot0_next, xdot1_next, xdot2_next])
+
+    def read_out(self):
+        return  self.x[1] - self.x[2]
 
     def simulate(self, x0, tmax=1, noise=0., P=None):
         """
@@ -311,12 +334,121 @@ class JansenRit(NeuralMassModel):
         rng = np.random.default_rng(self.seed)
         n = int(tmax / self.dt)
         x = np.zeros((n, 6))
-        x[0] = x0
+        o = np.zeros((n, 1))
         self.x = x0
+        x[0] = x0
+        o[0] = self.read_out()
         dt_noise = np.sqrt(self.dt) * noise
         for i in range(1, n):
             self.step(I = self.P if P is None else P[i])
             # noise = rng.standard_normal(size=self.x.shape) * dt_noise
-            x[i] = self.x            
-        return x
+            x[i] = self.x           
+            o[i] = self.read_out()
+        return x, o
         
+class JansenRitExtended(NeuralMassNode):
+    """
+    Jansen-Rit model - Exctended version: dual kinetic model.
+
+    See https://pdf.sciencedirectassets.com/272508/1-s2.0-S1053811900X00924/1-s2.0-S1053811903004579/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEKH%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJHMEUCIQDklbniEg%2BIxtbMhqre0GLXBUY61F7QwRGlTcS0Tw50mAIgPijMAG0JRY86ILcJl5khJAbWRSGrqqz8rRNKkeVXhtMqvAUI6v%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARAFGgwwNTkwMDM1NDY4NjUiDDWGjReDtp%2FZt%2BvT4SqQBUgH%2FBzAz1ffqLsZXij%2Fhvyo540aF9iKjI5qqwn%2FClzZq1dP%2BofFqhpbLq%2FbRaP98Et%2Bs5VZoAoNHhC8dMDRlrxY47ZuTWehsc2C8ZUcz6D9lYArh5ggiCQZMm9040OWVNDarLG8631K4g0HFpEHwsubfZoIUgs5XABH%2FyF1NE2zXo3JXhU%2FKwsZHVqqidrV0nv%2B9IJ5%2BigTmMVePAINzRUuQjnFgbyqNvqMwUsNDi92QSN7u%2BdJi0ksGwqTWyBCM7MUrwK%2FisZjWmQcQeCx%2FuLyhE77tU6x7gpR%2BGdE%2BOmiISZDROqxwq%2FmsC%2B%2FR%2BMsFubuDhdTI8n8kllkh079IhICKgEzhzFLWgmNxXdbxBS6vQi13IA5SNlQuuzArMu0Z1GkM9EwbXRUI3u4oeOMtGOslgCYdgsSJpebcg8zOg2ueLBgHSfubsGGJ5l5SxOR%2FIVF6tHjzLoCz2njmpmtSr%2Bmi56T9qKmkUC4sAoYnbpllz3yd%2F4%2B2Xh3AruYCVWyJ%2FVLgTbrPXYpihKXryoL1DNw94iDb%2FWutOEqh46F64lPV96HjCvNME4smEYyyPKz8DWYdMcU6U35qVbk%2BXlv%2FoDv7AIjCJi3l9U98IL%2BiZMAnCN8u88BtwF8o7PrMAMfRzjQl53oJEt%2BCfnIMZhwy0raTnU3Sb61tmgBqoIrY7NFmWjrAmqNJilwO16T7RIJkjRhufHocRzquTEj6F5NyPrir%2FeVwlg3%2BM8kgmsdsiIfLR9tkvkXCcSx1M4%2FwdK9id37RAh5D%2Fcw0jAcqEinfgj%2Bw4Z9MX5FU91B9pOJIBk%2BGRraBuxSsxznjeQ%2BlOZVwtQ7nVwE%2Bk0XUHkMv075s9RxWPIrg48wrQMqJUhLaW7zMK%2B%2B7KoGOrEBKbm0kOWBELm7BGve3m4Vj6De%2BonWolZfqid1yachKSVCGGly07GpJptQJqCsQftOtoRw966JD257GoZ%2BssIo%2FrdAhYGJXSWfvpbzGVT3etLIjbrApoBoQMzw%2BVTy1I%2FyomAtv2yXcop%2FNGlQyOkREmdcc3cbpVi78%2FPiChzyI3ESzp4hwWnNKs2cFoQE15W8GGT0FxkBk0QoXJN2MiPdAS%2Fd7Nrw4MOMPaseHhIfQx81&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20231120T101219Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTYXMTQIC7Q%2F20231120%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=29cd9a0fade336c06381b528450f2b797b8b67eaa9ecc3e029ceb182ac9dcf40&hash=d99e790b5d5df95dc08507ca2341780d14b640ae4c5e57d1b6e1cac92280cb90&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S1053811903004579&tid=spdf-2465ea3f-65c5-4f0d-9fd9-eaf43d018e8d&sid=3f6dcc697a1fe84db69a8074585332d50fa6gxrqb&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=080f57525b01065d0459&rr=828fe9f6bfba5c4b&cc=nl
+
+    We model two parallel subpopulations with different kinematics in order to capture multiband or broadband dynamics.
+    """
+    def __init__(self, w=0.5, dt=0.0001, seed=42, nonlinearity=sigmoid):
+        super().__init__(dt, seed) # this is a single node (cortical column with 3 sub-populations)
+        
+        # ~ 10 Hz dynamics
+        self.tau_exc_1 = 1/100 # time scale for excitatory population ~10ms
+        self.tau_inh_1 = 1/50 # time scale for inhibitory population ~20ms
+        # ~ 43 Hz dynamics
+        self.tau_exc_2 = 0.0046 # time scale for excitatory population ~4.6ms
+        self.tau_inh_2 = 0.0029 # time scale for inhibitory population ~2.9ms
+        self.G_exc_1 = 3.25 # average excitatory synaptic gain (mV)
+        self.G_inh_1 = 22 # average inhibitory synaptic gain
+        self.G_exc_2 = 2*3.25 # average excitatory synaptic gain (mV)
+        self.G_inh_2 = 150 # average inhibitory synaptic gain
+        self.w = w # relative contribution of the first subpopulation
+        
+        # The rest is the same as the Jansen-Rit model
+        n_synapses = 135 # number of synapses between populations
+        self.C_1 = 1. * n_synapses # probability of connection between excitatory and pyramidal populations
+        self.C_2 = 0.8 * n_synapses
+        self.C_3 = 0.25 * n_synapses
+        self.C_4 = 0.25 * n_synapses
+        self.rmax = 5 # amplitude of sigmoid in Hz (max firing rate)
+        self.beta = 0.56 # slope of sigmoid (mV^-1)
+        self.theta = 6 # threshold of sigmoid (mV)
+        self.v = 10 # conduction velocity
+        self.P = 150 # external input to each of the neural masses
+        #self.Coupling = 0.1 # coupling between the neural masses (global coupling strength)
+
+        self.x = np.zeros((2 * 6,)) # state of the network
+        self.S = lambda x: nonlinearity(x, rmax=self.rmax, beta=self.beta, x0=self.theta) # nonlinearity function
+
+    def step(self, I=0.):
+        """
+        Compute one step of the Jansen-Rit model.
+        """
+        # 0: pyramidal, 1: excitatory, 2: inhibitory
+        x0_1, x1_1, x2_1, xdot0_1, xdot1_1, xdot2_1, \
+        x0_2, x1_2, x2_2, xdot0_2, xdot1_2, xdot2_2 = self.x # unpack the state
+        # Input received by each population
+        # x1 - x2: difference between excitatory and inhibitory activity, which is the input received by the pyramidal population interpreted as the average potential of pyramidal populations
+        # self.C_1 * x0: input received by the excitatory population
+        # self.C_3 * x0: input received by the inhibitory population
+        firing_rates = self.S(np.asarray([self.w*(x1_1 -x2_1) + (1 - self.w)*(x1_2 -x2_2),
+                                          self.C_1 * (self.w * x0_1 + (1 - self.w) * x0_2),
+                                          self.C_3 * (self.w * x0_1 + (1 - self.w) * x0_2)]))
+        input_excitatory = self.C_2 * firing_rates[1] + I # contribution from other nodes will go here
+        # pop 1
+        xdot0_next_1 = xdot0_1 + self.dt * (self.G_exc_1 * 1.0      * firing_rates[0] - 2 * xdot0_1 - x0_1/self.tau_exc_1 ) / self.tau_exc_1
+        xdot1_next_1 = xdot1_1 + self.dt * (self.G_exc_1 * input_excitatory           - 2 * xdot1_1 - x1_1/self.tau_exc_1) / self.tau_exc_1
+        xdot2_next_1 = xdot2_1 + self.dt * (self.G_inh_1 * self.C_4 * firing_rates[2] - 2 * xdot2_1 - x2_1/self.tau_inh_1) / self.tau_inh_1
+        x0_next_1 = x0_1 + xdot0_1 * self.dt
+        x1_next_1 = x1_1 + xdot1_1 * self.dt
+        x2_next_1 = x2_1 + xdot2_1 * self.dt
+        # Pop 2
+        xdot0_next_2 = xdot0_2 + self.dt * (self.G_exc_2 * 1.0      * firing_rates[0] - 2 * xdot0_2 - x0_2/self.tau_exc_2 ) / self.tau_exc_2
+        xdot1_next_2 = xdot1_2 + self.dt * (self.G_exc_2 * input_excitatory           - 2 * xdot1_2 - x1_2/self.tau_exc_2) / self.tau_exc_2
+        xdot2_next_2 = xdot2_2 + self.dt * (self.G_inh_2 * self.C_4 * firing_rates[2] - 2 * xdot2_2 - x2_2/self.tau_inh_2) / self.tau_inh_2
+        x0_next_2 = x0_2 + xdot0_2 * self.dt
+        x1_next_2 = x1_2 + xdot1_2 * self.dt
+        x2_next_2 = x2_2 + xdot2_2 * self.dt
+        self.x = np.array([x0_next_1, x1_next_1, x2_next_1, xdot0_next_1, xdot1_next_1, xdot2_next_1,
+                           x0_next_2, x1_next_2, x2_next_2, xdot0_next_2, xdot1_next_2, xdot2_next_2])
+
+    def read_out(self):
+        return  self.w * (self.x[1] - self.x[2]) + (1 - self.w) * (self.x[7] - self.x[8])
+
+    def simulate(self, x0, tmax=1, noise=0., P=None):
+        """
+        Simulate the Jansen-Rit model and monitor the output.
+
+        Parameters
+        ----------
+        x0 : array_like
+            The initial state of the system. Shape (N,).
+        tmax : float
+            The maximum time to simulate.
+        noise : float
+            The standard deviation of the noise to add to the system.
+        
+        Returns
+        -------
+        x : array_like
+            The simulated time series. Shape (n, N).
+        """
+        rng = np.random.default_rng(self.seed)
+        n = int(tmax / self.dt)
+        x = np.zeros((n, 12))
+        o = np.zeros((n, 1))
+        self.x = x0
+        x[0] = x0
+        o[0] = self.read_out()
+        dt_noise = np.sqrt(self.dt) * noise
+        for i in range(1, n):
+            self.step(I = self.P if P is None else P[i])
+            # noise = rng.standard_normal(size=self.x.shape) * dt_noise
+            x[i] = self.x           
+            o[i] = self.read_out()
+        return x, o
