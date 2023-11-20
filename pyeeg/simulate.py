@@ -136,10 +136,12 @@ class NeuralMassNetwork(object):
     Abstract class for neural mass models.
     Defines the function to be implemented for the simulation.
     """
-    def __init__(self, N, W, node_dynamics=None, dt=0.001, seed=42):
+    def __init__(self, N, W, delay=0, node_dynamics=None, dt=0.001, seed=42):
         self.rng = np.random.default_rng(seed)
         self.N = N # number of neurons/nodes
         self.W = W # connectivity matrix
+        self.K = W # updated connectivity in case of normalisation by activity std
+        self.delay = delay # delay 
         self.dt = dt # sampling rate
         self.seed = seed # random seed
         self.node_dynamics = node_dynamics # node dynamics instance
@@ -153,7 +155,7 @@ class NeuralMassNetwork(object):
         for n in self.nodes:
             outs.append(n.read_out())
             # incorporate delays here
-            n.step(I=self.W @ np.asarray(outs)) # the input to each node is the output of all the other nodes
+            n.step(I=self.K @ np.asarray(outs)) # the input to each node is the output of all the other nodes
     
 class CTRNN(NeuralMassNetwork):
     """
@@ -452,3 +454,44 @@ class JansenRitExtended(NeuralMassNode):
             x[i] = self.x           
             o[i] = self.read_out()
         return x, o
+
+class JRNetwork(NeuralMassNetwork):
+    """
+    Abstract class for neural mass models.
+    Defines the function to be implemented for the simulation.
+
+    References
+    ----------
+
+    [1] Jansen, B. H., & Rit, V. G. (1995). Electroencephalogram and visual evoked potential generation in a mathematical model of coupled cortical columns. Biological cybernetics, 73(4), 357-366.
+    [2] https://www.sciencedirect.com/science/article/pii/S1053811903004579?ref=cra_js_challenge&fr=RR-1
+    
+    """
+    def __init__(self, N=2, W=np.asarray([[0, 1], [0, 0]]), delay=0.01, node_dynamics=None, dt=0.001, seed=42):
+        self.rng = np.random.default_rng(seed)
+        self.N = N # number of neurons/nodes
+        self.W = W # connectivity matrix
+        self.K = W # updated connectivity in case of normalisation by activity std
+        self.delay = delay # delay (10ms)
+        self.dt = dt # sampling rate
+        self.seed = seed # random seed
+        self.nodes = [JansenRitExtended(seed=self.rng.randint(k)) for k in range(N)] # get different systems/rng for each node
+
+    def update_connectivity(self, x, sigma_p=1):
+        """
+        x represents the firing rates output of all nodes
+        """
+        # TODO: implement this
+        # See ref (DAvid & Friston 2004: A Neural Mass model for M/EEG: coupling and neuronal dynamics)
+        k12_star = sigma_p * np.sqrt(2*k12 - k12 ^2) / np.std(x, axis=0)[1] # 1 -> 2 (sigma_p is sigma_p2)
+        # Then update self.K
+
+    def simulate(self):
+        raise NotImplementedError("This method must be implemented in the child class")
+    
+    def step(self):
+        outs = []
+        for n in self.nodes:
+            outs.append(n.read_out())
+            # incorporate delays here
+            n.step(I=self.K @ np.asarray(outs)) # the input to each node is the output of all the other nodes
