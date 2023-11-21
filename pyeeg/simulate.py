@@ -288,6 +288,7 @@ class JansenRit(NeuralMassNode):
         self.v = 10 # conduction velocity
         self.P = 150 # external input to each of the neural masses
         #self.Coupling = 0.1 # coupling between the neural masses (global coupling strength)
+        self.nstates = 6 # number of state variables
 
         self.x = np.zeros((6,)) # state of the network
         self.S = lambda x: nonlinearity(x, rmax=self.rmax, beta=self.beta, x0=self.theta) # nonlinearity function
@@ -385,6 +386,7 @@ class JansenRitExtended(NeuralMassNode):
         #self.Coupling = 0.1 # coupling between the neural masses (global coupling strength)
 
         self.x = np.zeros((2 * 6,)) # state of the network
+        self.nstates = 2 * 6
         self.S = lambda x: nonlinearity(x, rmax=self.rmax, beta=self.beta, x0=self.theta) # nonlinearity function
 
     def step(self, I=0.):
@@ -465,33 +467,85 @@ class JRNetwork(NeuralMassNetwork):
 
     [1] Jansen, B. H., & Rit, V. G. (1995). Electroencephalogram and visual evoked potential generation in a mathematical model of coupled cortical columns. Biological cybernetics, 73(4), 357-366.
     [2] https://www.sciencedirect.com/science/article/pii/S1053811903004579?ref=cra_js_challenge&fr=RR-1
+    [3] https://www.sciencedirect.com/science/article/pii/S1053811903006566?ref=pdf_download&fr=RR-2&rr=8279b478ba0328ac#APP1
     
     """
     def __init__(self, N=2, W=np.asarray([[0, 1], [0, 0]]), delay=0.01, node_dynamics=None, dt=0.001, seed=42):
+        """
+        Parameters
+        ----------
+        N : int
+            The number of neurons/nodes.
+        W : array_like
+            The connectivity matrix. Shape (N, N). E.g. W = np.asarray([[0, 1], [0, 0]]) means that node 1 is connected to node 2, while node 2 is not connected to node 1. 
+        delay : float
+            The delay between nodes in seconds. Default is 10ms.
+        """
         self.rng = np.random.default_rng(seed)
         self.N = N # number of neurons/nodes
-        self.W = W # connectivity matrix
-        self.K = W # updated connectivity in case of normalisation by activity std
+        self.W = W # connectivity matrix (W_ij is the connection from i to j, between 0 and 1, relative contribution)
+        self.K = W.copy() # updated connectivity in case of normalisation by activity std
         self.delay = delay # delay (10ms)
         self.dt = dt # sampling rate
         self.seed = seed # random seed
-        self.nodes = [JansenRitExtended(seed=self.rng.randint(k)) for k in range(N)] # get different systems/rng for each node
+        self.nodes = [JansenRitExtended(seed=self.rng.integers(k+seed)) for k in range(N)] # get different systems/rng for each node
+        self.S = self.nodes[0].S # nonlinearity function
+        # self.delayed_states = np.zeros((N, self.nodes[0].nstates)) # delayed states of the nodes (state of the nodes at t-dt)
+        self.delayed_states = np.zeros((N, 1)) # delayed states of the nodes (state of the nodes at t-dt) / readout only
 
     def update_connectivity(self, x, sigma_p=1):
         """
-        x represents the firing rates output of all nodes
+        x represents the firing rates output of all nodes, needed to compute the standard deviation
+        Shape of x: (N, ntimes)
         """
-        # TODO: implement this
-        # See ref (DAvid & Friston 2004: A Neural Mass model for M/EEG: coupling and neuronal dynamics)
-        k12_star = sigma_p * np.sqrt(2*k12 - k12 ^2) / np.std(x, axis=0)[1] # 1 -> 2 (sigma_p is sigma_p2)
+        # See ref (David & Friston 2004: A Neural Mass model for M/EEG: coupling and neuronal dynamics)
+        if np.isscalar(sigma_p): # if sigma_p is a scalar, then it is the same for all nodes
+            sigma_p = sigma_p * np.ones((self.N,))
+        
+        if np.ndim(x) <= 1 or x.shape[1] <= 1:
+            sigma_rate = np.ones((self.N,))
+        else:
+            sigma_rate = np.std(x, axis=1)
+        for i in range(self.N):
+            for j in range(self.N):
+                if i != j:
+                    # k12_star[i] is the normalisation factor for connection from i to j
+                    self.K[i, j] = sigma_p[j] * np.sqrt(2 * self.W[i, j] - self.W[i, j]**2) / sigma_rate[i]
         # Then update self.K
 
-    def simulate(self):
-        raise NotImplementedError("This method must be implemented in the child class")
-    
-    def step(self):
+    def simulate(self, tmax=1):
         outs = []
-        for n in self.nodes:
+        t = np.arange(0, tmax, self.dt)
+        nsamples = len(t)
+        tdelay, kdelay = 0, 0
+        for k, tt in enumerate(t):
+            outs.append(self.step(history_outs=self.S(np.asarray(outs).T)))
+            tdelay += self.dt
+            kdelay += 1
+            if tdelay >= self.delay:
+                self.delayed_states = outs[-kdelay]
+                tdelay, kdelay = 0, 0
+        return np.asarray(outs)
+
+    
+    def step(self, P=220, sigma_p=22, history_outs=None):
+        if np.isscalar(sigma_p): # if sigma_p is a scalar, then it is the same for all nodes
+            sigma_p = sigma_p * np.ones((self.N,))
+
+        self.update_connectivity(history_outs, sigma_p=sigma_p) # update connectivity based on the history of the outputs
+        external_input_fluctuation = (1 - self.W)  @ (sigma_p * self.rng.standard_normal(size=(self.N,)))
+        interarea_contributions = (self.S(self.delayed_states).ravel() - 3.84) @ self.K # using normalised connectivity
+        outs = []
+        for k, n in enumerate(self.nodes):
+            # Below y_1 and y_2 corresponds to the fast and slow dynamics respectively of the extended Jansen-Rit model
+            #  I = p + (1-k21) * p̃ + k21_star *(S(w*y_1(t - δ) + (1-w)*y_2(t - δ)) - a) where "a" is the mean firing rate
+            # we remove the mean firing rate to ensure mean input is conserved with different coupling strengths
+            # a = 3.5 in the reference paper, my measured mean is more around 3.84
+            n.step(I=P + 
+                   external_input_fluctuation[k]  + # noise input scaled / (1-k21) * p̃
+                   interarea_contributions[k] # k21_star *(S(w*y_1(t - δ) + (1-w)*y_2(t - δ)) - a)
+                   ) # the input to each node is the output of all the other nodes
             outs.append(n.read_out())
-            # incorporate delays here
-            n.step(I=self.K @ np.asarray(outs)) # the input to each node is the output of all the other nodes
+            # for i in range(self.N):
+            #     I += self.K[i, n] * (outs[i] - 3.84)
+        return np.asarray(outs)
