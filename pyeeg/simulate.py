@@ -470,7 +470,7 @@ class JRNetwork(NeuralMassNetwork):
     [3] https://www.sciencedirect.com/science/article/pii/S1053811903006566?ref=pdf_download&fr=RR-2&rr=8279b478ba0328ac#APP1
     
     """
-    def __init__(self, N=2, W=np.asarray([[0, 1], [0, 0]]), delay=0.01, node_dynamics=None, dt=0.001, seed=42):
+    def __init__(self, N=2, W=np.asarray([[0, 1], [0, 0]]), delay=0.01, w=0.8, node_dynamics=None, dt=0.001, seed=42):
         """
         Parameters
         ----------
@@ -488,7 +488,9 @@ class JRNetwork(NeuralMassNetwork):
         self.delay = delay # delay (10ms)
         self.dt = dt # sampling rate
         self.seed = seed # random seed
-        self.nodes = [JansenRitExtended(seed=self.rng.integers(k+seed)) for k in range(N)] # get different systems/rng for each node
+        if not np.isscalar(w): # if w is a scalar, then it is the same for all nodes
+            w = w * np.ones((self.N,))
+        self.nodes = [JansenRitExtended(w=w, dt=dt, seed=self.rng.integers(k+seed)) for k in range(N)] # get different systems/rng for each node
         self.S = self.nodes[0].S # nonlinearity function
         # self.delayed_states = np.zeros((N, self.nodes[0].nstates)) # delayed states of the nodes (state of the nodes at t-dt)
         self.delayed_states = np.zeros((N, 1)) # delayed states of the nodes (state of the nodes at t-dt) / readout only
@@ -513,13 +515,13 @@ class JRNetwork(NeuralMassNetwork):
                     self.K[i, j] = sigma_p[j] * np.sqrt(2 * self.W[i, j] - self.W[i, j]**2) / sigma_rate[i]
         # Then update self.K
 
-    def simulate(self, tmax=1):
+    def simulate(self, tmax=1, P=220, sigma_p=22):
         outs = []
         t = np.arange(0, tmax, self.dt)
         nsamples = len(t)
         tdelay, kdelay = 0, 0
         for k, tt in enumerate(t):
-            outs.append(self.step(history_outs=self.S(np.asarray(outs).T)))
+            outs.append(self.step(P=P, sigma_p=sigma_p, history_outs=self.S(np.asarray(outs).T)))
             tdelay += self.dt
             kdelay += 1
             if tdelay >= self.delay:
@@ -533,7 +535,7 @@ class JRNetwork(NeuralMassNetwork):
             sigma_p = sigma_p * np.ones((self.N,))
 
         self.update_connectivity(history_outs, sigma_p=sigma_p) # update connectivity based on the history of the outputs
-        external_input_fluctuation = (1 - self.W)  @ (sigma_p * self.rng.standard_normal(size=(self.N,)))
+        external_input_fluctuation = (sigma_p * self.rng.standard_normal(size=(self.N,))) * (1 - self.W.sum(axis=0))  
         interarea_contributions = (self.S(self.delayed_states).ravel() - 3.84) @ self.K # using normalised connectivity
         outs = []
         for k, n in enumerate(self.nodes):
@@ -542,10 +544,17 @@ class JRNetwork(NeuralMassNetwork):
             # we remove the mean firing rate to ensure mean input is conserved with different coupling strengths
             # a = 3.5 in the reference paper, my measured mean is more around 3.84
             n.step(I=P + 
-                   external_input_fluctuation[k]  + # noise input scaled / (1-k21) * p̃
-                   interarea_contributions[k] # k21_star *(S(w*y_1(t - δ) + (1-w)*y_2(t - δ)) - a)
+                   external_input_fluctuation[k]  + # noise input scaled : (1-k21) * p̃
+                   interarea_contributions[k] # k21_star * (S(w*y_1(t - δ) + (1-w)*y_2(t - δ)) - a)
                    ) # the input to each node is the output of all the other nodes
             outs.append(n.read_out())
             # for i in range(self.N):
             #     I += self.K[i, n] * (outs[i] - 3.84)
         return np.asarray(outs)
+    
+    def reset(self):
+        self.delayed_states = np.zeros((self.N, 1))
+        for n in self.nodes:
+            n.x = np.zeros((n.nstates,))
+        self.K = self.W.copy()
+        
