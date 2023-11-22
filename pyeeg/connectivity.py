@@ -132,21 +132,23 @@ def phase_transfer_entropy(data, delay=None, binsize='scott'):
     Note that implementations differ in normalisation, as well as choices for binning and delay
     """
     assert len(np.atleast_2d(data).shape) == 2, "data must be a 2d array"
-    if delay is not None: assert isinstance(delay, int), "delay must be an integer"
     N, chan = data.shape
 
     # Compute phase
     phi = np.angle(hilbert(data, axis=0))
 
-    # Compute ideal delay
-    count1, count2 = 0, 0
-    for j in range(chan):
-        for i in range(1, N-1):
-            count1 += 1
-            if (phi[i-1, j] * phi[i+1, j]) < 0:
-                count2 += 1
-    print(np.round(count1/count2))
-    delay = int(np.round(count1/count2))
+    if delay is not None:
+        assert isinstance(delay, int), "delay must be an integer"
+    else:
+        # Compute ideal delay
+        count1, count2 = 0, 0
+        for j in range(chan):
+            for i in range(1, N-1):
+                count1 += 1
+                if (phi[i-1, j] * phi[i+1, j]) < 0:
+                    count2 += 1
+        print(f"Chosing delay of {np.round(count1/count2)} samples")
+        delay = int(np.round(count1/count2))
 
     phi += np.pi # get it between 0 and 2pi
 
