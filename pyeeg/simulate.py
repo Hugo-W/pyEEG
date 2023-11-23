@@ -7,17 +7,23 @@ Simulations utilities
 Simulate MEEG-like signals with different connectivity patterns or methods.
 
 TODO:
-    - Simulation based on connectivity matrix
-    - Neural mass models:
+    - Follow up on those:
+        - RNN of rate models: https://elifesciences.org/articles/69499
+        - ctRNN revision, see https://www.nature.com/articles/s42256-023-00748-9#Sec9
+    - Simulation based on connectivity matrix: I should be anbleto implement a network
+    of N nodes simply using the the connectivity matrix and node-specific implementations
+    - Neural mass models to be added:
         - Wilson-Cowan
+    - Simulations of TRF-based signals
 
 References:
     - Janseen-Rit model: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10473283/, See https://pdf.sciencedirectassets.com/272508/1-s2.0-S1053811900X00973/1-s2.0-S1053811903006566/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEAAaCXVzLWVhc3QtMSJHMEUCIEBRfmnMkb2j8ut2p46cc2y6emk9Jl4srBYEgaVRmPS%2FAiEAtKpadf9qZgbW0vxfxuG0FxR2CXU8iGh9M9VZ6T36r%2BMqswUISBAFGgwwNTkwMDM1NDY4NjUiDAOu3ZZjVACJ4G%2B%2F4yqQBbt8wNEj1LK7ozKjn8OBKbG3gcdZaU0Sg%2FLJMMQfgZnBK0iFT%2BHicPKc%2BEzpvhyikXNHGv%2FXtokrD%2Favx5YbL%2B7rKox9FRVvl9pVFrdaSkf%2BhkE2ACQM6nxOFXVbfpsd0QSEGYH40O8EL%2F5FQOxBcuLU2SE1wA9xSjpHnQB0CM1Q2WxF67v0WAkiSIuwAA5hwfscGL%2BUzRidKmTWC8B8lzPKki0D0jZVngPHRHuawuZbmR07LHye1pgPBacqY%2B3DBrOrIjgZXU%2FMzPw1kgcou%2Fd0nJnJgfEFotmAuhj%2FgbLPuOu0ROhYeJeCUTFQ9cXwaIkN%2FpGPwV3EtLvkH7QvEpsfKDMOR1iB4YYMh1oe75O7lx6hJ5qWpHCFgEh0Xg5Z%2BatTlrifNzMyr5isVLVrUZElzdY%2B3ZCZKaX%2FA6zJBp0Y%2FsDCvV4IU5K2GHOzTWyimbTQd2WUk%2BM4FEpn9U38zsTnEA5I5%2F5il8dMHS4fRDCF0dEarsdRbi%2BRXuLnFU8%2FTkkRyMGeqh4nIt8%2F7MyvrWE5D2YqSwImBeknhAVQ%2BF%2BHUWqU9tNVrnbuchks%2BZWB4E2%2BkEJeUBtFlswq5W5DuPMVAzT0IbCkITPSLvHtyAuAvPD2S3zfduMgPu98lwYfijcDEdS58uc05WQiUIHg8H3u%2F46DHT8MbHFp7B8FgkWqYWzof1yCIA6dOzjD9AvkSjGCxtbUqiDgGV88pzvnS9CKEX%2BKt1k5bLebz6MERTnPBd%2BTbrFGpHJlzKB%2FCbfVIkEzqvZQIKCkMUm7I8JfainxdL3y4JjKMxi75aoenMZSPOhBRPNQFglT43ZYjuZXNitc4P1KpEDkIGkS7iSdeU5576MRicX3fID9feeeMGlYMPf8yKoGOrEBRrcOQuw9PMvlCvY0kUumTwNahcqJuAbPVCj5UFZKOf9bBMEOcC1Xbi5r%2FCoOYPPf9yyQIuQ4pk5UTOs3E%2BBHrMqCboKDNcLFdkc6oWOtD8yF%2BaZddbsrfT2%2FdIWe80mM65qPFbm374EtTfoo8mGY%2F8QwlzJfEUYFSUgpZr5%2B32O2pJNnNIGQxL3suTL9hEGSvZAaxEgE3TcP073vpVxDHZzWPai90pW%2FtrJCH0v9vkdi&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20231113T164609Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTYRX55LHJ7%2F20231113%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=efb4397d32d0283d891f7f7b6b54cf6086f166c7f49d7c73cd85383c2ace1215&hash=c12ba03b2ecaf8322bf34c85889ef48d9263bd5c22c8fe4fdc4fd77c9ddd950c&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S1053811903006566&tid=spdf-fd17f1b2-9263-4484-94b2-caa5ff6aeb65&sid=1f34fbf92ab4c94b979becc2279c4fddfea3gxrqb&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=080f56555356560150&rr=82587d3bad7f66a5&cc=nl
         or https://pdf.sciencedirectassets.com/272508/1-s2.0-S1053811900X00924/1-s2.0-S1053811903004579/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEAAaCXVzLWVhc3QtMSJIMEYCIQCLOeRLcqnzm1kuLuu9gAR4xW20REgfwC%2BUG7p0FPu14gIhANRW6LXlFS2LON%2F%2BgS1jbn%2F7a8w6IHV7gKbTbNV5wqjnKrIFCEkQBRoMMDU5MDAzNTQ2ODY1Igy1V1bpLECYjeUFuUEqjwVSOS4pH6j2ew1gfsyDFISqu%2FmCuyDnXJ%2BkanuTqSOt35WOcurB7Pczd0RdZV4dTzoTbW0ZoPMv6dCNi8tfQ4oaeaxWA3mN0Vs%2FIaYMy8eyCOkgxTFBPEOxGmXFV1hBWQhmske05vPkhjTf37BfdI7Ipik7o%2BHMGfIKoQKO8zybRghfnsSyV3crhDAbQx9GF%2BOe%2FKNp7X5Yx06OV953HqhGiu%2Fs5wITv2fSRaAvoLHoMkiYLo8B0jNIynMY71cB9p68YgUPZ%2FAxfUiSHT%2FwjTywZO1sPhVSB0Bm2HqCDh5soRiZ07MylsEDbYbnrW%2B7aCVBRKykjaQ9IFK4OwiaE%2BK7WQm6pdztg3oLmY5Su%2FWU90iUY41Ju1dUGmhsFfO8Q8WTlnnZ5GBRzGcgqKxuYcKHWxUBieD5U6w2FSynBti2ryxOFiiGtXI%2BeODXN1Ea0qoR9cT7HLExDbFyL101aLiyP%2FTSFjq%2Buygyfwl0yk6%2FkJdgWZYB3Xllmi9s7uc3sZ3KsZo5P4m8we2fz5XrMDpCLsiuTMfUwfZatWon8GXyysOSOHwoCVvS%2Btn%2BnZxRGbNTcNvvRmSQz5TGJ02lKzNOC5Bd0y9fKCfuNSXVcL1FutS2oJtonpy0iiLc3mgczpXspnK3kJaSAJo%2FFXaW8OVupYm3C8hQx5E9wCb1c%2FdSCLcaitk%2FZA3eGjbIXjcUiTHuiit6N20F6VhzUNTkSuM7FZzNH%2Fkl7Cmt72Z13TDiG%2BUkrD3RA2dePMS5XvqkwiWvLWK%2Bbljweot6RbbwfRoLc4ouc8Fy4pVsUhlABP6iAFGRpz7lGEUDo6cxpYp1J8aoUbpnibvPR1SdHUSz%2BGbq7PXxmjEO%2Bu0Lu2D7JZqAMO2LyaoGOrABbIrfm40nIMybDuTZ4mK%2BoaIvNb9Vc0xLy1Nypl6sNZoLJl4oVqI0WYNwtHXNhpbGBR8jq2%2F%2FL24tih289cLG8S5GV07PE5oeIJj7DfywGo8PPko2O6vViv9%2BZo4i5RIEn259RUd2IXplHZd57rggnFTY4ac8m9CEbjtk7gTW7HF7DNFaFMRv6D8K%2F5hpLKGHjyF%2BZhxZ79fcAN%2B5TgvVIBYRWS4Qi%2F%2B6NMhnU28QTVo%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20231113T164603Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTY742FACEQ%2F20231113%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=da2d7fe1b02d5c068a1f3c7c8f2fdc64b8350e1f909000d3d6906267796778a2&hash=82bcc505cc92fe4f322349938bc58f4add1575143448707ba5b16def04ceade7&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S1053811903004579&tid=spdf-2c8c5161-288d-41b8-83ac-547a9870612e&sid=1f34fbf92ab4c94b979becc2279c4fddfea3gxrqb&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=080f56555356560152&rr=82587d1569b866a5&cc=nl
 
 Update:
+    - 22/11/2023: Network class added and JR network implemented
     - 17/11/2023: added Jansen-Rit model
-    - 10/11/2023: initial commit
+    - 10/11/2023: initial commit (AR and VAR simulations)
 """
 import numpy as np
 from .utils import sigmoid
@@ -462,12 +468,22 @@ class JRNetwork(NeuralMassNetwork):
     Abstract class for neural mass models.
     Defines the function to be implemented for the simulation.
 
+    Notes
+    -----
+    Two types of networks are modelled in the literature: either one when the mean input and variance of the input
+    are controlled for each node, such that the input received from connected nodes is normalised and will relatively
+    shut down contribution from external input, or one where the input is not normalised and the external input is
+    simply summed over the input from connected nodes.
+    The latter is seen in [2] and [3], while the former is seen in [4] & [5].
+
     References
     ----------
 
     [1] Jansen, B. H., & Rit, V. G. (1995). Electroencephalogram and visual evoked potential generation in a mathematical model of coupled cortical columns. Biological cybernetics, 73(4), 357-366.
-    [2] https://www.sciencedirect.com/science/article/pii/S1053811903004579?ref=cra_js_challenge&fr=RR-1
-    [3] https://www.sciencedirect.com/science/article/pii/S1053811903006566?ref=pdf_download&fr=RR-2&rr=8279b478ba0328ac#APP1
+    [2] Kazemi & Jamali, (2022), Phase synchronization and measure of criticality in a network od neural mass models. https://www.nature.com/articles/s41598-022-05285-w
+    [3] Forrester et al. (2020), Network Neuroscience. The role of node dynamics in shaping emergent functinoal connectivity patterns in the brain. https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7286301/#bib70
+    [4] David & Friston (2006), NeuroImage. A Neural mass model for MEG/EEG: coupling and neuonal dynamics. https://www.sciencedirect.com/science/article/pii/S1053811903004579?ref=cra_js_challenge&fr=RR-1
+    [5] David et al., (2004). Evaluation of different measures of funcitonal connectivity using a neural mass model. https://www.sciencedirect.com/science/article/pii/S1053811903006566?ref=pdf_download&fr=RR-2&rr=8279b478ba0328ac#APP1
     
     """
     def __init__(self, N=2, W=np.asarray([[0, 1], [0, 0]]), delay=0.01, w=0.8, node_dynamics=None, dt=0.001, seed=42):
@@ -557,4 +573,3 @@ class JRNetwork(NeuralMassNetwork):
         for n in self.nodes:
             n.x = np.zeros((n.nstates,))
         self.K = self.W.copy()
-        
