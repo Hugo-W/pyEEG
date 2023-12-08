@@ -151,7 +151,8 @@ class NeuralMassNetwork(object):
         self.dt = dt # sampling rate
         self.seed = seed # random seed
         self.node_dynamics = node_dynamics # node dynamics instance
-        self.nodes = [node_dynamics(self.rng.randint(k)) for k in range(N)] # get different systems/rng for each node
+        if node_dynamics is not None:
+            self.nodes = [node_dynamics(seed=self.rng.integers(0, k+1)) for k in range(N)] # get different systems/rng for each node
 
     def simulate(self):
         raise NotImplementedError("This method must be implemented in the child class")
@@ -171,7 +172,7 @@ class CTRNN(NeuralMassNetwork):
         \\tau \\dot{x} = -x + W o + I + \\theta
 
     """
-    def __init__(self, N, W, dt=0.001, seed=42, nonlinearity=sigmoid, theta=None):
+    def __init__(self, N, W, input_dim=1, output_dim=1, dt=0.001, seed=42, nonlinearity=sigmoid, theta=None):
         """
         Parameters
         ----------
@@ -182,10 +183,10 @@ class CTRNN(NeuralMassNetwork):
         nonlinearity : callable
             The nonlinearity function to apply to the network. Default is sigmoid (e.g. can use func:`np.tanh`)    
         """
-        super().__init__(N, W, dt, seed)
+        super().__init__(N=N, W=W, dt=dt, seed=seed)
         self.nonlinearity = nonlinearity # nonlinearity function
-        self.readout_W = np.zeros((N,)) # readout matrix
-        self.input_W = np.zeros((N,)) # input matrix
+        self.readout_W = np.zeros((output_dim, N)) # readout matrix
+        self.input_W = np.zeros((N, input_dim)) # input matrix
         self.theta = theta if theta is not None else np.zeros((N,))
         self.x = np.zeros((N,)) # state of the network
         self.o = np.zeros((N,)) # output of the network
@@ -195,14 +196,16 @@ class CTRNN(NeuralMassNetwork):
         Compute one step of the CTRNN model.
         """
         if I is None:
-            I = np.zeros((self.N,))
+            I = np.zeros((self.input_W.shape[1],))
+        elif np.isscalar(I):
+            I = np.ones((self.input_W.shape[1],)) * I
         self.x = self.x + self.dt * (-self.x + self.W @ self.o + self.input_W @ I) + noise
         self.o = self.nonlinearity(self.x + self.theta)
 
     def read_out(self):
         return 2 * self.nonlinearity( self.readout_W @ self.o) - 1 # this is in the range -1 to 1 if the nonlinearity is sigmoid
 
-    def simulate(self, x0, tmax=1, noise=0.):
+    def simulate(self, x0, tmax=1, noise=0., I=lambda t: 0.):
         """
         Simulate the CTRNN model and monitor the output.
 
@@ -229,7 +232,7 @@ class CTRNN(NeuralMassNetwork):
         self.x = x0
         dt_noise = np.sqrt(self.dt) * noise
         for i in range(1, n):
-            self.step(noise = rng.standard_normal(size=self.x.shape) * dt_noise)
+            self.step(I=I(i*self.dt), noise = rng.standard_normal(size=self.x.shape) * dt_noise)
             x[i] = self.x
             o[i] = self.o
             O[i] = self.read_out()
