@@ -833,7 +833,7 @@ class TRFEstimator(BaseEstimator):
         return trf
 
 
-    def plot(self, feat_id=None, ax=None, spatial_colors=False, info=None, picks=None, **kwargs):
+    def plot(self, feat_id=None, ax=None, spatial_colors=False, info=None, picks=None, plot_kws={}, **kwargs):
         """Plot the TRF of the feature requested as a *butterfly* plot.
 
         Parameters
@@ -843,6 +843,8 @@ class TRFEstimator(BaseEstimator):
             Default is to use all features.
         ax : array of axes (flatten)
             list of subaxes
+        plot_kws : ``**dict``
+            Parameters to pass to :func:`plt.plot` (so that you can control the line style, color, etc...)
         **kwargs : ``**dict``
             Parameters to pass to :func:`plt.subplots`
 
@@ -885,7 +887,7 @@ class TRFEstimator(BaseEstimator):
             colors = get_spatial_colors(info)
             
         for k, feat in enumerate(feat_id):
-            ax[k].plot(self.times, self.coef_[:, feat, :])
+            ax[k].plot(self.times, self.coef_[:, feat, :], **plot_kws)
             if self.feat_names_:
                 ax[k].set_title('{:s}'.format(self.feat_names_[feat]))
             if spatial_colors:
@@ -893,6 +895,38 @@ class TRFEstimator(BaseEstimator):
                 for kc, l in enumerate(lines):
                     l.set_color(colors[kc])
                         
+        return fig
+    
+    def plot_topomap(self, time_lag, feat_id, info, ax=None, plot_kws={}, **kwargs):
+        """Plot the topomap of the TRF at a given time-lag.
+
+        Parameters
+        ----------
+        time_lag : ``float``
+            Time-lag at which to plot the topomap.
+        feat_id : ``int`` | ``str``
+            Index of the feature requested. Can also be the name of the feature.
+        info : :class:`mne.Info`
+            Info instance from MNE.
+        ax : :class:`plt.Axes`
+            Axes to plot on.
+        plot_kws : ``**dict``
+            Parameters to pass to :func:`mne.viz.plot_topomap`
+        **kwargs : ``**dict``
+            Parameters to pass to :func:`mne.viz.plot_topomap`
+        """
+        assert self.fitted, "Fit the model first!"
+        assert self.tmin <= time_lag <= self.tmax, "Time-lag not in range"
+        if isinstance(feat_id, int): assert 0 <= feat_id < self.n_feats_, "Feat id not in range"
+        if isinstance(feat_id, str):
+            assert feat_id in self.feat_names_, f"Features {feat_id} not in {self.feat_names_}"
+            feat_id = self.feat_names_.index(feat_id)
+        if ax is None:
+            fig, ax = plt.subplots(1, 1, **kwargs)
+        else:
+            fig = ax.figure
+        from pyeeg.vizu import topomap
+        topomap(self.coef_[np.argmin(np.abs(self.times - time_lag)), feat_id, :], info, ax=ax, **plot_kws)
         return fig
 
     def __getitem__(self, feats):
@@ -970,6 +1004,13 @@ class TRFEstimator(BaseEstimator):
         trf.times = self.times
         trf.lags = self.lags
 
+        return trf
+    
+    def __div__(self, scalar):
+        "Make available the '/' operator. Will simply divide coefficients by scalar (useful for averaging)."
+        trf = self.copy()
+        trf.coef_ = trf.coef_ / scalar
+        trf.intercept_ = trf.intercept_ / scalar
         return trf
 
     def copy(self):
