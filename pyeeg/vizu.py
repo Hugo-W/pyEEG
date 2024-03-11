@@ -344,9 +344,15 @@ def prettify_boxplot(ax):
     ax : :class:`plt.AxesSubplot`
         Axis in which the boxplot is drawn.
     """
-    patch = [p for p in ax.get_children() if isinstance(ax, PathPatch)]
+    patch = [p for p in ax.get_children() if isinstance(p, PathPatch)]
     lines = ax.get_lines()
-    for p,l3 in zip(patch, np.reshape(lines, (-1, 3))):
+
+    for p,l3 in zip(patch, np.reshape(lines, (len(patch), -1))):
         c = p.get_facecolor()
         p.set_edgecolor(sns.desaturate(c, 0.65))
-        for l in l3[:-1]: l.set_color(c)
+        p.set_linewidth(1.5)
+        for l in l3[:-1]: # last line is the median
+            l.set_color(c)
+            l.set_linewidth(1.5)
+        l3[-1].set_linewidth(1.5)
+        
