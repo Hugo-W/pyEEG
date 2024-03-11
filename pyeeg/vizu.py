@@ -259,7 +259,7 @@ def plots_topogrid(x, y, info, yerr=None, mask=None):
                     v.set_color('C2')
     return fig
 
-def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05, barh=.05, fs=None, maxasterix=None, ax=None):
+def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05, barh=.05, fontsize=None, maxasterix=None, ax=None):
     """ 
     Annotate barplot (preferably, but any type really) with p-values.
 
@@ -271,7 +271,7 @@ def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05,
         yerr: yerrs of all bars
         dh: height offset over bar / bar + yerr in axes coordinates (0 to 1)
         barh: bar height in axes coordinates (0 to 1)
-        fs: font size
+        fontsize: font size
         maxasterix: maximum number of asterixes to write (for very small p-values)
     Returns
     -------
