@@ -92,7 +92,7 @@ def _svd_regress(x, y, alpha=0., verbose=False):
             XtY += X.T @ Y
             count += 1
         if verbose: pbar.close()
-        # XtY /= len(x) # NO IT SHOULD BE A SUM
+        # XtY /= len(x) # NO: IT SHOULD BE A SUM
         
         #betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
         
