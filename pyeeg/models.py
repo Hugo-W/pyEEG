@@ -928,11 +928,39 @@ class TRFEstimator(BaseEstimator):
         from pyeeg.vizu import topomap
         topomap(self.coef_[np.argmin(np.abs(self.times - time_lag)), feat_id, :], info, ax=ax, **plot_kws)
         return fig
+    
+    def _select_time_lag(self, indices):
+        trf = self.copy()
+        trf.coef_ = self.coef_[indices, :, :]
+        trf.times = self.times[indices]
+        trf.lags = self.lags[indices]
+        return trf
+    
+    def _select_features(self, indices):
+        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
+        trf.coef_ = self.coef_[:, indices]
+        trf.feat_names_ = self.feat_names_[indices] if self.feat_names_ else None
+        trf.n_feats_ = len(indices)
+        trf.n_chans_ = self.n_chans_
+        trf.fitted = True
+        trf.times = self.times
+        trf.lags = self.lags
+        trf.intercept_ = self.intercept_
+        return trf
 
     def __getitem__(self, feats):
-        "Extract a sub-part of TRF instance as a new TRF instance (useful for plotting only some features...)"
+        """
+        Extract a sub-part of TRF instance as a new TRF instance (useful for plotting only some features...).
+        If a float, or an array of floats is supplied, will return a new TRF instance with only the corresponding time-lags.
+        """
         # Argument check
-        if self.feat_names_ is None:
+        integer_indices = isinstance(feats, int) or (np.ndim(feats) > 0 and all([isinstance(f, int) for f in feats]))
+        if isinstance(feats, (float, np.ndarray)):
+            assert np.all([f >= self.tmin and f <= self.tmax for f in feats]), "Time-lags not in range"
+            indices = np.argmin(np.abs(self.times - feats))
+            return self._select_time_lag(indices)
+        
+        if self.feat_names_ is None or integer_indices:
             if np.ndim(feats) > 0:
                 assert isinstance(feats[0], int), "Type not understood, feat_names are ot defined, can only index with int"
                 indices = feats
@@ -949,18 +977,7 @@ class TRFEstimator(BaseEstimator):
                 assert feats in self.feat_names_, "argument %s not present in %s"%(feats, self.feat_names_)
                 indices = [self.feat_names_.index(feats)]
                 feats = [feats]
-
-        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
-        trf.coef_ = self.coef_[:, indices]
-        trf.feat_names_ = feats
-        trf.n_feats_ = len(feats)
-        trf.n_chans_ = self.n_chans_
-        trf.fitted = True
-        trf.times = self.times
-        trf.lags = self.lags
-        trf.intercept_ = self.intercept_
-
-        return trf
+        return self._select_features(indices)
 
     def __repr__(self):
         if self.fitted:
@@ -1006,8 +1023,10 @@ class TRFEstimator(BaseEstimator):
 
         return trf
     
-    def __div__(self, scalar):
+    def __truediv__(self, scalar):
         "Make available the '/' operator. Will simply divide coefficients by scalar (useful for averaging)."
+        assert isinstance(scalar, (int, float)), "Can only divide by scalar"
+        assert scalar != 0, "Cannot divide by zero"
         trf = self.copy()
         trf.coef_ = trf.coef_ / scalar
         trf.intercept_ = trf.intercept_ / scalar
