@@ -92,7 +92,7 @@ def plot_filterbank_output(signals, x=None, spacing=None, axis=-1):
         plt.gca().set_prop_cycle(plt.cycler('color', COLORS[:signals.shape[2]]))
         if axis == -1:
             filtered = filtered.T
-        plt.plot(filtered + k*spacing*2)
+        plt.plot(x, filtered + k*spacing*2)
 
 def topomap(arr, info, colorbar=True, ax=None, **kwargs):
     """
