@@ -10,22 +10,6 @@ You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.
 
 ------
 
-## TODOs
-
-### Priority
-
-- [ ] Use [doctest](https://docs.python.org/2/library/doctest.html) for systematic testing of some functions
-- [x] fix imports (for now, cannot do `import pyeeg` to access all modules...)
-
-### Enhancements
-
-- [ ] Functional connectivity methods:
-  - [x] Estimate connectivity (**in construction**)
-  - [ ] Graph theory metrics (path length, clustering coeff.)
-- [ ] Pipeline `pyRiemann` and `pyeeg` [this one](https://github.com/freole/pyeeg) into some workflows..
-
-------
-
 ## Installation
 
 ### Dependencies
@@ -123,3 +107,13 @@ To clean files created during build process (can be necessary to re-build the do
 ```bash
 make clean
 ```
+---
+
+## TODOs
+
+- [ ] Use [doctest](https://docs.python.org/2/library/doctest.html) for systematic testing of some functions
+- [ ] Functional connectivity methods:
+  - [x] Estimate connectivity (**in construction**)
+  - [ ] Graph theory metrics (path length, clustering coeff.)
+- [ ] Pipeline `pyRiemann` and `pyeeg` [this one](https://github.com/freole/pyeeg) into some workflows..
+
