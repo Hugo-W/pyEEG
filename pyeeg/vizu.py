@@ -324,8 +324,8 @@ def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05,
     ax.plot(barx, bary, c=color, linewidth=1.8)
 
     kwargs_t = dict(ha='center', va='bottom')
-    if fs is not None:
-        kwargs_t['fontsize'] = fs
+    if fontsize is not None:
+        kwargs_t['fontsize'] = fontsize
 
     ax.text(*mid, text, color=color, **kwargs_t)
 
