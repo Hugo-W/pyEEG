@@ -22,6 +22,7 @@ from scipy.fftpack import next_fast_len
 from sklearn.preprocessing import minmax_scale
 import pandas as pd
 import matplotlib.pyplot as plt
+from pyeeg.ratemap import make_rate_map as ratemap
 
 logging.basicConfig(level=logging.ERROR)
 LOGGER = logging.getLogger(__name__.split('.')[0])
@@ -147,6 +148,34 @@ def lag_sparse(times, srate=125):
     """
     return np.asarray([int(np.ceil(t * srate)) for t in times])
 
+def cochleogram(signal, srate, shift=8, nchannels=32, fmin=80, fmax=8000, comp_factor=1/3):
+    """Compute the cochleogram of the input signal.
+
+    Parameters
+    ----------
+    signal : ndarray (nsamples,)
+        1-dimensional input signal
+    srate : float
+        Original sampling rate of the signal
+    shift : float (default 8ms)
+        Time shift between frames in ms
+    nchannels : int (default 32)
+        Number of channels in the filterbank
+    fmin : float (default 80Hz)
+        Minimum frequency of the filterbank
+    fmax : float (default 8000Hz)
+        Maximum frequency of the filterbank
+    comp_factor : float (default 1/3)
+        Compression factor (final envelope = env**comp_factor)
+
+    Returns
+    -------
+    cochleogram : ndarray (nsamples, nchannels)
+        Cochleogram
+    """
+    return ratemap(signal, srate, fmin, fmax, nchannels, shift, 8., comp_factor)
+    
+
 def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./3, resample=125, verbose=None):
     """Compute the broadband envelope of the input signal.
     Several methods are available:
@@ -187,7 +216,7 @@ def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./
     LOGGER.log(verbose, "Computing envelope")
 
     if method.lower() == 'subs':
-        raise NotImplementedError
+        return cochleogram(signal, srate, shift=1/resample*1000, nchannels=32, fmin=80, fmax=8000, comp_factor=comp_factor)
     else:
         if method.lower() == 'hilbert':
             # Get modulus of hilbert transform
