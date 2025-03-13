@@ -29,18 +29,51 @@ VERS = {}
 with open("./pyeeg/version.py") as fp:
     exec(fp.read(), VERS)
 
-setup(
-    name='pyEEG',
-    version=VERS['__version__'],
-    ext_modules=[gammatone_module, ratemap_module],
-    packages=['pyeeg'],
-    package_dir={'pyeeg': 'pyeeg'},
-    package_data={
-        'pyeeg': ['*.dll', '*.so', '*.dylib'],
-    },
-    install_requires=['numpy', 'scipy', 'scikit-learn'],
-    url='https://github.com/Hugo-W/pyEEG',
-    license='GNU GENERAL PUBLIC LICENSE',
-    author='Hugo Weissbart',
-    description='process EEG data with set of utilities function used in ou lab'
-)
+try:
+    raise Exception("Forcing exception")
+    setup(
+        name='pyEEG',
+        version=VERS['__version__'],
+        ext_modules=[gammatone_module, ratemap_module],
+        packages=['pyeeg'],
+        package_dir={'pyeeg': 'pyeeg'},
+        package_data={
+            'pyeeg': ['*.dll', '*.so', '*.dylib'],
+        },
+        install_requires=['numpy', 'scipy', 'scikit-learn'],
+        url='https://github.com/Hugo-W/pyEEG',
+        license='GNU GENERAL PUBLIC LICENSE',
+        author='Hugo Weissbart',
+        description='process EEG data with set of utilities function used in ou lab'
+    )
+except Exception as e:
+    import shutil
+    print(f"Warning: {e}")
+    print("Failed to build extension modules. Proceeding anyway...")
+    print("Will copy the pre-built shared libraries instead.")
+    if system == "Windows":
+        ext = ".dll"
+    elif system == "Darwin":
+        ext = ".dylib"
+    else:
+        ext = ".so"
+    try:
+        shutil.copy(f"src/gammatone_c.{ext}", f"pyeeg/gammatone_c.{ext}")
+        shutil.copy(f"src/makeRateMap_c.{ext}", f"pyeeg/makeRateMap_c.{ext}")
+    except FileNotFoundError:
+        print("Failed to copy shared libraries. Please copy the shared libraries manually.")
+        print("They need to be in the same directory as the pyeeg package.")
+    setup(
+        name='pyEEG',
+        version=VERS['__version__'],
+        packages=['pyeeg'],
+        package_dir={'pyeeg': 'pyeeg'},
+        package_data={
+            'pyeeg': ['*.dll', '*.so', '*.dylib'],
+        },
+        install_requires=['numpy', 'scipy', 'scikit-learn'],
+        url='https://github.com/Hugo-W/pyEEG',
+        license='GNU GENERAL PUBLIC LICENSE',
+        author='Hugo Weissbart',
+        description='process EEG data with set of utilities function used in ou lab'
+    )
