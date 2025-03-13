@@ -6,7 +6,7 @@ Simply.
 """
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
-import seaborn as sns
+import colorsys
 from matplotlib.patches import PathPatch
 import numpy as np
 from scipy import signal
@@ -331,8 +331,7 @@ def significance_overlay(pval, edges, height=None, color='k', yerr=None, dh=.05,
 
     return ax
 
-
-def prettify_boxplot(ax):
+def prettify_boxplot(ax, desaturate=0.65):
     """
     Renders a prettier boxplot.
     
@@ -349,7 +348,9 @@ def prettify_boxplot(ax):
 
     for p,l3 in zip(patch, np.reshape(lines, (len(patch), -1))):
         c = p.get_facecolor()
-        p.set_edgecolor(sns.desaturate(c, 0.65))
+        hls = colorsys.rgb_to_hls(to_rgb(c))
+        c = colorsys.hls_to_rgb(hls[0], desaturate*hls[1], hls[2])
+        p.set_edgecolor(c)
         p.set_linewidth(1.5)
         for l in l3[:-1]: # last line is the median
             l.set_color(c)
