@@ -31,7 +31,7 @@ with open("./pyeeg/version.py") as fp:
     exec(fp.read(), VERS)
 
 try:
-    raise Exception("Forcing exception")
+    # raise Exception("Forcing exception")
     setup(
         name='pyEEG',
         version=VERS['__version__'],
@@ -73,7 +73,7 @@ except Exception as e:
         package_data={
             'pyeeg': ['*.dll', '*.so', '*.dylib'],
         },
-        data_files=[('bin', ['bin/gammatone_c.dll', 'bin/makeRateMap_c.dll'])] if system == "Windows" else [('bin', ['bin/gammatone_c.so', 'bin/makeRateMap_c.so'])],
+        # data_files=[('bin', ['bin/gammatone_c.dll', 'bin/makeRateMap_c.dll'])] if system == "Windows" else [('bin', ['bin/gammatone_c.so', 'bin/makeRateMap_c.so'])],
         install_requires=['numpy', 'scipy', 'scikit-learn'],
         url='https://github.com/Hugo-W/pyEEG',
         license='GNU GENERAL PUBLIC LICENSE',
