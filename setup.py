@@ -66,7 +66,7 @@ except Exception as e:
         print("Failed to copy shared libraries. Please copy the shared libraries manually.")
         print("They need to be in the bin directory.")
     setup(
-        name='pyEEG',
+        name='natmeeg',
         version=VERS['__version__'],
         packages=['pyeeg'],
         package_dir={'pyeeg': 'pyeeg'},

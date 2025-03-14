@@ -3,10 +3,10 @@ name: Build and Publish
 on:
   push:
     branches:
-      - main
+      - master
   pull_request:
     branches:
-      - main
+      - master
 
 jobs:
   build:
@@ -39,4 +39,3 @@ jobs:
         with:
           user:  __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
-        environment: "Build to PIP"
