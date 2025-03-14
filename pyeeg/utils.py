@@ -302,7 +302,7 @@ def fir_order(tbw, srate, atten=60, ripples=None):
 
 def _is_1d(arr):
     "Short utility function to check if an array is vector-like"
-    return np.product(arr.shape) == max(arr.shape)
+    return np.prod(arr.shape) == max(arr.shape)
 
 def is_pos_def(A):
     """Check if matrix is positive definite
