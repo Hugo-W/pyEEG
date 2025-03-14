@@ -14,14 +14,14 @@ else:
 # Define the extension modules
 gammatone_module = Extension(
     'pyeeg.gammatone_c',
-    sources=['src/gammatone_c.c'],
+    sources=['externals/gammatone_c/gammatone_c.c'],
     extra_compile_args=extra_compile_args,
-    extra_link_args=extra_link_args
+    extra_link_args=extra_link_args,
 )
 
 ratemap_module = Extension(
     'pyeeg.makeRateMap_c',
-    sources=['src/makeRateMap_c.c'],
+    sources=['externals/gammatone_c/makeRateMap_c.c'],
     extra_compile_args=extra_compile_args,
     extra_link_args=extra_link_args
 )
@@ -59,12 +59,12 @@ except Exception as e:
     else:
         ext = ".so"
     try:
-        os.makedirs("pyeeg_binaries", exist_ok=True)
-        shutil.copy(f"src/gammatone_c.{ext}", f"pyeeg_binaries/gammatone_c.{ext}")
-        shutil.copy(f"src/makeRateMap_c.{ext}", f"pyeeg_binaries/makeRateMap_c.{ext}")
+        os.makedirs("bin", exist_ok=True)
+        shutil.copy(f"externals/gammatone_c/gammatone_c.{ext}", f"bin/gammatone_c.{ext}")
+        shutil.copy(f"externals/gammatone_c/makeRateMap_c.{ext}", f"bin/makeRateMap_c.{ext}")
     except FileNotFoundError:
         print("Failed to copy shared libraries. Please copy the shared libraries manually.")
-        print("They need to be in the pyeeg_binaries directory.")
+        print("They need to be in the bin directory.")
     setup(
         name='pyEEG',
         version=VERS['__version__'],
@@ -73,6 +73,7 @@ except Exception as e:
         package_data={
             'pyeeg': ['*.dll', '*.so', '*.dylib'],
         },
+        data_files=[('bin', ['bin/gammatone_c.dll', 'bin/makeRateMap_c.dll'])] if system == "Windows" else [('bin', ['bin/gammatone_c.so', 'bin/makeRateMap_c.so'])],
         install_requires=['numpy', 'scipy', 'scikit-learn'],
         url='https://github.com/Hugo-W/pyEEG',
         license='GNU GENERAL PUBLIC LICENSE',
