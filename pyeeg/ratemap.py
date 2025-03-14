@@ -3,18 +3,17 @@ import numpy as np
 import platform
 import os
 
-# Load the shared library
+# Determine the shared library extension based on the operating system
 system = platform.system()
 if system == "Windows":
-    lib_name = './makeRateMap_c.dll'
-elif system == "Linux":
-    lib_name = './makeRateMap_c.so'
-elif system == "Darwin":  # macOS
-    lib_name = './makeRateMap_c.dylib'
+    ext = ".dll"
+elif system == "Darwin":
+    ext = ".dylib"
 else:
-    raise OSError("Unsupported operating system")
+    ext = ".so"
 
-lib_path = os.path.join(os.path.dirname(__file__), lib_name)
+# Load the shared library
+lib_path = os.path.join(os.path.dirname(__file__), f"../bin/makeRateMap_c{ext}")
 ratemap_lib = ctypes.CDLL(lib_path)
 
 # Define the argument and return types

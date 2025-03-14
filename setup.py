@@ -1,5 +1,6 @@
 from setuptools import setup, Extension
 import platform
+import os
 
 # Determine the shared library extension based on the operating system
 system = platform.system()
@@ -22,7 +23,7 @@ ratemap_module = Extension(
     'pyeeg.makeRateMap_c',
     sources=['src/makeRateMap_c.c'],
     extra_compile_args=extra_compile_args,
-   extra_link_args=extra_link_args
+    extra_link_args=extra_link_args
 )
 
 VERS = {}
@@ -58,11 +59,12 @@ except Exception as e:
     else:
         ext = ".so"
     try:
-        shutil.copy(f"src/gammatone_c.{ext}", f"pyeeg/gammatone_c.{ext}")
-        shutil.copy(f"src/makeRateMap_c.{ext}", f"pyeeg/makeRateMap_c.{ext}")
+        os.makedirs("pyeeg_binaries", exist_ok=True)
+        shutil.copy(f"src/gammatone_c.{ext}", f"pyeeg_binaries/gammatone_c.{ext}")
+        shutil.copy(f"src/makeRateMap_c.{ext}", f"pyeeg_binaries/makeRateMap_c.{ext}")
     except FileNotFoundError:
         print("Failed to copy shared libraries. Please copy the shared libraries manually.")
-        print("They need to be in the same directory as the pyeeg package.")
+        print("They need to be in the pyeeg_binaries directory.")
     setup(
         name='pyEEG',
         version=VERS['__version__'],
