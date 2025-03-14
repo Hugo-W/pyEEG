@@ -33,7 +33,7 @@ with open("./pyeeg/version.py") as fp:
 try:
     # raise Exception("Forcing exception")
     setup(
-        name='pyEEG',
+        name='natmeeg',
         version=VERS['__version__'],
         ext_modules=[gammatone_module, ratemap_module],
         packages=['pyeeg'],
