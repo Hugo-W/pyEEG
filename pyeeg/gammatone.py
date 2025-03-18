@@ -13,7 +13,7 @@ else:
     ext = ".so"
 
 # Load the shared library
-lib_path = os.path.join(os.path.dirname(__file__), f"../bin/gammatone_c{ext}")
+lib_path = os.path.join(os.path.dirname(__file__), f"bin/gammatone_c{ext}")
 gammatone_lib = ctypes.CDLL(lib_path)
 
 # Define the argument and return types
