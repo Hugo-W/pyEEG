@@ -48,6 +48,7 @@ def make_rate_map(x, fs, lowcf, highcf, numchans, frameshift, ti, compression):
      This function is a wrapper for the C function makeRateMap.
 
     Parameters:
+    -----------
     x : array_like
         Input signal.
     fs : int
@@ -66,10 +67,12 @@ def make_rate_map(x, fs, lowcf, highcf, numchans, frameshift, ti, compression):
         Type of compression ['cuberoot', 'log', 'none'] (e.g., 'cuberoot').
 
     Returns:
+    --------
     ratemap : ndarray
         The computed rate map.
 
     Example:
+    --------
     ratemap = make_rate_map(x, 8000, 50, 3500, 32, 10, 8, 'cuberoot')
     """
     # Convert input data to ctypes

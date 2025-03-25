@@ -18,6 +18,7 @@ docs/_build/
 # Build from setup tool
 pyEEG.egg-info/
 natmeeg.egg-info/
+natmeeg.egg-info.BUP/
 
 # Misc
 *~
