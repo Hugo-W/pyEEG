@@ -2,6 +2,9 @@ import ctypes
 import numpy as np
 import platform
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Determine the shared library extension based on the operating system
 system = platform.system()
@@ -72,7 +75,6 @@ def make_rate_map(x, fs, lowcf, highcf, numchans, frameshift, ti, compression):
         The computed rate map.
 
     Example:
-    --------
     ratemap = make_rate_map(x, 8000, 50, 3500, 32, 10, 8, 'cuberoot')
     """
     # Convert input data to ctypes
@@ -100,7 +102,7 @@ def make_rate_map(x, fs, lowcf, highcf, numchans, frameshift, ti, compression):
 
     return ratemap
 
-print("Ratemap loaded successfully")
+logger.info("Gammatone C-library loaded successfully")
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt

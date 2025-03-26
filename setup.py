@@ -9,6 +9,10 @@ system = platform.system()
 if system == "Windows":
     extra_compile_args = []
     extra_link_args = []
+elif system == "Darwin":
+    # On macOS, don't force '-shared'
+    extra_compile_args = ['-fPIC']
+    extra_link_args = []
 else:
     extra_compile_args = ['-fPIC']
     extra_link_args = ['-shared']
@@ -40,12 +44,10 @@ def read_version():
 def check_build_tools():
     try:
         if system == "Windows":
-            # and distutils build option is not mingw32
+            # and if distutils build option is not mingw32
             if os.environ.get("DISTUTILS_USE_SDK") == "1":
                 # Check for Microsoft Visual C++ build tools
                 subprocess.check_call(["cl"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            # Check for Microsoft C++ build tools
-            # subprocess.check_call(["cl"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
             # Check for GCC
             subprocess.check_call(["gcc", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -67,6 +69,7 @@ if not build_tools_available:
     else:
         ext = ".so"
     try:
+        import shutil
         os.makedirs("bin", exist_ok=True)
         shutil.copy(f"externals/gammatone_c/gammatone_c.{ext}", f"pyeeg/bin/gammatone_c.{ext}")
         shutil.copy(f"externals/gammatone_c/makeRateMap_c.{ext}", f"pyeeg/bin/makeRateMap_c.{ext}")

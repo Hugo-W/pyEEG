@@ -48,8 +48,8 @@ docpdf: inplace doc
 	$(MAKE) -C docs latexpdf
 
 code-analysis:
-	flake8 sklearn | grep -v __init__ | grep -v external
-	pylint -E -i y sklearn/ -d E1103,E0611,E1101
+	flake8 pyeeg | grep -v __init__ | grep -v external
+	pylint -E -i y pyeeg/ -d E1103,E0611,E1101
 
 flake8-diff:
 	./build_tools/travis/flake8_diff.sh
