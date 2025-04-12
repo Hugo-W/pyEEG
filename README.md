@@ -19,11 +19,11 @@ pyEEG requires:
 - Python (>= 3.5)
 - NumPy (>= 1.11.0)
 - SciPy (>= 1.0.0)
-- mne (>= 0.16)
 - pandas (>= 0.23.0)
 - scikit-learn (>= 0.20.0)
 - matplotlib (>= 2.0)
 - h5py (>= 2.8.0)
+- mne (>= 0.16) [optional]
 
 Install requirements:
 

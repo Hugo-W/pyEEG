@@ -27,6 +27,28 @@ from pyeeg.ratemap import make_rate_map as ratemap
 logging.basicConfig(level=logging.ERROR)
 LOGGER = logging.getLogger(__name__.split('.')[0])
 
+def decorate_check_mne(func):
+    """Decorator to check if MNE-Python is installed and import it if so.
+
+    Parameters
+    ----------
+    func : function
+        Function to be decorated
+
+    Returns
+    -------
+    function
+        Decorated function
+
+    """
+    def wrapper(*args, **kwargs):
+        try:
+            import mne
+            return func(*args, **kwargs)
+        except ImportError:
+            raise ImportError("MNE-Python is not installed. Please install it to use this function.")
+    return wrapper
+
 def set_log_level(lvl):
     "Sets the log level globally across the PyEEG library."
     if isinstance(lvl, str): lvl = lvl.upper()

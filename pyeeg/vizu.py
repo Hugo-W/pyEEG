@@ -11,11 +11,16 @@ from matplotlib.patches import PathPatch
 import numpy as np
 from scipy import signal
 from scipy.stats import ttest_rel
-import mne
 from .io import logging
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
+from .utils import decorate_check_mne
 
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
 LOGGER = logging.getLogger(__name__.split('.')[0])
+try:
+    import mne
+except ImportError:
+    LOGGER.warning("MNE not installed, some functions will not work.")
+
 
 PROP_CYCLE = plt.rcParams['axes.prop_cycle']
 COLORS = PROP_CYCLE.by_key()['color']
@@ -58,6 +63,7 @@ def get_spatial_colors(info):
     x, y, z = loc3d.T
     return _rgb(x, y, z)
 
+@decorate_check_mne
 def plot_interactive(data, info, ax=None, tmin=0., spatial_colors=True, picks=None):
     if ax is None:
         f, ax = plt.subplots(1, 1)
@@ -94,6 +100,7 @@ def plot_filterbank_output(signals, x=None, spacing=None, axis=-1):
             filtered = filtered.T
         plt.plot(x, filtered + k*spacing*2)
 
+@decorate_check_mne
 def topomap(arr, info, colorbar=True, ax=None, **kwargs):
     """
     Short-cut to mne topomap...
@@ -120,7 +127,7 @@ def topomap(arr, info, colorbar=True, ax=None, **kwargs):
     return fig
 
 
-
+@decorate_check_mne
 def topoplot_array(data, pos, n_topos=1, titles=None):
     """
     Plotting topographic plot.
@@ -215,6 +222,7 @@ def pairwise_boxplots(arr1, arr2, labels=['1', '2'], ax=None, linealpha=0.5,
     
     return {**b1, **b2}, lines
 
+@decorate_check_mne
 def plots_topogrid(x, y, info, yerr=None, mask=None):
     """
     Display a series of plot arranged in a topographical grid.

@@ -20,9 +20,9 @@ from tqdm.auto import tqdm
 from functools import reduce
 from scipy import stats
 from sklearn.model_selection import KFold
+from sklearn.base import BaseEstimator
 #logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
-from mne.decoding import BaseEstimator
 from .utils import lag_matrix, lag_span, lag_sparse, mem_check, design_lagmatrix
 from .vizu import get_spatial_colors, plot_interactive
 

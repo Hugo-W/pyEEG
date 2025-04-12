@@ -6,15 +6,15 @@ Created on Thu Jan 24 15:09:24 2019
 """
 
 import logging
-import mne
+# import mne
 import numpy as np
 import sys
 import os
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
-from mne.decoding import BaseEstimator
+from sklearn.base import BaseEstimator
 from sklearn.cross_decomposition import CCA
 from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def, find_knee_point
-from pyeeg.vizu import topoplot_array
+from pyeeg.vizu import topoplot_array, topomap
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import normalize as zscore
 from pyeeg.preprocess import create_filterbank, apply_filterbank
@@ -571,7 +571,8 @@ class CCA_Estimator(BaseEstimator):
         """
         titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
         topoplot_array(self.coefResponse_, pos, n_topos=n_comp, titles=titles)
-        mne.viz.tight_layout()
+        # mne.viz.tight_layout()
+        plt.tight_layout()
 
 
     def plot_corr(self, pos, n_comp=1):
@@ -597,7 +598,8 @@ class CCA_Estimator(BaseEstimator):
 
         titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
         topoplot_array(r, pos, n_topos=n_comp, titles=titles)
-        mne.viz.tight_layout()
+        # mne.viz.tight_layout()
+        plt.tight_layout()
 
     def plot_activation_map(self, pos, n_comp=1, lag=0):
         """Plot the activation map from the spatial filter.
@@ -624,15 +626,18 @@ class CCA_Estimator(BaseEstimator):
             for c in range(n_comp):
                 inner_grid = outer_grid[c].subgridspec(1, 1)
                 ax = plt.Subplot(fig, inner_grid[0])
-                im, _ = mne.viz.plot_topomap(a_map[lag,:,c], pos, axes=ax, show=False)
+                # im, _ = mne.viz.plot_topomap(a_map[lag,:,c], pos, axes=ax, show=False)
+                topomap(a_map[lag,:,c], pos, axes=ax, show=False)
                 ax.set(title=titles[c])
                 fig.add_subplot(ax)
-            mne.viz.tight_layout()
+            # mne.viz.tight_layout()
+            fig.tight_layout()
             
         else:
             titles = [r"CC #{:d}, $\rho$={:.3f} ".format(k+1, c) for k, c in enumerate(self.score_)]
             topoplot_array(a_map, pos, n_topos=n_comp, titles=titles)
-            mne.viz.tight_layout()
+            # mne.viz.tight_layout()
+            plt.tight_layout()
 
     def plot_compact_time(self, n_comp=2, dim=0):
         plt.imshow(self.coefStim_[:, dim, :n_comp].T, aspect='auto', origin='bottom', extent=[self.xtimes[0], self.xtimes[-1], 0, n_comp])

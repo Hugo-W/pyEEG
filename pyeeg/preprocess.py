@@ -10,12 +10,13 @@ import numpy as np
 from scipy import signal
 from scipy.linalg import eigh as geigh
 from joblib import Parallel, delayed
-from mne.time_frequency import morlet
+
 #import matplotlib.pyplot as plt
 from sklearn.covariance import oas, ledoit_wolf, fast_mcd, empirical_covariance
 from sklearn.base import TransformerMixin, BaseEstimator
 
 # My libraries
+from .utils import decorate_check_mne
 
 # Mapping different estimator on the sklearn toolbox
 def _lwf(X):
@@ -234,12 +235,14 @@ class Whitener(TransformerMixin):
     def inverse(self, X, axis=None):
         return (X @ np.linalg.pinv(self.W.T)) + self.mu
 
+@decorate_check_mne
 class WaveletTransform(TransformerMixin):
     '''
     This class creates a list of wavelet tranfsform (complex Morlet wavelet)
     and applies it to a multi-channel signal.
     '''
     def __init__(self, freqs, sfreq, n_cycles=7):
+        from mne.time_frequency import morlet
         self.wavelets = morlet(sfreq, freqs, n_cycles=7)
         self.nfreqs = len(freqs)
         self.sfreq = sfreq
