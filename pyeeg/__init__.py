@@ -10,4 +10,5 @@ from pkg_resources import get_distribution
 
 # This enables access to all submodules from the top-level `pyeeg` module
 from . import cca, connectivity, io, mcca, models, preprocess, vizu, utils, simulate
+#TODO: expose only the relevant functions from each submodule
 from .version import __version__
