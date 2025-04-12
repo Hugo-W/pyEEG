@@ -117,14 +117,27 @@ def covariance(X, estimator='cov'):
 
 
 def covariances_extended(X, P, estimator='cov'):
-    """Special form covariance matrix where data are appended with another set."""
+    """Special form covariance matrix where data are appended with another set.
+    For instance, the data could be EEG data and the other set could be a set of idealised response (e.g. a clean ERP).
+    
+    Notes
+    -----
+    This assumes that the data are of shape (trials, samples, channels) and that the other set is of shape (samples, channels).
+    The second set is typically an idealised response from the average across trials.
+    The function could however also be called on a single trial, for continuous recordings for instance. In that case, the method used is
+    to extend the data with the a dummy dimmension for the trials and for P convolve the idealise response to singular event with a series
+    of impulses at the times of those events.
+
+    """
     est = _check_est(estimator)
+    if X.ndim == 2:
+        X = X.reshape((1, X.shape[0], X.shape[1]))
     Ntrials, Nsamples, Nchans = X.shape
     Nsamples, Np = P.shape
     covmats = np.zeros((Ntrials, Nchans + Np, Nchans + Np))
     for i in range(Ntrials):
         covmats[i, :, :] = est(np.concatenate((P, X[i, :, :]), axis=0))
-    return covmats
+    return covmats.squeeze()
 
 def create_filterbank(freqs, srate, filtertype=signal.cheby2, **kwargs):
     """Creates a filter bank, by default of chebychev type 2 filters.
