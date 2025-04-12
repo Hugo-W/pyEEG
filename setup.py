@@ -3,6 +3,7 @@ import subprocess
 import platform
 import os
 import re
+import numpy
 
 # Determine the shared library extension based on the operating system
 system = platform.system()
@@ -20,14 +21,16 @@ else:
 # Define the extension modules
 gammatone_module = Extension(
     'pyeeg.bin.gammatone_c',
-    sources=['externals/gammatone_c/gammatone_c.c'],
+    sources=['pyeeg/gammatone_c/gammatone_c.c'],
+    include_dirs=[numpy.get_include()],  # Add numpy include directory
     extra_compile_args=extra_compile_args,
     extra_link_args=extra_link_args,
 )
 
 ratemap_module = Extension(
     'pyeeg.bin.makeRateMap_c',
-    sources=['externals/gammatone_c/makeRateMap_c.c'],
+    sources=['pyeeg/gammatone_c/makeRateMap_c.c'],
+    include_dirs=[numpy.get_include()],  # Add numpy include directory
     extra_compile_args=extra_compile_args,
     extra_link_args=extra_link_args
 )
@@ -59,7 +62,7 @@ version = read_version()
 build_tools_available = check_build_tools()
 
 if not build_tools_available:
-    print(f"Warning: {e}")
+    # print(f"Warning: {e}")
     print("Cannot find necessary program to build extension modules. Proceeding anyway...")
     print("Will copy the pre-built shared libraries instead.")
     if system == "Windows":
