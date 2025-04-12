@@ -12,7 +12,6 @@ wiht the NumPy **side trick** see `the Python Cookbook recipee`_ for more detail
 """
 
 #### Libraries
-import psutil
 import logging
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
@@ -26,6 +25,12 @@ from pyeeg.ratemap import make_rate_map as ratemap
 
 logging.basicConfig(level=logging.ERROR)
 LOGGER = logging.getLogger(__name__.split('.')[0])
+try:
+    import psutil
+except ImportError:
+    psutil = None
+    LOGGER.warning("psutil not found, please install it to use mem_check()")
+    
 
 def decorate_check_mne(func):
     """Decorator to check if MNE-Python is installed and import it if so.
@@ -542,6 +547,8 @@ def sigmoid_derivative(x, rmax=1, beta=1, x0=0):
 
 def mem_check(units='Gb'):
     "Get available RAM"
+    if not psutil:
+        raise ImportError("Please install psutil to use this function.")
     stats = psutil.virtual_memory()
     units = units.lower()
     if units == 'gb':

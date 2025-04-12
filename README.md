@@ -24,6 +24,7 @@ pyEEG requires:
 - matplotlib (>= 2.0)
 - h5py (>= 2.8.0)
 - mne (>= 0.16) [optional]
+- psutil>=5.0.0 [optional]
 
 Install requirements:
 
