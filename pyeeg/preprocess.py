@@ -175,9 +175,9 @@ def get_power(signals, decibels=False, win=125, axis=-1, n_jobs=-1):
     nfreqs, nchans, _ = signals.shape
     out = np.zeros_like(signals)
     for k in range(nfreqs):
-        feat = np.array(Parallel(n_jobs=n_jobs)(delayed(signal.convolve)(signals[k, i, :]**2, signal.windows.boxcar(win), 'same') for i in range(nchans)))
+        feat = np.array(Parallel(n_jobs=n_jobs)(delayed(signal.convolve)(signals[k, i, :]**2, signal.windows.boxcar(win)/win, 'same') for i in range(nchans)))
         if decibels:
-            feat = np.log(feat + 1e-16)
+            feat = 10 * np.log10(feat + 1e-16)
         out[k, :, :] = feat
 
     return out
