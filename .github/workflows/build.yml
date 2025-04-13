@@ -34,9 +34,8 @@ jobs:
       - name: Build package
         run: python setup.py sdist bdist_wheel
 
-      - name: Upload package to PyPI
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: pypa/gh-action-pypi-publish@v1.4.2
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v3
         with:
-          user:  __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          name: dist
+          path: dist/
