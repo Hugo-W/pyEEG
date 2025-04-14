@@ -3,17 +3,19 @@ import logging
 import platform
 import os
 
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.ERROR)
+LOGGER = logging.getLogger(__name__.split('.')[0])
+LOGGER.setLevel('INFO')
 
 try:
     # Attempt to import the compiled Python extension module
     from pyeeg.bin import makeRateMap_c
-    logger.info("Successfully loaded makeRateMap_c Python extension module.")
+    LOGGER.info("Successfully loaded makeRateMap_c Python extension module.")
 except ImportError:
     # Fallback to loading prebuilt shared library using ctypes
     import ctypes
 
-    logger.warning("Failed to load makeRateMap_c Python extension module. Falling back to prebuilt binary.")
+    LOGGER.warning("Failed to load makeRateMap_c Python extension module. Falling back to prebuilt binary.")
 
     # Determine the shared library extension based on the operating system
     system = platform.system()
@@ -104,7 +106,7 @@ def make_rate_map(x, fs, lowcf, highcf, numchans, frameshift, ti, compression):
 
     return ratemap
 
-logger.info("RateMap C-library loaded successfully")
+LOGGER.info("RateMap C-library loaded successfully")
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
