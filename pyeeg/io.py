@@ -46,7 +46,7 @@ except ImportError:
 SOXI_PRESENT = shutil.which('soxi') is not None
 
 try:
-    import gensim
+    import gensim # type: ignore
     GENSIM_IMPORTED = True
 except ImportError:
     LOGGER.debug("Can't import Gensim (is it installed?) Will not load word vectors.")
