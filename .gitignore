@@ -20,6 +20,9 @@ pyEEG.egg-info*/
 natmeeg.egg-info*/
 build/
 
+# Version file (managed by setuptools-scm)
+pyeeg/version.py
+
 # Misc
 *~
 docs/source/examples/.ipynb_checkpoints/
