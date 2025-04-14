@@ -6,19 +6,19 @@ on:
       python-versions:
         description: "Python versions to test"
         required: true
-        type: array
+        type: string
       os-matrix:
         description: "Operating systems to test"
         required: true
-        type: array
+        type: string
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: ${{ inputs.os-matrix }}
-        python-version: ${{ inputs.python-versions }}
+        os: ${{ fromJson(inputs.os-matrix) }}
+        python-version: ${{ fromJson(inputs.python-versions) }}
 
     steps:
       - name: Checkout code
