@@ -1,31 +1,39 @@
-import ctypes
 import numpy as np
+import logging
 import platform
 import os
-import logging
 
 logger = logging.getLogger(__name__)
 
-# Determine the shared library extension based on the operating system
-system = platform.system()
-if system == "Windows":
-    ext = ".dll"
-elif system == "Darwin":
-    ext = ".dylib"
-else:
-    ext = ".so"
+try:
+    # Attempt to import the compiled Python extension module
+    from pyeeg.bin import makeRateMap_c
+    logger.info("Successfully loaded makeRateMap_c Python extension module.")
+except ImportError:
+    # Fallback to loading prebuilt shared library using ctypes
+    import ctypes
 
-# Load the shared library
-lib_path = os.path.join(os.path.dirname(__file__), f"bin/makeRateMap_c{ext}")
-ratemap_lib = ctypes.CDLL(lib_path)
+    logger.warning("Failed to load makeRateMap_c Python extension module. Falling back to prebuilt binary.")
 
-# Define the argument and return types
-ratemap_lib.makeRateMap.argtypes = [
-    ctypes.POINTER(ctypes.c_double), ctypes.c_int, ctypes.c_int,
-    ctypes.c_double, ctypes.c_double, ctypes.c_int,
-    ctypes.c_double, ctypes.c_double, ctypes.c_char_p,
-    ctypes.POINTER(ctypes.c_double)
-]
+    # Determine the shared library extension based on the operating system
+    system = platform.system()
+    if system == "Windows":
+        ext = ".dll"
+    elif system == "Darwin":
+        ext = ".dylib"
+    else:
+        ext = ".so"
+
+    # Load the shared library
+    lib_path = os.path.join(os.path.dirname(__file__), f"bin/makeRateMap_c{ext}")
+    makeRateMap_lib = ctypes.CDLL(lib_path)
+
+    # Define the argument and return types
+    makeRateMap_lib.makeRateMap.argtypes = [
+        ctypes.POINTER(ctypes.c_double), ctypes.c_int, ctypes.c_int,
+        ctypes.c_double, ctypes.c_double, ctypes.c_int, ctypes.c_double,
+        ctypes.c_double, ctypes.c_char_p, ctypes.POINTER(ctypes.c_double)
+    ]
 
 def erb_rate_to_hz(erb_rate):
     return (10**(erb_rate / 21.4) - 1.0) / 4.37e-3
@@ -42,13 +50,9 @@ def generate_cfs(lowcf, highcf, numchans):
 
 def make_rate_map(x, fs, lowcf, highcf, numchans, frameshift, ti, compression):
     """
-     Compute the rate map (aka cochleogram) of an input signal using a gammatone filterbank.
-     The rate map is a matrix where each row corresponds to a frequency channel
-        and each column corresponds to a time frame.
-    It represents the instantaneous firing rate of the auditory nerve fibres
-        in response to the input signal.
-     
-     This function is a wrapper for the C function makeRateMap.
+    Compute the rate map (aka cochleogram) of an input signal using a gammatone filterbank.
+    The rate map is a matrix where each row corresponds to a frequency channel
+    and each column corresponds to a time frame.
 
     Parameters:
     -----------
@@ -75,34 +79,32 @@ def make_rate_map(x, fs, lowcf, highcf, numchans, frameshift, ti, compression):
         The computed rate map.
 
     Example:
+    --------
     ratemap = make_rate_map(x, 8000, 50, 3500, 32, 10, 8, 'cuberoot')
     """
-    # Convert input data to ctypes
-    x_ctypes = x.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-    fs_ctypes = ctypes.c_int(fs)
-    lowcf_ctypes = ctypes.c_double(lowcf)
-    highcf_ctypes = ctypes.c_double(highcf)
-    numchans_ctypes = ctypes.c_int(numchans)
-    frameshift_ctypes = ctypes.c_double(frameshift)
-    ti_ctypes = ctypes.c_double(ti)
-    compression_ctypes = ctypes.c_char_p(compression.encode('utf-8'))
-
-    # Prepare output placeholder
+    x = np.asarray(x, dtype=np.float64)
     numframes = int(np.ceil(len(x) / (frameshift * fs / 1000)))
     ratemap = np.zeros((numchans, numframes), dtype=np.float64, order='F')
 
-    # Call the C function
-    ratemap_lib.makeRateMap(
-        x_ctypes, len(x), fs_ctypes, lowcf_ctypes, highcf_ctypes,
-        numchans_ctypes, frameshift_ctypes, ti_ctypes, compression_ctypes,
-        ratemap.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-    )
+    if 'makeRateMap_c' in globals():
+        # Use the Python extension module
+        makeRateMap_c.makeRateMap(
+            x, len(x), fs, lowcf, highcf, numchans, frameshift, ti, compression, ratemap
+        )
+    else:
+        # Use the fallback ctypes-based shared library
+        x_ctypes = x.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        ratemap_ctypes = ratemap.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        compression_bytes = compression.encode('utf-8')
 
-    # Get CFs from 
+        makeRateMap_lib.makeRateMap(
+            x_ctypes, len(x), fs, lowcf, highcf, numchans, frameshift, ti,
+            compression_bytes, ratemap_ctypes
+        )
 
     return ratemap
 
-logger.info("Gammatone C-library loaded successfully")
+logger.info("RateMap C-library loaded successfully")
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt

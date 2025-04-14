@@ -282,7 +282,7 @@ def fir_order(tbw, srate, atten=60, ripples=None):
 
     .. math ::
 
-        N = \\frac{2}{3} \log_{10}\\frac{1}{10\delta_ripp\delta_att} \\frac{Fs}{TBW}
+        N = \\frac{2}{3} \\log_{10}\\frac{1}{10\\delta_ripp\delta_att} \\frac{Fs}{TBW}
 
     Else:
 

@@ -1,28 +1,40 @@
-import ctypes
 import numpy as np
 import platform
 import os
+import logging
 
-# Determine the shared library extension based on the operating system
-system = platform.system()
-if system == "Windows":
-    ext = ".dll"
-elif system == "Darwin":
-    ext = ".dylib"
-else:
-    ext = ".so"
+logger = logging.getLogger(__name__)
 
-# Load the shared library
-lib_path = os.path.join(os.path.dirname(__file__), f"bin/gammatone_c{ext}")
-gammatone_lib = ctypes.CDLL(lib_path)
+try:
+    # Attempt to import the compiled Python extension module
+    from pyeeg.bin import gammatone_c
+    logger.info("Successfully loaded gammatone_c Python extension module.")
+except ImportError:
+    # Fallback to loading prebuilt shared library using ctypes
+    import ctypes
 
-# Define the argument and return types
-gammatone_lib.gammatone_c.argtypes = [
-    ctypes.POINTER(ctypes.c_double), ctypes.c_int, ctypes.c_int,
-    ctypes.c_double, ctypes.c_int,
-    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
-    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double)
-]
+    logger.warning("Failed to load gammatone_c Python extension module. Falling back to prebuilt binary.")
+
+    # Determine the shared library extension based on the operating system
+    system = platform.system()
+    if system == "Windows":
+        ext = ".dll"
+    elif system == "Darwin":
+        ext = ".dylib"
+    else:
+        ext = ".so"
+
+    # Load the shared library
+    lib_path = os.path.join(os.path.dirname(__file__), f"bin/gammatone_c{ext}")
+    gammatone_lib = ctypes.CDLL(lib_path)
+
+    # Define the argument and return types
+    gammatone_lib.gammatone_c.argtypes = [
+        ctypes.POINTER(ctypes.c_double), ctypes.c_int, ctypes.c_int,
+        ctypes.c_double, ctypes.c_int,
+        ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double)
+    ]
 
 def gammatone_filter(x, fs, cf, hrect=0):
     """
@@ -57,18 +69,21 @@ def gammatone_filter(x, fs, cf, hrect=0):
     instp = np.zeros(nsamples, dtype=np.float64)
     instf = np.zeros(nsamples, dtype=np.float64)
 
-    # Convert input data to ctypes
-    x_ctypes = x.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-    bm_ctypes = bm.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-    env_ctypes = env.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-    instp_ctypes = instp.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-    instf_ctypes = instf.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+    if 'gammatone_c' in globals():
+        # Use the Python extension module
+        gammatone_c.gammatone_c(x, fs, cf, hrect, bm, env, instp, instf)
+    else:
+        # Use the fallback ctypes-based shared library
+        x_ctypes = x.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        bm_ctypes = bm.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        env_ctypes = env.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        instp_ctypes = instp.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        instf_ctypes = instf.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
-    # Call the C function
-    gammatone_lib.gammatone_c(
-        x_ctypes, nsamples, fs, cf, hrect,
-        bm_ctypes, env_ctypes, instp_ctypes, instf_ctypes
-    )
+        gammatone_lib.gammatone_c(
+            x_ctypes, nsamples, fs, cf, hrect,
+            bm_ctypes, env_ctypes, instp_ctypes, instf_ctypes
+        )
 
     return bm, env, instp, instf
 
