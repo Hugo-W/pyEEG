@@ -24,17 +24,21 @@ import pandas as pd
 import h5py # for mat file version >= 7.3
 from scipy.io import loadmat
 from scipy.io.wavfile import read as wavread
-# MNE:
-import mne
-from mne.preprocessing.ica import ICA, read_ica_eeglab  
 #import os
 #os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
 # PyEEG:
-from .utils import signal_envelope
+from .utils import signal_envelope, decorate_check_mne
 
 logging.basicConfig(level=logging.ERROR)
 LOGGER = logging.getLogger(__name__.split('.')[0])
 LOGGER.setLevel('INFO')
+
+# MNE:
+try:
+    import mne
+    from mne.preprocessing.ica import ICA, read_ica_eeglab 
+except ImportError:
+    LOGGER.info("MNE-python is not installed, some functions will not work.")
 
 # Is sox library installed (also this will probably is False anyway on Windows):
 SOXI_PRESENT = shutil.which('soxi') is not None
@@ -155,6 +159,7 @@ def load_ica_matrices(fname):
 
     return weights, winv, sphere
 
+@decorate_check_mne
 def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
     """Get an EEGLAB dataset into a MNE Raw object.
 
@@ -225,6 +230,7 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
         return raw, ica
     return raw
 
+@decorate_check_mne
 def fieldtrip2mne(fname, verbose=True, chname_append='-4304'):
     """
     Clumsy attempting to transfer data to MNE instance for trial for varying trial lengths.

@@ -17,6 +17,7 @@ You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.
 pyEEG requires:
 
 - Python (>= 3.5)
+- psutil>=5.0.0
 - NumPy (>= 1.11.0)
 - SciPy (>= 1.0.0)
 - pandas (>= 0.23.0)
@@ -24,7 +25,6 @@ pyEEG requires:
 - matplotlib (>= 2.0)
 - h5py (>= 2.8.0)
 - mne (>= 0.16) [optional]
-- psutil>=5.0.0 [optional]
 
 Install requirements:
 
