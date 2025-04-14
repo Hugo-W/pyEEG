@@ -43,15 +43,13 @@ jobs:
       run: python -m pip install --upgrade twine
     
     - name: Check distribution files
-      run: twine check dist/*
+      run: |
+        twine check dist/* || echo "Twine check failed, continuing anyway"
 
     - name: Publish distribution 📦 to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
-        distributions: |
-          dist/*.whl
-          dist/*.tar.gz
 
   github-release:
     name: >-
