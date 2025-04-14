@@ -1,0 +1,20 @@
+# Include the LICENSE file
+include LICENSE
+
+# Include the README file
+include README.md
+
+# Include all Python files
+recursive-include pyeeg *.py
+
+# Include specific binary files
+recursive-include pyeeg/bin *.dll *.so *.dylib
+
+# Exclude unnecessary files
+exclude *.pyc *.pyo
+exclude .gitignore
+exclude pyproject.toml
+exclude setup.cfg
+exclude *.egg-info
+exclude build
+exclude dist

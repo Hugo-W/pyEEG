@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "natMEEG"
 dynamic = ["version"]
-description = "Prcess M/EEG data with a set of utility functions built with a framework focused on continuous recordings and naturalistic stimuli."
+description = "A library to process M/EEG data with a set of utility functions with a framework focused on continuous recordings and naturalistic stimuli."
 authors = [
   {name = "Hugo Weissbart", email = "hugo.weissbart@donders.ru.nl"}
 ]
@@ -21,14 +21,14 @@ classifiers = [
     "Intended Audience :: Science/Research"
 ]
 dependencies = [
-    "numpy>=1.11.0",
-    "scipy>=1.0.0",
-    "scikit-learn>=0.20.0",
-    "pandas>=0.23.0",
-    "matplotlib>=2.0",
-    "h5py>=2.8.0",
-    "psutil",
-    "tqdm"
+    "numpy>=1.21.0",      
+    "scipy>=1.7.0",       
+    "scikit-learn>=1.0.0",
+    "pandas>=1.3.0",      
+    "matplotlib>=3.4.0",  
+    "h5py>=3.3.0",        
+    "psutil>=5.8.0",      
+    "tqdm>=4.62.0"        
 ]
 
 [project.urls]
@@ -63,9 +63,6 @@ full = ["mne", "sphinx", "sphinx-rtd-theme", "nbsphinx"]
 
 [tool.setuptools.package-data]
 pyeeg = ["examples/*.ipynb", "pyeeg/bin/*dll", "pyeeg/bin/*so", "pyeeg/bin/*dylib"]
-
-# [tool.setuptools.cmdclass]
-# build_ext = "build_ext.CustomBuildExt"
 
 [tool.setuptools_scm]
 write_to = "pyeeg/version.py"
