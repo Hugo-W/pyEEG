@@ -23,9 +23,6 @@ else:
     extra_compile_args = ['-fPIC']
     extra_link_args = ['-shared']
 
-if sys.platform != "win32":  # Exclude .def file for non-Windows platforms
-    extra_link_args.append("-Wl,--exclude-libs,ALL")
-
 # Define the extension modules
 gammatone_module = Extension(
     'pyeeg.bin.gammatone_c',
