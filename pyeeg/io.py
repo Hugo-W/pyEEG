@@ -38,7 +38,9 @@ try:
     import mne
     from mne.preprocessing.ica import ICA, read_ica_eeglab 
 except ImportError:
-    LOGGER.info("MNE-python is not installed, some functions will not work.")
+    # LOGGER.info("MNE-python is not installed, some functions will not work.")
+    mne = None
+    # User will be warned later if he tries to use MNE-based functions.
 
 # Is sox library installed (also this will probably is False anyway on Windows):
 SOXI_PRESENT = shutil.which('soxi') is not None

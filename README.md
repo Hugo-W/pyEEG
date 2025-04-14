@@ -18,6 +18,7 @@ pyEEG requires:
 
 - Python (>= 3.5)
 - psutil>=5.0.0
+- tqdm>=4.0.0
 - NumPy (>= 1.11.0)
 - SciPy (>= 1.0.0)
 - pandas (>= 0.23.0)

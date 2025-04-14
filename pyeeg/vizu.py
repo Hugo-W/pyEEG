@@ -19,7 +19,9 @@ LOGGER = logging.getLogger(__name__.split('.')[0])
 try:
     import mne
 except ImportError:
-    LOGGER.warning("MNE not installed, some functions will not work.")
+    # LOGGER.warning("MNE not installed, some functions will not work.")
+    mne = None
+    # User will be warned from specific function calls
 
 
 PROP_CYCLE = plt.rcParams['axes.prop_cycle']
