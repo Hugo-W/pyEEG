@@ -29,14 +29,29 @@ jobs:
         pattern: dist-*  # Download all artifacts matching the pattern
         path: dist/
         merge-multiple: true
+        
     - name: Install auditwheel
       run: pip install auditwheel    
     - name: Repair wheel
       run: |
         auditwheel repair dist/*linux_x86_64.whl -w dist/
         rm dist/*linux_x86_64.whl
+        echo "Repaired wheel, files left:"
+        ls dist/
+        
+    - name: Upgrade twine
+      run: python -m pip install --upgrade twine
+    
+    - name: Check distribution files
+      run: twine check dist/*
+
     - name: Publish distribution 📦 to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        distributions: |
+          dist/*.whl
+          dist/*.tar.gz
 
   github-release:
     name: >-
