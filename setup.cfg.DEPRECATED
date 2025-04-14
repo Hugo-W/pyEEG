@@ -7,5 +7,5 @@ docs = sphinx;sphinx-rtd-theme;nbsphinx
 full = mne;sphinx;sphinx-rtd-theme;nbsphinx
 
 [tool.setuptools_scm]
-write_to = "pyeg/version.py"
+write_to = "pyeeg/version.py"
 local_scheme = "no-local-version"
