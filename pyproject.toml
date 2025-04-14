@@ -38,15 +38,16 @@ Repository = "https://github.com/Hugo-W/pyEEG"
 Issues = "https://github.com/Hugo-W/pyEEG/issues"
 
 # C Extensions
+# For now I am using the setup_hooks to ad include_dirs during install/build_ext.
 [tool.setuptools]
 ext-modules = [
-  {name = "pyeeg.bin.gammatone_c", sources = ["pyeeg/gammatone_c/gammatone_c.c"], include_dirs = ["numpy.get_include()"]},
-  {name = "pyeeg.bin.makeRateMap_c", sources = ["pyeeg/gammatone_c/makeRateMap_c.c"], include_dirs = ["numpy.get_include()"]},
+  {name = "pyeeg.bin.gammatone_c", sources = ["pyeeg/gammatone_c/gammatone_c.c"]},
+  {name = "pyeeg.bin.makeRateMap_c", sources = ["pyeeg/gammatone_c/makeRateMap_c.c"]},
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["pyeeg", "pyeeg.bin"]  # alternatively: `exclude = ["additional*"]`
+where = ["pyeeg"]
+include = ["pyeeg.bin"]  # alternatively: `exclude = ["additional*"]`
 namespaces = false
 
 # This allows you to use `pip install .[docs]` to install optional dependencies.

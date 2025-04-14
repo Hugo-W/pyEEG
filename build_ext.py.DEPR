@@ -15,9 +15,6 @@ extensions = [
     ),
 ]
 
-# Potentially add the fallback mechanism here to copy the shared library
-# if the compiled extension fails to load...
-
 # Build the extensions
 def build(setup_kwargs):
     """
