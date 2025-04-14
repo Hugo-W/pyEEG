@@ -22,7 +22,10 @@ from scipy.fftpack import next_fast_len
 from sklearn.preprocessing import minmax_scale
 import pandas as pd
 import matplotlib.pyplot as plt
+# C-exensions functions
 from pyeeg.ratemap import make_rate_map as ratemap
+from pyeeg.ratemap import hz_to_erb_rate, erb_rate_to_hz, generate_cfs
+from pyeeg.gammatone import gammatone_filter
 
 logging.basicConfig(level=logging.ERROR)
 LOGGER = logging.getLogger(__name__.split('.')[0])
