@@ -42,6 +42,12 @@ mne = ["mne"]
 docs = ["sphinx", "sphinx-rtd-theme", "nbsphinx"]
 full = ["mne", "sphinx", "sphinx-rtd-theme", "nbsphinx"]
 
+[tool.setuptools.package-data]
+pyeeg = ["examples/*.ipynb", "pyeeg/bin/*dll", "pyeeg/bin/*so", "pyeeg/bin/*dylib"]
+
+# [tool.setuptools.cmdclass]
+# build_ext = "build_ext.CustomBuildExt"
+
 [tool.setuptools_scm]
 write_to = "pyeeg/version.py"
 local_scheme = "no-local-version"
