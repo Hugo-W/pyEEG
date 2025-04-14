@@ -38,13 +38,14 @@ Repository = "https://github.com/Hugo-W/pyEEG"
 Issues = "https://github.com/Hugo-W/pyEEG/issues"
 
 # C Extensions
-# For now I am using the setup_hooks to ad include_dirs during install/build_ext.
-[tool.setuptools]
-ext-modules = [
-  {name = "pyeeg.bin.gammatone_c", sources = ["pyeeg/gammatone_c/gammatone_c.c"]},
-  {name = "pyeeg.bin.makeRateMap_c", sources = ["pyeeg/gammatone_c/makeRateMap_c.c"]},
-]
-setup-hooks = ["setup_hooks.numpy_includes"]
+# Setup hook does not work for now.
+# Still using a minmal setup.py to build the C extensions.
+# [tool.setuptools]
+# ext-modules = [
+#   {name = "pyeeg.bin.gammatone_c", sources = ["pyeeg/gammatone_c/gammatone_c.c"]},
+#   {name = "pyeeg.bin.makeRateMap_c", sources = ["pyeeg/gammatone_c/makeRateMap_c.c"]},
+# ]
+# setup-hooks = ["setup_hooks.numpy_includes"]
 
 [tool.setuptools.packages.find]
 where = ["pyeeg"]

@@ -1,6 +1,6 @@
 from setuptools import setup, Extension
-import platform
 import numpy
+import platform
 
 
 # Determine the shared library extension based on the operating system
@@ -9,8 +9,6 @@ if system == "Windows":
     extra_compile_args = []
     extra_link_args = []
 elif system == "Darwin":
-    # os.environ['CFLAGS'] = os.environ.get('CFLAGS', '').replace('-mdll', '')
-    # On macOS, don't force '-shared'
     extra_compile_args = ['-fPIC']
     extra_link_args = []
 else:
@@ -35,17 +33,5 @@ ratemap_module = Extension(
 )
 
 setup(
-    name='natmeeg',
-    use_scm_version=True,
     ext_modules=[gammatone_module, ratemap_module],
-    packages=['pyeeg', 'pyeeg.bin'],
-    package_dir={'pyeeg': 'pyeeg'},
-    package_data={
-        'pyeeg': ['bin/*.dll', 'bin/*.so', 'bin/*.dylib'],
-    },
-    install_requires=['numpy', 'scipy', 'scikit-learn'],
-    url='https://github.com/Hugo-W/pyEEG',
-    license='GNU GENERAL PUBLIC LICENSE',
-    author='Hugo Weissbart',
-    description='Process EEG data with a set of utility functions used in our lab'
 )
