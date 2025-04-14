@@ -1,6 +1,8 @@
 # pyEEG
 
-> v1.4.0
+[![PyPI version](https://badge.fury.io/py/natMEEG.svg)](https://badge.fury.io/py/natMEEG)
+> v1.5.1 (2025-04-14)
+
 
 pyEEG is a library for processing EEG data built mostly on top of MNE-py and scikit-learn. It is framed to work with data collected with naturalistic stimuli, therefore with continuous recordings rather than trial-based designs. It allows analysis of continuous m/eeg and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level or phoneme-level features).
 
@@ -16,15 +18,15 @@ You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.
 
 pyEEG requires:
 
-- Python (>= 3.5)
-- psutil>=5.0.0
-- tqdm>=4.0.0
-- NumPy (>= 1.11.0)
-- SciPy (>= 1.0.0)
-- pandas (>= 0.23.0)
-- scikit-learn (>= 0.20.0)
-- matplotlib (>= 2.0)
-- h5py (>= 2.8.0)
+- Python (>= 3.10)
+- psutil
+- tqdm
+- NumPy
+- SciPy
+- scikit-learn
+- matplotlib
+- h5py
+- pandas
 - mne (>= 0.16) [optional]
 
 Install requirements:
@@ -37,18 +39,45 @@ To generate the doc, Python package `sphinx` (>= 1.1.0), `sphinx_rtd_theme` and 
 
 ### User Installation
 
+## From PyPI
+
+You can install the package from PyPI using `pip`:
+
+```bash
+pip install pyEEG
+```
+
+### From Source
+
 From terminal (or `conda` shell in Windows), `cd` in root directory of the library (directory containing `setup.py` file) and type:
 
 To get the package installed only through symbolic links, namely so that you can modify the source code and use modified versions at will when importing the package in your python scripts do:
 
 ```bash
-python setup.py develop
+pip install -e .
 ```
 
 Otherwise, for a standard installation (but this will require to be installed if you need to install another version of the library):
 
 ```bash
-python setup.py install
+pip install .
+```
+
+#### Windows Users
+
+There are C-extensions in the library, so you need to have a C compiler installed on your machine. 
+If the default compiler does not work, you can try to install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and try again.
+
+Optionally try with [MinGW](http://www.mingw.org/), making sure after instalation of it to add the path to `mingw/bin` in your `PATH` environment variable. You can check if it is correctly installed by running the following command in your terminal:
+
+```bash
+gcc --version
+```
+
+Then you can run:
+  
+```bash
+pip install . --global-option=build_ext --global-option=--compiler=mingw32
 ```
 
 ## Basic Examples
