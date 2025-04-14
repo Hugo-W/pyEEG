@@ -1,19 +1,24 @@
-name: Build
+name: Build Package
+
 on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
+  workflow_call:  # Makes this workflow reusable
+    inputs:
+      python-versions:
+        description: "Python versions to test"
+        required: true
+        type: array
+      os-matrix:
+        description: "Operating systems to test"
+        required: true
+        type: array
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.9', '3.10']
+        os: ${{ inputs.os-matrix }}
+        python-version: ${{ inputs.python-versions }}
 
     steps:
       - name: Checkout code
@@ -34,7 +39,7 @@ jobs:
         run: python setup.py sdist bdist_wheel
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
