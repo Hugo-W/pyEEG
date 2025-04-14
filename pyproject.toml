@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64", "wheel", "setuptools_scm"]
+requires = ["setuptools>=64", "wheel", "setuptools_scm", "numpy"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -41,11 +41,6 @@ Issues = "https://github.com/Hugo-W/pyEEG/issues"
 mne = ["mne"]
 docs = ["sphinx", "sphinx-rtd-theme", "nbsphinx"]
 full = ["mne", "sphinx", "sphinx-rtd-theme", "nbsphinx"]
-
-[tool.setuptools.extension]
-# Define your C extensions
-pyeeg.bin.gammatone_c = {sources = ["pyeeg/gammatone_c/gammatone_c.c"], include-dirs = ["{numpy:include}"]}
-pyeeg.bin.makeRateMap_c = {sources = ["pyeeg/gammatone_c/makeRateMap_c.c"], include-dirs = ["{numpy:include}"]}
 
 [tool.setuptools_scm]
 write_to = "pyeeg/version.py"
