@@ -1,5 +1,6 @@
 from setuptools import setup, Extension
 import platform
+import os
 import numpy
 import re
 
@@ -9,6 +10,7 @@ if system == "Windows":
     extra_compile_args = []
     extra_link_args = []
 elif system == "Darwin":
+    # os.environ['CFLAGS'] = os.environ.get('CFLAGS', '').replace('-mdll', '')
     # On macOS, don't force '-shared'
     extra_compile_args = ['-fPIC']
     extra_link_args = []
@@ -33,22 +35,14 @@ ratemap_module = Extension(
     extra_link_args=extra_link_args
 )
 
-def read_version():
-    with open("pyeeg/version.py", "r") as fp:
-        version_file = fp.read()
-    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", version_file, re.M)
-    if version_match:
-        return version_match.group(1)
-    raise RuntimeError("Unable to find version string.")
-
 setup(
     name='natmeeg',
-    version=read_version(),
+    use_scm_version=True,
     ext_modules=[gammatone_module, ratemap_module],
     packages=['pyeeg', 'pyeeg.bin'],
     package_dir={'pyeeg': 'pyeeg'},
     package_data={
-        'pyeeg': ['*.dll', '*.so', '*.dylib', 'bin/*.dll', 'bin/*.so', 'bin/*.dylib'],
+        'pyeeg': ['bin/*.dll', 'bin/*.so', 'bin/*.dylib'],
     },
     install_requires=['numpy', 'scipy', 'scikit-learn'],
     url='https://github.com/Hugo-W/pyEEG',
