@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64", "wheel", "setuptools_scm", "numpy"]
+requires = ["setuptools>=65.5.0", "wheel", "setuptools_scm", "numpy"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -36,6 +36,13 @@ Homepage = "https://github.com/Hugo-W/pyEEG"
 Documentation = "https://hugo-w.github.io/pyEEG-docs/"
 Repository = "https://github.com/Hugo-W/pyEEG"
 Issues = "https://github.com/Hugo-W/pyEEG/issues"
+
+# C Extensions
+[tool.setuptools]
+ext-modules = [
+  {name = "pyeeg.bin.gammatone_c", sources = ["pyeeg/gammatone_c/gammatone_c.c"]},
+  {name = "pyeeg.bin.makeRateMap_c", sources = ["pyeeg/gammatone_c/makeRateMap_c.c"]}
+]
 
 # This allows you to use `pip install .[docs]` to install optional dependencies.
 [project.optional-dependencies]
