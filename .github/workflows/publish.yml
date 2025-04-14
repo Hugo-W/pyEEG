@@ -6,8 +6,8 @@ jobs:
   build:
     uses: ./.github/workflows/build.yml  # Call the reusable build workflow
     with:
-      python-versions: ['3.9', '3.10']
-      os-matrix: [ubuntu-latest, windows-latest, macos-latest]
+      python-versions: '["3.9", "3.10"]'  # Pass as a JSON array
+      os-matrix: '["ubuntu-latest", "windows-latest", "macos-latest"]'  # Pass as a JSON array
 
   publish-to-pypi:
     name: >-
@@ -26,7 +26,7 @@ jobs:
     - name: Download all the dists
       uses: actions/download-artifact@v4
       with:
-        name: python-package-distributions
+        name: dist
         path: dist/
     - name: Publish distribution 📦 to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
