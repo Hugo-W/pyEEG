@@ -1,19 +1,21 @@
 from setuptools import setup, Extension
 import numpy
-import platform
+import sys
 
 
 # Determine the shared library extension based on the operating system
-system = platform.system()
-if system == "Windows":
+if sys.platform == "win32":
     extra_compile_args = []
     extra_link_args = []
-elif system == "Darwin":
+elif sys.platform == "darwin":
     extra_compile_args = ['-fPIC']
     extra_link_args = []
 else:
     extra_compile_args = ['-fPIC']
     extra_link_args = ['-shared']
+
+if sys.platform != "win32":  # Exclude .def file for non-Windows platforms
+    extra_link_args.append("-Wl,--exclude-libs,ALL")
 
 # Define the extension modules
 gammatone_module = Extension(

@@ -49,8 +49,11 @@ Issues = "https://github.com/Hugo-W/pyEEG/issues"
 
 [tool.setuptools.packages.find]
 where = ["pyeeg"]
-include = ["pyeeg.bin"]  # alternatively: `exclude = ["additional*"]`
-namespaces = false
+include = ["pyeeg.bin"] 
+exclude = ["tests", "docs", "*.egg-info", "build", "dist"]
+
+[tool.setuptools]
+package-dir = {"" = "pyeeg"}
 
 # This allows you to use `pip install .[docs]` to install optional dependencies.
 [project.optional-dependencies]
