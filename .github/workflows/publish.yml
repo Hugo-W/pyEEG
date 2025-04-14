@@ -6,7 +6,7 @@ jobs:
   build:
     uses: ./.github/workflows/build.yml  # Call the reusable build workflow
     with:
-      python-versions: '["3.10"]'  # Pass as a JSON array
+      python-versions: '["3.10", "3.12", "3.13"]'  # Pass as a JSON array
       os-matrix: '["ubuntu-latest", "windows-latest", "macos-latest"]'  # Pass as a JSON array
 
   publish-to-pypi:
