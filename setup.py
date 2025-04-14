@@ -1,6 +1,7 @@
 from setuptools import setup, Extension
 import platform
 import numpy
+import re
 
 # Determine the shared library extension based on the operating system
 system = platform.system()
