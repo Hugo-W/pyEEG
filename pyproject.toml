@@ -44,6 +44,7 @@ ext-modules = [
   {name = "pyeeg.bin.gammatone_c", sources = ["pyeeg/gammatone_c/gammatone_c.c"]},
   {name = "pyeeg.bin.makeRateMap_c", sources = ["pyeeg/gammatone_c/makeRateMap_c.c"]},
 ]
+setup-hooks = ["setup_hooks.numpy_includes"]
 
 [tool.setuptools.packages.find]
 where = ["pyeeg"]
