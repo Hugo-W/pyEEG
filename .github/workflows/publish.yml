@@ -29,6 +29,10 @@ jobs:
         pattern: dist-*  # Download all artifacts matching the pattern
         path: dist/
         merge-multiple: true
+    - name: Install auditwheel
+      run: pip install auditwheel    
+    - name: Repair wheel
+      run: auditwheel repair dist/*linux_x86_64.whl -w dist/
     - name: Publish distribution 📦 to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
 
