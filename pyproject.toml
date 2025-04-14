@@ -44,6 +44,11 @@ ext-modules = [
   {name = "pyeeg.bin.makeRateMap_c", sources = ["pyeeg/gammatone_c/makeRateMap_c.c"]}
 ]
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pyeeg", "pyeeg/bin"]  # alternatively: `exclude = ["additional*"]`
+namespaces = false
+
 # This allows you to use `pip install .[docs]` to install optional dependencies.
 [project.optional-dependencies]
 mne = ["mne"]
