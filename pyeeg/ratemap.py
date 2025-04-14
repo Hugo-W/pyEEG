@@ -106,8 +106,6 @@ def make_rate_map(x, fs, lowcf, highcf, numchans, frameshift, ti, compression):
 
     return ratemap
 
-LOGGER.info("RateMap C-library loaded successfully")
-
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
 

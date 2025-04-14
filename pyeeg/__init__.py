@@ -5,11 +5,11 @@ pyEEG package for analyszing EEG with speech and word-level features.
 
  2019, Hugo Weissbart
 """
-from __future__ import division, print_function, absolute_import
-from pkg_resources import get_distribution
+# Python 2/3 compatibility (obsolete as of 2020, removing)
+# from __future__ import division, print_function, absolute_import
 
 # This enables access to all submodules from the top-level `pyeeg` module
-from . import cca, connectivity, io, mcca, models, preprocess, vizu, utils, simulate
+from . import connectivity, io, models, preprocess, vizu, utils, simulate
 from .models import TRFEstimator
 from .cca import CCA_Estimator
 from .preprocess import MultichanWienerFilter, Whitener

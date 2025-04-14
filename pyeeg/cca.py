@@ -16,7 +16,6 @@ from sklearn.cross_decomposition import CCA
 from pyeeg.utils import lag_matrix, lag_span, lag_sparse, is_pos_def, find_knee_point
 from pyeeg.vizu import topoplot_array, topomap
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import normalize as zscore
 from pyeeg.preprocess import create_filterbank, apply_filterbank
 
 logging.basicConfig(level=logging.DEBUG)
