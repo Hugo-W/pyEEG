@@ -1,12 +1,18 @@
-About pyEEG
------------
+About natMEEG
+-------------
+
+The ``natMEEG`` was initially developed as a personal project to analyze EEG data
+in the context of naturalistic stimuli presentation. Formally it was called ``pyEEG``.
 
 Authors
 ~~~~~~~
 
 List of contributing authors:
 
-- Hugo Weissbart <hugo.weissbart12@imperial.ac.uk>
+- Hugo Weissbart <hugo.weissbart@donders.ru.nl>
+
+Initial contributors to the former (``pyEEG``) project:
+
 - Karen Wendt <karen.wendt15@imperial.ac.uk>
 - Octave Etard <octave.etard11@imperial.ac.uk>
 

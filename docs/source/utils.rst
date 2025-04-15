@@ -28,13 +28,13 @@ Utils functions to create shifted version of an array, rolling or moving views a
     :toctree: generated/
     :template: function.rst
 
-    pyeeg.utils.lag_matrix
-    pyeeg.utils.lag_span
-    pyeeg.utils.lag_sparse
-    pyeeg.utils.rolling_func
-    pyeeg.utils.moving_average
-    pyeeg.utils.chunk_data
-    pyeeg.utils.shift_array
+    lag_matrix
+    lag_span
+    lag_sparse
+    rolling_func
+    moving_average
+    chunk_data
+    shift_array
 
 Signal
 ''''''
@@ -45,10 +45,10 @@ Signal processing related.
     :toctree: generated/
     :template: function.rst
 
-    pyeeg.utils.signal_envelope
-    pyeeg.utils.fir_order
-    pyeeg.utils.find_knee_point
-    pyeeg.utils.is_pos_def
+    signal_envelope
+    fir_order
+    find_knee_point
+    is_pos_def
 
 Other
 '''''
@@ -59,5 +59,5 @@ Miscelaneous, e.g. system related, or characterisation...
     :toctree: generated/
     :template: function.rst
 
-    pyeeg.utils.mem_check
-    pyeeg.utils._is_1d
+    mem_check
+    _is_1d

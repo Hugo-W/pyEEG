@@ -19,7 +19,7 @@ From another module, we can use the multiway CCA as a preprocessing step. Also k
    :toctree: generated/
    :template: class.rst
 
-   pyeeg.mcca.mCCA
+   mCCA
 
 Directly in :mod:`pyeeg.preprocess` one can find also the two following classes:
 
@@ -29,7 +29,7 @@ Directly in :mod:`pyeeg.preprocess` one can find also the two following classes:
    :toctree: generated/
    :template: class.rst
 
-   pyeeg.preprocess.MultichanWienerFilter
+   MultichanWienerFilter
 
 .. autosummary::
     :toctree: generated/
@@ -47,12 +47,12 @@ Summary
     :toctree: generated/
     :template: function.rst
 
-    pyeeg.preprocess.create_filterbank
-    pyeeg.preprocess.apply_filterbank
-    pyeeg.preprocess.get_power
-    pyeeg.preprocess.covariance
-    pyeeg.preprocess.covariances
-    pyeeg.preprocess.covariances_extended
+    create_filterbank
+    apply_filterbank
+    get_power
+    covariance
+    covariances
+    covariances_extended
 
 Listing of all classes and functions
 -------------------------------------

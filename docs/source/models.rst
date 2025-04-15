@@ -16,7 +16,7 @@ Classes
    :toctree: generated/
    :template: class.rst
 
-   pyeeg.models.TRFEstimator
+   TRFEstimator
    
 .. currentmodule:: pyeeg.cca
 
@@ -24,7 +24,7 @@ Classes
    :toctree: generated/
    :template: class.rst
    
-   pyeeg.cca.CCA_Estimator
+   CCA_Estimator
 
 Functions
 ---------
@@ -34,4 +34,6 @@ Functions
     :toctree: generated/
     :template: function.rst
 
-    pyeeg.models._svd_regress
+    _svd_regress
+    fit_ar
+    fit_var

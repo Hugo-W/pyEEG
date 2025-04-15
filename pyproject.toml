@@ -3,7 +3,7 @@ requires = ["setuptools>=65.5.0", "wheel", "setuptools-scm", "numpy"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "natMEEG"
+name = "natmeeg"
 dynamic = ["version"]
 description = "A library to process M/EEG data with a set of utility functions with a framework focused on continuous recordings and naturalistic stimuli."
 authors = [

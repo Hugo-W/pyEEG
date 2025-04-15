@@ -37,12 +37,13 @@ if "%1" == "help" (
 if "%1" == "clean" (
 	for /d %%i in (%BUILDDIR%\*) do rmdir /q /s %%i
 	del /q /s %BUILDDIR%\*
+	echo.Cleaned up %BUILDDIR%.
 	goto end
 )
 
 if "%1" == "html" (
 	%SPHINXBUILD% -b html %ALLSPHINXOPTS% %BUILDDIR%/html
-	cp -r %SPHINXBUILD%/html/* ../../pyEEG/docs/
+	@REM cp -r %SPHINXBUILD%/html/* ../../pyEEG/docs/
 	echo.
 	echo.Build finished. The HTML pages are in %BUILDDIR%/html.
 	goto end

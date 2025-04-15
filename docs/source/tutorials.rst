@@ -27,9 +27,12 @@ To load EEG data from ``.set`` files, the code would be:
     from pyeeg.io import eeglab2mne
     eeg = eeglab2mne(filepath)
 
+Jupyter Notebooks Examples
+--------------------------
+
 .. toctree::
     :maxdepth: 1
-    :caption: Jupyter Notebooks Examples
+    :caption: WARNING: may be outdated
 
     examples/TRF_wordonsets
     examples/CCA_envelope

@@ -46,6 +46,8 @@ class mCCA(BaseEstimator):
         Parameters
         ----------
             X : list of array-like (Time x channels) or array-like (subj x time x channels)
+
+        :no-index:
         """
         self.n_datasets_ = len(X)
 
@@ -78,7 +80,11 @@ class mCCA(BaseEstimator):
             self.individual_transforms_.append(V)
 
     def canonical_correlate_single(self, X, idx):
-        "Project one single dataset into its canonical correlate components."
+        """
+        Project one single dataset into its canonical correlate components.
+
+        :no-index:
+        """
         return np.dot(X, self.individual_transforms_[idx].T)
 
     def plot_summary_components_variance(self, normalize=False, axis=None):
@@ -93,6 +99,7 @@ class mCCA(BaseEstimator):
         axis.set_ylabel('Variance')
 
     def denoise(self, X, num_comps, idx):
+        ":no-index:"
         #D = np.dot(self.individual_transforms_[idx][:,:num_comps], pinv(self.individual_transforms_[idx])[:num_comps])
         #proj = self.individual_transforms_[idx][:num_comps].T
         #inv_proj = pinv(self.individual_transforms_[idx])[:, :num_comps].T

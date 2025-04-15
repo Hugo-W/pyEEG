@@ -5,16 +5,17 @@
 
 :github_url: https://github.com/Hugo-W/pyEEG
 
-Welcome to pyEEG's documentation!
-=================================
+Welcome to natMEEG's documentation!
+===================================
 
-pyEEG is a wrapper around some common tooloboxes and algorithm for EEG processing with speech data.
+natMEEG is a Python package for the analysis of EEG and MEG data. It focuses on providing tools for preprocessing, visualization, and modelling of neurophysiological data in the context of naturalistic and continuous (single trial) stimuli presentation.
 
 .. toctree::
    :maxdepth: 3
    :caption: To get started
 
    install
+   usage
    tutorials
 
 
@@ -26,6 +27,7 @@ pyEEG is a wrapper around some common tooloboxes and algorithm for EEG processin
    preprocess
    models
    utils
+   simulate
    vizu
 
 .. toctree::
@@ -41,4 +43,4 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
-.. codeauthor:: Hugo Weissbart <hugo.weissbart12@imperial.ac.uk>
+.. codeauthor:: Hugo Weissbart <hugo.weissbart@donders.ru.nl>

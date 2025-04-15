@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('../../'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'pyEEG'
+project = 'natMEEG'
 copyright = '2025, Hugo Weissbart'
 author = 'Hugo Weissbart'
 
@@ -68,7 +68,7 @@ master_doc = 'index'
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -89,7 +89,7 @@ import sphinx_rtd_theme
 #html_theme = 'alabaster'
 #html_theme = 'default'
 html_theme = 'sphinx_rtd_theme'
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+# html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -97,7 +97,8 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 #
 # html_theme_options = {}
 
-html_logo = "img/pyeeg-logo-light.svg"
+# html_logo = "img/pyeeg-logo-light.svg"
+html_logo = "img/natmeeg_logo_fulltransparent.png"
 
 html_favicon = "img/favicon.ico"
 
@@ -120,7 +121,7 @@ html_static_path = ['_static']
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'pyEEGdoc'
+htmlhelp_basename = 'natMEEG-doc'
 
 
 # -- Options for LaTeX output ------------------------------------------------
@@ -147,7 +148,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'pyEEG.tex', 'pyEEG Documentation',
+    (master_doc, 'natMEEG.tex', 'natMEEG Documentation',
      'Hugo Weissbart', 'manual'),
 ]
 
@@ -157,7 +158,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'pyeeg', 'pyEEG Documentation',
+    (master_doc, 'pyeeg', 'natMEEG Documentation',
      [author], 1)
 ]
 
@@ -168,8 +169,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'pyEEG', 'pyEEG Documentation',
-     author, 'pyEEG', 'One line description of project.',
+    (master_doc, 'natMEEG', 'natMEEG Documentation',
+     author, 'natMEEG', 'Process M/EEG data with naturalistic stimuli and natural language',
      'Miscellaneous'),
 ]
 
