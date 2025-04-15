@@ -10,7 +10,7 @@ _Formerly named `pyEEG`_
 You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.html).
 
 > ⚠️**Caution**:
-> - Note that this code repository is relatively old and **unmaintained**. Most useful code about computing TRF is contained in `pyeeg/models.py`, especially in the class `TRFEstimator` and the function `_svd_regress`: the latter implements TRF estimation with memory efficient and accelerated computation for handling multiple epochs or multiple subjects.
+> - Note that this code repository is **unmaintained** and intended for personal use. Most of the code about computing TRF is contained in `pyeeg/models.py`, especially in the class `TRFEstimator` and the function `_svd_regress`: the latter implements TRF estimation with memory efficient and accelerated computation for handling multiple epochs or multiple subjects.
 > - It is recommended to use the code as a reference for your own implementation rather than relying on it for production use.
 > - Finaly note that the repository went through a name change from `pyEEG` to `natMEEG`, so you might find references to `pyEEG` in the code and documentation.
 
