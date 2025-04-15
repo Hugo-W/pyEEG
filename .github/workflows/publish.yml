@@ -6,7 +6,7 @@ jobs:
   build:
     uses: ./.github/workflows/build.yml  # Call the reusable build workflow
     with:
-      python-versions: '["3.10"]'  # Pass as a JSON array
+      python-versions: '["3.10", "3.12", "3.13"]'  # Pass as a JSON array
       os-matrix: '["ubuntu-latest", "windows-latest", "macos-latest"]'  # Pass as a JSON array
 
   publish-to-pypi:
@@ -29,8 +29,27 @@ jobs:
         pattern: dist-*  # Download all artifacts matching the pattern
         path: dist/
         merge-multiple: true
+        
+    - name: Install auditwheel
+      run: pip install auditwheel    
+    - name: Repair wheel
+      run: |
+        auditwheel repair dist/*linux_x86_64.whl -w dist/
+        rm dist/*linux_x86_64.whl
+        echo "Repaired wheel, files left:"
+        ls dist/
+        
+    - name: Upgrade twine
+      run: python -m pip install --upgrade twine
+    
+    - name: Check distribution files
+      run: |
+        twine check dist/* || echo "Twine check failed, continuing anyway"
+
     - name: Publish distribution 📦 to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
 
   github-release:
     name: >-

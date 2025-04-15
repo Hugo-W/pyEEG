@@ -1,14 +1,18 @@
-# pyEEG
+# natMEEG - Naturalistic M/EEG data analysis
 
 [![PyPI version](https://badge.fury.io/py/natMEEG.svg)](https://badge.fury.io/py/natMEEG)
 > v1.5.1 (2025-04-14)
 
+_Formerly named `pyEEG`_
 
-pyEEG is a library for processing EEG data built mostly on top of MNE-py and scikit-learn. It is framed to work with data collected with naturalistic stimuli, therefore with continuous recordings rather than trial-based designs. It allows analysis of continuous m/eeg and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level or phoneme-level features).
+`natMEEG` is a library for processing M/EEG data built mostly on top of MNE-py and scikit-learn. It is framed to work with data collected with naturalistic stimuli, therefore with continuous recordings rather than trial-based designs. It allows analysis of continuous m/eeg and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level or phoneme-level features).
 
 You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.html).
 
-> Note that this code repository is relatively old and **unmaintained**. Most useful code about computing TRF is contained in `pyeeg/models.py`, especially in the class `TRFEstimator` and the function `_svd_regress`: the latter implements TRF estimation with memory efficient and accelerated computation for handling multiple epochs or multiple subjects.
+> ⚠️**Caution**:
+> - Note that this code repository is relatively old and **unmaintained**. Most useful code about computing TRF is contained in `pyeeg/models.py`, especially in the class `TRFEstimator` and the function `_svd_regress`: the latter implements TRF estimation with memory efficient and accelerated computation for handling multiple epochs or multiple subjects.
+> - It is recommended to use the code as a reference for your own implementation rather than relying on it for production use.
+> - Finaly note that the repository went through a name change from `pyEEG` to `natMEEG`, so you might find references to `pyEEG` in the code and documentation.
 
 ------
 
@@ -16,7 +20,7 @@ You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.
 
 ### Dependencies
 
-pyEEG requires:
+natMEEG requires:
 
 - Python (>= 3.10)
 - psutil
@@ -35,7 +39,7 @@ Install requirements:
 pip install -r requirements.txt
 ```
 
-To generate the doc, Python package `sphinx` (>= 1.1.0), `sphinx_rtd_theme` and `nbsphinx` are required (`sphinx` can be installed from `conda` and the others from `pip`).
+To generate the doc, Python package `sphinx` (>= 1.1.0), `sphinx_rtd_theme` and `nbsphinx` are required.
 
 ### User Installation
 
@@ -44,12 +48,24 @@ To generate the doc, Python package `sphinx` (>= 1.1.0), `sphinx_rtd_theme` and 
 You can install the package from PyPI using `pip`:
 
 ```bash
-pip install pyEEG
+pip install natMEEG
+```
+
+If you want to install docs building dependencies, you can do:
+
+```bash
+pip install natMEEG[docs]
+```
+
+If you want to install the package with all dependencies (including MNE), you can do:
+
+```bash
+pip install natMEEG[full]
 ```
 
 ### From Source
 
-From terminal (or `conda` shell in Windows), `cd` in root directory of the library (directory containing `setup.py` file) and type:
+From terminal, `cd` in root directory of the library after cloning this repository (directory containing `pyproject.toml` file).
 
 To get the package installed only through symbolic links, namely so that you can modify the source code and use modified versions at will when importing the package in your python scripts do:
 
@@ -79,6 +95,8 @@ Then you can run:
 ```bash
 pip install . --global-option=build_ext --global-option=--compiler=mingw32
 ```
+
+Or set the environment variable `DISTUTILS_USE_SDK=1` and `MSSdk=1` before running the command.
 
 ## Basic Examples
 
@@ -140,11 +158,7 @@ make clean
 ```
 ---
 
-## TODOs
+## License
 
-- [ ] Use [doctest](https://docs.python.org/2/library/doctest.html) for systematic testing of some functions
-- [ ] Functional connectivity methods:
-  - [x] Estimate connectivity (**in construction**)
-  - [ ] Graph theory metrics (path length, clustering coeff.)
-- [ ] Pipeline `pyRiemann` and `pyeeg` [this one](https://github.com/freole/pyeeg) into some workflows..
+This project is licensed under the terms of the GPL-3.0 license. See the [LICENSE](LICENSE) file for details.
 
