@@ -53,7 +53,7 @@ Issues = "https://github.com/Hugo-W/pyEEG/issues"
 # So I have a MANIFEST.in anyway
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["pyeeg", "pyeeg.bin"] 
+include = ["pyeeg", "pyeeg.*"] 
 exclude = ["tests", "docs", "*.egg-info", "build", "dist", "setup_hooks"]
 #
 [tool.setuptools]
