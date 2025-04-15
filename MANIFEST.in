@@ -1,0 +1,7 @@
+# Happening because of setuptools_scm : all git-committed files are included in sdist
+# but we want to exclude some committed files/dirs not needed in the sdist:
+exclude .gitignore _config.yml examples Makefile setup.py
+prune docs
+prune tests
+prune setup_hooks
+prune .github

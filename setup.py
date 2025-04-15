@@ -7,16 +7,16 @@ import sys
 # # But only on Windows, to avoid creating a .def file for non-Windows platforms
 # The fact of setting self.compiler to "mingw32" string i only possible
 # in finalize_options, as in the build_ext constructor it should be a compiler object.
-# import shutil
-# class CustomBuildExt(build_ext):
-#     def finalize_options(self):
-#         if sys.platform == "win32" and not self.compiler:
-#             if shutil.which("gcc"):
-#                 self.compiler = "mingw32"
-#                 print("[INFO] gcc detected: building with MinGW.")
-#             else:
-#                 print("[WARN] No gcc detected. Please install Build Tools for Visual Studio or MinGW-w64.")
-#         super().finalize_options()
+import shutil
+class CustomBuildExt(build_ext):
+    def finalize_options(self):
+        if sys.platform == "win32" and not self.compiler:
+            if shutil.which("gcc"):
+                self.compiler = "mingw32"
+                print("[INFO] gcc detected: building with MinGW.")
+            else:
+                print("[WARN] No gcc detected. Please install Build Tools for Visual Studio or MinGW-w64.")
+        super().finalize_options()
 
 
 # Determine the shared library extension based on the operating system
@@ -48,6 +48,6 @@ ratemap_module = Extension(
 )
 
 setup(
-    # cmdclass={"build_ext": CustomBuildExt},
+    cmdclass={"build_ext": CustomBuildExt},
     ext_modules=[gammatone_module, ratemap_module],
 )

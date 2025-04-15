@@ -47,13 +47,15 @@ Issues = "https://github.com/Hugo-W/pyEEG/issues"
 # ]
 # setup-hooks = ["setup_hooks.numpy_includes"]
 
+# This might be ignored by setuptools-scm see: https://github.com/pypa/setuptools/issues/3246#issuecomment-1087644509s
+# So I have a MANIFEST.in anyway
 [tool.setuptools.packages.find]
-where = ["pyeeg"]
-include = ["pyeeg.bin"] 
-exclude = ["tests", "docs", "*.egg-info", "build", "dist"]
-
+where = ["."]
+include = ["pyeeg", "pyeeg.bin"] 
+exclude = ["tests", "docs", "*.egg-info", "build", "dist", "setup_hooks"]
+#
 [tool.setuptools]
-package-dir = {"" = "pyeeg"}
+package-dir = {"pyeeg" = "pyeeg"}
 
 # This allows you to use `pip install .[docs]` to install optional dependencies.
 [project.optional-dependencies]
