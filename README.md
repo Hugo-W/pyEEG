@@ -33,12 +33,6 @@ natMEEG requires:
 - pandas
 - mne (>= 0.16) [optional]
 
-Install requirements:
-
-```bash
-pip install -r requirements.txt
-```
-
 To generate the doc, Python package `sphinx` (>= 1.1.0), `sphinx_rtd_theme` and `nbsphinx` are required.
 
 ### User Installation
@@ -65,6 +59,8 @@ pip install natMEEG[full]
 
 ### From Source
 
+If you prefer to install the package from source, you can clone the repository or download release archive or also use the source distribution (`.tar.gz` file from PyPi) and build it locally. There is a C-extension that needs to compile, so you need to have a C compiler installed on your machine.
+
 From terminal, `cd` in root directory of the library after cloning this repository (directory containing `pyproject.toml` file).
 
 To get the package installed only through symbolic links, namely so that you can modify the source code and use modified versions at will when importing the package in your python scripts do:
@@ -73,7 +69,7 @@ To get the package installed only through symbolic links, namely so that you can
 pip install -e .
 ```
 
-Otherwise, for a standard installation (but this will require to be installed if you need to install another version of the library):
+Otherwise, for a standard installation, you can run:
 
 ```bash
 pip install .
@@ -90,15 +86,22 @@ Optionally try with [MinGW](http://www.mingw.org/), making sure after instalatio
 gcc --version
 ```
 
-Then you can run:
-  
-```bash
-pip install . --global-option=build_ext --global-option=--compiler=mingw32
+If this build tool is available it should be detected during build process (running `pip install .`, `pip install -e .` or `python -m build`).
+
+## Usage
+
+The most common usage of the library is to compute temporal response functions (TRF) from continuous M/EEG data. The library provides a `TRFEstimator` class that allows you to fit a TRF model to your data. The TRF model can be used to predict the M/EEG signal from a stimulus signal (e.g. a continuous audio signal or a sequence of word features):
+
+```python
+from pyeeg import TRFEstimator
+
+trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=fs, alpha=100.0) # TRF between -200ms and 500ms, regularization parameter alpha=100.0
+trf.fit(X, y) # assuming data loaded: X is the stimulus signal, y is the M/EEG signal
+print(trf.score(X, y)) # Normally you would use a separate test set for this, but here we use the same data for simplicity
+trf.plot() # plot the TRF
 ```
 
-Or set the environment variable `DISTUTILS_USE_SDK=1` and `MSSdk=1` before running the command.
-
-## Basic Examples
+### Examples
 
 See files in [`examples/`](docs/source/examples/).
 
@@ -123,21 +126,19 @@ You can generate an _offline_ HTML version, or a PDF file of all the docs by fol
 To generate the documentation you will need `sphinx` to be installed in your Python environment, as well as the extension `nbsphinx` (for Jupyter Notebook integration) and the theme package `sphinx_rtd_theme`. Install those with:
 
 ```bash
-conda install sphinx
-conda install -c conda-forge nbsphinx
-pip install sphinx_rtd_theme
+pip install natMEEG[docs]
 ```
 
-You can access the doc as HTML or PDF format.
+You can access the doc as HTML or PDF format. First get the source documentation files by cloning the repository or downloading the release archive. The documentation is located in the `docs` folder.
 To generate the documentation HTML pages, type in a terminal:
 
-For Unix environment (from root directory):
+For Unix environment (from root directory, as it uses the `Makefile`):
 
 ```bash
 make doc
 ```
 
-For Windows environment (from `docs` folder):
+For Windows environment (from `docs` folder, where `make.bat` is located):
 
 ```bash
 cd docs
