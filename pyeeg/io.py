@@ -757,22 +757,22 @@ class WordLevelFeatures:
 
     Examples
     --------
-    >>> from pyeeg.io import WordLevelFeatures
-    >>> import os
-    >>> from os.path import join
-    >>> wordfreq_path = '/media/hw2512/SeagateExpansionDrive/EEG_data/Katerina_experiment/story_parts/word_frequencies/'
-    >>> env_path = '/media/hw2512/SeagateExpansionDrive/EEG_data/Katerina_experiment/story_parts/alignement_data/'
-    >>> surprisal_path = '/media/hw2512/SeagateExpansionDrive/EEG_data/Katerina_experiment/story_parts/surprisal/'
-    >>> list_wordfreq_files = [item for item in os.listdir(wordfreq_path) if item.endswith('timed.csv')]
-    >>> list_surprisal_files = [item for item in os.listdir(surprisal_path) if item.endswith('3.txt')]
-    >>> list_stories = [item.strip('_word_freq_timed.csv') for item in list_wordfreq_files]
-    >>> list_env_files = [os.path.join(env_path, s, s + '_125Hz.Env') for s in list_stories]
-    >>> surp_path = os.path.join(surprisal_path, list_surprisal_files[1])
-    >>> wf_path = os.path.join(wordfreq_path, list_wordfreq_files[1])
-    >>> dur_path = os.path.join(env_path, list_env_files[1])
-    >>> wo_path = os.path.join(wordfreq_path, list_wordfreq_files[1])
-    >>> wfeats = WordLevelFeatures(path_praat_env=dur_path, path_wordonsets=wo_path, path_surprisal=surp_path, path_wordfrequency=wf_path)
-    >>> wf
+    >>> from pyeeg.io import WordLevelFeatures # doctest: +SKIP
+    >>> import os   # doctest: +SKIP
+    >>> from os.path import join # doctest: +SKIP
+    >>> wordfreq_path = '/media/hw2512/SeagateExpansionDrive/EEG_data/Katerina_experiment/story_parts/word_frequencies/' # doctest: +SKIP
+    >>> env_path = '/media/hw2512/SeagateExpansionDrive/EEG_data/Katerina_experiment/story_parts/alignement_data/' # doctest: +SKIP
+    >>> surprisal_path = '/media/hw2512/SeagateExpansionDrive/EEG_data/Katerina_experiment/story_parts/surprisal/' # doctest: +SKIP
+    >>> list_wordfreq_files = [item for item in os.listdir(wordfreq_path) if item.endswith('timed.csv')] # doctest: +SKIP
+    >>> list_surprisal_files = [item for item in os.listdir(surprisal_path) if item.endswith('3.txt')] # doctest: +SKIP
+    >>> list_stories = [item.strip('_word_freq_timed.csv') for item in list_wordfreq_files] # doctest: +SKIP
+    >>> list_env_files = [os.path.join(env_path, s, s + '_125Hz.Env') for s in list_stories] # doctest: +SKIP
+    >>> surp_path = os.path.join(surprisal_path, list_surprisal_files[1]) # doctest: +SKIP
+    >>> wf_path = os.path.join(wordfreq_path, list_wordfreq_files[1]) # doctest: +SKIP
+    >>> dur_path = os.path.join(env_path, list_env_files[1]) # doctest: +SKIP
+    >>> wo_path = os.path.join(wordfreq_path, list_wordfreq_files[1]) # doctest: +SKIP
+    >>> wfeats = WordLevelFeatures(path_praat_env=dur_path, path_wordonsets=wo_path, path_surprisal=surp_path, path_wordfrequency=wf_path) # doctest: +SKIP
+    >>> wf # doctest: +SKIP
        surprisal   wordfreq      words     onsets
     0   6.202895   9.631348         if   9.631348
     1  11.555537   6.981747        the   6.981747
@@ -780,7 +780,7 @@ class WordLevelFeatures:
     3  27.631021   8.300234        was   8.300234
     4   9.720567  12.214926       fine  12.214926
     Duration: 159.08
-    >>> feature_matrix = wf.align_word_features(srate=125, features=['surprisal', 'wordfrequency'])
+    >>> feature_matrix = wf.align_word_features(srate=125, features=['surprisal', 'wordfrequency']) # doctest: +SKIP
 
     Note
     ----

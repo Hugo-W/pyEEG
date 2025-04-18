@@ -247,10 +247,23 @@ class TRFEstimator(BaseEstimator):
 
     Examples
     --------
-    >>> trf = TRFEstimator(tmin=-0.5, tmax-1.2, srate=125)
+    >>> from pyeeg import TRFEstimator
+    >>> trf = TRFEstimator(tmin=-0.5, tmax=1.2, srate=125) 
     >>> x = np.random.randn(1000, 3)
     >>> y = np.random.randn(1000, 2)
-    >>> trf.fit(x, y, lagged=False)
+    >>> trf.fit(x, y)
+    TRFEstimator(
+                    alpha=0.0,
+                    fit_intercept=True,
+                    srate=125,
+                    tmin=-0.50
+                    tmax=1.20,
+                    n_feats=3,
+                    n_chans=2,
+                    n_lags=212,
+                    features : None
+                )
+    ...
 
     .. seealso::
         :func:`_svd_regress`
@@ -338,6 +351,8 @@ class TRFEstimator(BaseEstimator):
         else:
             self.times = np.asarray(self.times)
             self.lags = lag_sparse(self.times, self.srate)[::-1]
+        if len(self.lags) == 0:
+            raise ValueError(f"lags are empty! Must have at least one, check tmin, tmax and srate values: {self.tmin}, {self.tmax}, {self.srate}")
         
 
     def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=()):

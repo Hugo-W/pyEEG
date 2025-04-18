@@ -29,7 +29,125 @@ Simulate MEEG-like signals with different connectivity patterns or methods.
     - **10/11/2023**: Initial commit (AR and VAR simulations)
 """
 import numpy as np
-from .utils import sigmoid
+from .utils import sigmoid, scisig, poisson_onsets_fixed_N
+
+def dummy_trf_kernel(tmin=-0.2, tmax=0.5, srate=100, tloc=0.1, sigma=0.1, kernel_type='gaussian'):
+    """
+    Dummy kernel for testing purposes.
+
+    Parameters
+    ----------
+    tmin : float
+        The minimum time of the kernel.
+    tmax : float
+        The maximum time of the kernel.
+    srate : int
+        The sampling rate of the kernel.
+    tloc : float
+        The location of the peak of the kernel.
+    sigma : float
+        The standard deviation, or width, of the kernel.
+    
+    Returns
+    -------
+    kernel : array_like
+        The kernel. Shape (n,).
+    """
+    t = np.arange(tmin, tmax, 1/srate)
+    if kernel_type == 'gaussian':
+        return t, np.exp(-0.5 * ((t - tloc) / sigma)**2) / (sigma * np.sqrt(2 * np.pi))
+    elif kernel_type == 'exponential':
+        return t, np.exp(-np.abs(t - tloc) / sigma) / (2 * sigma)
+    elif kernel_type == 'bipolar':
+        sigma /= 2 # half the width of the kernel
+        tloc += sigma # shift the location of the peak to the right
+        ker = np.exp(-0.5 * ((t - tloc) / sigma)**2) / (sigma * np.sqrt(2 * np.pi))
+        return t, np.diff(np.r_[0, ker]) # derivative of gaussian
+    
+def simulate_smooth_input(dur=1.0, srate=100, fmax=10, seed=12):
+    """
+    Simulate a smooth input signal.
+
+    Parameters
+    ----------
+    dur : float
+        The duration of the signal in seconds.
+    srate : int
+        The sampling rate of the signal.
+    fmax : float
+        The maximum frequency of the signal.
+    
+    Returns
+    -------
+    t : array_like
+        The time vector. Shape (n,).
+    x : array_like
+        The simulated signal. Shape (n,).
+    """
+    rng = np.random.default_rng(seed)
+    n = int(dur * srate)
+    t = np.arange(0, dur, 1/srate)
+    x = rng.standard_normal(size=n)
+    b, a = scisig.butter(4, fmax / (srate / 2), btype='low')
+    x = scisig.filtfilt(b, a, x) # filter the signal
+    return t, x
+
+def simulate_pulse_inputs(n_events=100, dur=30.0, srate=100, seed=12):
+    """
+    Simulate a pulse input signal.
+
+    Parameters
+    ----------
+    n_events : int
+        Number of events to simulate.
+    dur : float
+        The duration of the signal in seconds.
+    srate : int
+        The sampling rate of the signal.
+    
+    Returns
+    -------
+    t : array_like
+        The time vector. Shape (n,).
+    x : array_like
+        The simulated signal. Shape (n,).
+    """
+    n = int(dur * srate)
+    t = np.arange(0, dur, 1/srate)
+    x = np.zeros(n)
+    # Generate Poisson distributed events
+    event_times = poisson_onsets_fixed_N(n_events, dur, seed=seed)
+    x[(event_times * srate).astype(int)] = 1 # set the events to 1
+    return t, x
+
+def simulate_trf_output(tkernel, kernel, input, srate=100):
+    """
+    Simulate the output of a kernel given an input signal.
+
+    Parameters
+    ----------
+    tkernel : array_like
+        The time vector of the kernel. Shape (nker,).
+    kernel : array_like
+        The kernel. Shape (nker,).
+    input : array_like
+        The input signal. Shape (n,).
+    srate : int
+        The sampling rate of the signal.
+    
+    Returns
+    -------
+    output : array_like
+        The output signal. Shape (n,).
+    """
+    n = len(input)
+    tmin, tmax = tkernel[0], tkernel[-1]
+    # if tker is not symmetric around 0, we need to pad the kernel
+    if np.abs(tmin) > np.abs(tmax):
+        kernel = np.pad(kernel, (0, int(np.abs(tmin) * srate) - int(np.abs(tmax) * srate)), 'constant')
+    elif np.abs(tmax) > np.abs(tmin):
+        kernel = np.pad(kernel, (int(np.abs(tmax) * srate) - int(np.abs(tmin) * srate), 0), 'constant')
+    return np.convolve(input, kernel, mode='same')
 
 def simulate_ar(order, coefs, n, sigma=1, seed=42):
     """

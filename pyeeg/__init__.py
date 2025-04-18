@@ -10,8 +10,11 @@ pyEEG package for analyszing EEG with speech and word-level features.
 
 # This enables access to all submodules from the top-level `pyeeg` module
 from . import connectivity, io, models, preprocess, vizu, utils, simulate
+# Some handy classes
 from .models import TRFEstimator
 from .cca import CCA_Estimator
 from .preprocess import MultichanWienerFilter, Whitener
 from .mcca import mCCA
+# And functions
+from .utils import lag_matrix
 from .version import __version__

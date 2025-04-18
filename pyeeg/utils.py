@@ -71,6 +71,48 @@ def print_title(msg, line='=', frame=True):
     """
     print((line*len(msg)+"\n" if frame else "") + msg + '\n'+line*len(msg)+'\n')
 
+def poisson_onsets(rate, dur, seed=None):
+    """Generate Poisson onsets.
+    
+    Parameters
+    ----------
+    rate : float
+        Rate of the Poisson process (in Hz)
+    dur : float
+        Duration of the process (in seconds)
+    seed : int, optional
+        Seed for the random number generator (default is None)
+
+    Returns
+    -------
+    onsets : ndarray
+        Array of onsets (in seconds)
+
+    .. seealso::
+        :func:`poisson_onsets`, :func:`poisson_onsets_fixed_N`
+    """
+    rng = np.random.default_rng(seed)
+    t = 0
+    onsets = []
+    while True:
+        t += rng.exponential(1 / rate)
+        if t >= dur:
+            break
+        onsets.append(t)
+    return np.array(onsets)
+
+def poisson_onsets_fixed_N(N, dur=1.0, seed=None):
+    """Generate Poisson onsets with a fixed number of events.
+    Instead of generating a Poisson process with a fixed rate, we generate a fixed number of events.
+
+    Uniformly distribute them over [0,dur], which matches the order statistics of the Poisson process.
+
+    .. seealso::
+        :func:`poisson_onsets`, :func:`poisson_onsets_fixed_N`
+    """
+    rng = np.random.default_rng(seed)
+    return np.sort(rng.uniform(0, dur, size=N))
+
 def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False):
     """Helper function to create a matrix of lagged time series.
 
