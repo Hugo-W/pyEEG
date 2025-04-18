@@ -107,12 +107,12 @@ def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False)
     >>> data = np.asarray([[1,2,3,4,5,6],[7,8,9,10,11,12]]).T
     >>> out = lag_matrix(data, (0,1))
     >>> out
-    array([[ 1.,  7.,  2.,  8.],
-            [ 2.,  8.,  3.,  9.],
-            [ 3.,  9.,  4., 10.],
-            [ 4., 10.,  5., 11.],
-            [ 5., 11.,  6., 12.],
-            [ 6., 12., nan, nan]])
+    array([[ 1.,  7., nan, nan],
+           [ 2.,  8.,  1.,  7.],
+           [ 3.,  9.,  2.,  8.],
+           [ 4., 10.,  3.,  9.],
+           [ 5., 11.,  4., 10.],
+           [ 6., 12.,  5., 11.]])
 
     """
     if not np.isnan(filling) and drop_missing:
