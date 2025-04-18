@@ -321,7 +321,8 @@ class TRFEstimator(BaseEstimator):
             self.use_regularisation = np.any(np.asarray(alpha) > 0.)
         self.fit_intercept = fit_intercept
         self.fitted = False
-        self.lags = None
+        # self.lags = None
+        self.fill_lags()
         # All following attributes are only defined once fitted (hence the "_" suffix)
         self.intercept_ = None
         self.coef_ = None
@@ -344,9 +345,7 @@ class TRFEstimator(BaseEstimator):
         
         """
         if (self.tmin is not None) and (self.tmax is not None):
-            #LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
             self.lags = lag_span(self.tmin, self.tmax, srate=self.srate)[::-1] #pylint: disable=invalid-unary-operand-type
-            #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
             self.times = self.lags[::-1] / self.srate
         else:
             self.times = np.asarray(self.times)
@@ -485,7 +484,10 @@ class TRFEstimator(BaseEstimator):
             #C = sigma * np.linalg.inv(cov_betas)
             C = np.einsum('ij,k', np.linalg.inv(cov_betas), sigma)
             # Actual stats
-            self.tvals_ = betas / np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1)[1:, :])
+            if self.fit_intercept:
+                self.tvals_ = betas / np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1)[1:, :])
+            else:
+                self.tvals_ = betas / np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1))
             self.pvals_ = 2 * (1-stats.t.cdf(abs(self.tvals_), df=dof))
 
         return self

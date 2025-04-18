@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 from pyeeg.ratemap import make_rate_map as ratemap
 from pyeeg.ratemap import hz_to_erb_rate, erb_rate_to_hz, generate_cfs
 from pyeeg.gammatone import gammatone_filter
+from pyeeg._decorators import deprecated_warning
 
 logging.basicConfig(level=logging.ERROR)
 LOGGER = logging.getLogger(__name__.split('.')[0])
@@ -113,7 +114,8 @@ def poisson_onsets_fixed_N(N, dur=1.0, seed=None):
     rng = np.random.default_rng(seed)
     return np.sort(rng.uniform(0, dur, size=N))
 
-def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False):
+# old and deprecated function, kept for personal use
+def lag_matrix_(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False):
     """Helper function to create a matrix of lagged time series.
 
     The lag can be arbitrarily spaced. Check other functions to create series of lags
@@ -173,7 +175,90 @@ def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False)
         dframe.dropna(inplace=True)
 
     return dframe.values
-    #return dframe.loc[:, ::-1].get_values()
+
+@deprecated_warning("filling", "drop_missing")
+def lag_matrix(x, lags, mode='full', fill_value=0., **kwargs):
+    """Helper function to create a Toeplitz matrix of lagged time series.
+
+    The lag can be arbitrarily spaced. Check other functions to create series of lags
+    whether they are contiguous or sparsely spanning a time window :func:`lag_span` and
+    :func:`lag_sparse`.
+
+    Parameters
+    ----------
+    x : ndarray (nsamples x nfeats)
+        Multivariate data
+    lags : list
+        Shift in _samples_ to be applied to data. Negative shifts are lagged in the past,
+        positive shits in the future, and a shift of 0 represents the data array as it is
+        in the input `data`.
+    fill_value : float
+        What value to use to fill entries which are not defined (Default: NaN).
+    mode : str
+       'valid' or 'full' (default: 'valid').
+       'valid' returns only the part of the lagged matrix that is valid (i.e. no NaN values).
+       'full' returns the full lagged matrix, including missing values, which are filled with `fill_value`.
+    **kwargs : keyword arguments
+        Additional arguments to be passed to the function for backward compatibility.
+        For example, `filling` and `drop_missing` are deprecated and will be removed in future versions.
+
+    Returns
+    -------
+    lagged : ndarray (nsamples_new x nfeats*len(lag_samples))
+        Matrix of lagged time series.
+
+    Raises
+    ------
+    ValueError
+        If ``mode`` is not 'valid' or 'full'.
+
+    Example
+    -------
+    >>> data = np.asarray([[1,2,3,4,5,6],[7,8,9,10,11,12]]).T
+    >>> out = lag_matrix(data, (-1, 0, 2), mode='full')
+    >>> out # doctest: +NORMALIZE_WHITESPACE
+    array( [[ 2,  1,  0,  8,  7,  0],
+            [ 3,  2,  0,  9,  8,  0],
+            [ 4,  3,  1, 10,  9,  7],
+            [ 5,  4,  2, 11, 10,  8],
+            [ 6,  5,  3, 12, 11,  9],
+            [ 0,  6,  4,  0, 12, 10]])
+    """
+    if 'filling' in kwargs:
+        fill_value = kwargs['filling']
+    if 'drop_missing' in kwargs:
+        if kwargs['drop_missing']:
+            mode = 'valid'
+        else:
+            mode = 'full'
+            
+    x = np.atleast_2d(np.asarray(x))
+    if x.shape[0] == 1:
+        x = x.T
+    if x.shape[1] > 1:
+        return np.concatenate([lag_matrix(x[:, i], lags, mode=mode, fill_value=fill_value) for i in range(x.shape[1])], axis=1)
+    x = x.squeeze()
+    n = len(x)
+    lags = -np.asarray(lags) #TODO: minus signs to match expected behavior from TRFEstimator: maybe change in future
+    min_lag, max_lag = lags.min(), lags.max()
+
+    # Always compute full matrix first
+    X_full = np.full((n, len(lags)), fill_value, dtype=x.dtype)
+
+    for i, lag in enumerate(lags):
+        if lag < 0:
+            X_full[-lag:, i] = x[:n + lag]
+        else:
+            X_full[:n - lag, i] = x[lag:]
+
+    if mode == 'full':
+        return X_full
+    elif mode == 'valid':
+        start = max(0, -min_lag)
+        end = n - max_lag
+        return X_full[start:end]
+    else:
+        raise ValueError("mode must be 'valid' or 'full'")
 
 def lag_span(tmin, tmax, srate=125):
     """Create an array of lags spanning the time window [tmin, tmax].
@@ -194,8 +279,6 @@ def lag_span(tmin, tmax, srate=125):
     """
     sample_min, sample_max = int(np.ceil(tmin * srate)), int(np.ceil(tmax * srate))
     return np.arange(sample_min, sample_max)
-    #sample_min, sample_max = int(np.ceil(-tmax * srate)), int(np.ceil(-tmin * srate))
-    #return np.arange(sample_max, sample_min, -1)
 
 def lag_sparse(times, srate=125):
     """Create an array of lags for the requested time point in `times`.
@@ -213,7 +296,7 @@ def lag_sparse(times, srate=125):
         Array of lags in _samples_
 
     """
-    return np.asarray([int(np.ceil(t * srate)) for t in times])
+    return np.asarray([int(np.round(t * srate)) for t in times])
 
 def cochleogram(signal, srate, shift=8, nchannels=32, fmin=80, fmax=8000, comp_factor=1/3):
     """Compute the cochleogram of the input signal.
