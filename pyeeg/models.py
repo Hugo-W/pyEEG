@@ -199,6 +199,8 @@ def fit_var(x, nlags=1, time_axis=0):
     betas = np.linalg.lstsq(X.reshape(-1, nlags*k), Y, rcond=None)[0]
     return betas.reshape(k, nlags, k)#.transpose(2, 1, 0) # reshape back to 3D
 
+#TODO: new alignment of lag_matrix allow for banded ridge however, reshaping will be broken
+# Must check again the TRFEstimator from scratch
 class TRFEstimator(BaseEstimator):
     """Temporal Response Function (TRF) Estimator Class.
 
