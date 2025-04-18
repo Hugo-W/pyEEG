@@ -114,7 +114,7 @@ def poisson_onsets_fixed_N(N, dur=1.0, seed=None):
     rng = np.random.default_rng(seed)
     return np.sort(rng.uniform(0, dur, size=N))
 
-# old and deprecated function, kept for personal use
+# deprecated function, kept for personal use
 def lag_matrix_(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False):
     """Helper function to create a matrix of lagged time series.
 
@@ -149,7 +149,7 @@ def lag_matrix_(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False
     Example
     -------
     >>> data = np.asarray([[1,2,3,4,5,6],[7,8,9,10,11,12]]).T
-    >>> out = lag_matrix(data, (0,1))
+    >>> out = lag_matrix_(data, (0,1))
     >>> out
     array([[ 1.,  7., nan, nan],
            [ 2.,  8.,  1.,  7.],
@@ -176,8 +176,8 @@ def lag_matrix_(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False
 
     return dframe.values
 
-@deprecated_warning("filling", "drop_missing")
-def lag_matrix(x, lags, mode='full', fill_value=0., **kwargs):
+@deprecated_warning("filling", "drop_missing", "lag_samples")
+def lag_matrix(x, lags=(0,1), mode='full', fill_value=0., **kwargs):
     """Helper function to create a Toeplitz matrix of lagged time series.
 
     The lag can be arbitrarily spaced. Check other functions to create series of lags
@@ -217,12 +217,12 @@ def lag_matrix(x, lags, mode='full', fill_value=0., **kwargs):
     >>> data = np.asarray([[1,2,3,4,5,6],[7,8,9,10,11,12]]).T
     >>> out = lag_matrix(data, (-1, 0, 2), mode='full')
     >>> out # doctest: +NORMALIZE_WHITESPACE
-    array( [[ 2,  1,  0,  8,  7,  0],
-            [ 3,  2,  0,  9,  8,  0],
-            [ 4,  3,  1, 10,  9,  7],
-            [ 5,  4,  2, 11, 10,  8],
-            [ 6,  5,  3, 12, 11,  9],
-            [ 0,  6,  4,  0, 12, 10]])
+    array([[ 2,  1,  0,  8,  7,  0],
+           [ 3,  2,  0,  9,  8,  0],
+           [ 4,  3,  1, 10,  9,  7],
+           [ 5,  4,  2, 11, 10,  8],
+           [ 6,  5,  3, 12, 11,  9],
+           [ 0,  6,  4,  0, 12, 10]])
     """
     if 'filling' in kwargs:
         fill_value = kwargs['filling']
@@ -231,6 +231,8 @@ def lag_matrix(x, lags, mode='full', fill_value=0., **kwargs):
             mode = 'valid'
         else:
             mode = 'full'
+    if 'lag_samples' in kwargs:
+        lags = kwargs['lag_samples']
             
     x = np.atleast_2d(np.asarray(x))
     if x.shape[0] == 1:
