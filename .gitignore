@@ -19,6 +19,7 @@ docs/_build/
 pyEEG.egg-info*/
 natmeeg.egg-info*/
 build/
+pyeeg/bin/*pyd
 
 # Version file (managed by setuptools-scm)
 pyeeg/version.py
