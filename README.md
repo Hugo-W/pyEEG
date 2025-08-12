@@ -1,7 +1,7 @@
 # natMEEG - Naturalistic M/EEG data analysis
 
 [![PyPI version](https://badge.fury.io/py/natMEEG.svg)](https://badge.fury.io/py/natMEEG)
-> v1.5.1 (2025-04-14)
+> v1.6.10 (2025-04-15)
 
 _Formerly named `pyEEG`_
 
@@ -48,13 +48,13 @@ pip install natMEEG
 If you want to install docs building dependencies, you can do:
 
 ```bash
-pip install natMEEG[docs]
+pip install natmeeg[docs]
 ```
 
 If you want to install the package with all dependencies (including MNE), you can do:
 
 ```bash
-pip install natMEEG[full]
+pip install natmeeg[full]
 ```
 
 ### From Source
@@ -96,8 +96,8 @@ The most common usage of the library is to compute temporal response functions (
 from pyeeg import TRFEstimator
 
 trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=fs, alpha=100.0) # TRF between -200ms and 500ms, regularization parameter alpha=100.0
-trf.fit(X, y) # assuming data loaded: X is the stimulus signal, y is the M/EEG signal
-print(trf.score(X, y)) # Normally you would use a separate test set for this, but here we use the same data for simplicity
+trf.fit(X, y) # assuming data loaded: X is the stimulus signal, y is the M/EEG signal, they must have the same number of samples (rows)
+print(trf.score(X, y)) # Normally you would use a separate test set for scoring
 trf.plot() # plot the TRF
 ```
 
