@@ -42,7 +42,7 @@ To generate the doc, Python package `sphinx` (>= 1.1.0), `sphinx_rtd_theme` and 
 You can install the package from PyPI using `pip`:
 
 ```bash
-pip install natMEEG
+pip install natmeeg
 ```
 
 If you want to install docs building dependencies, you can do:
