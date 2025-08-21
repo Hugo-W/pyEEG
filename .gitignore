@@ -18,6 +18,12 @@ docs/_build/
 # Build from setup tool
 pyEEG.egg-info*/
 natmeeg.egg-info*/
+
+# Ignore pyEEG build binaries
+pyeeg/bin/*.pyd
+
+# Ignore CRUSH.md
+CRUSH.md
 build/
 
 # Version file (managed by setuptools-scm)
