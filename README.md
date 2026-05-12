@@ -7,14 +7,14 @@
 
 _Formerly named `pyEEG`_
 
-`natMEEG` is a library for processing M/EEG data built mostly on top of MNE-py and scikit-learn. It is framed to work with data collected with naturalistic stimuli, therefore with continuous recordings rather than trial-based designs. It allows analysis of continuous m/eeg and generation of temporal response functions with continuous signals as stimuli or real-valued events (e.g. word-level or phoneme-level features).
+`natMEEG` is a library for processing M/EEG data built mostly on top of MNE-Python and scikit-learn. It is designed for data collected with naturalistic stimuli, so it works with continuous recordings rather than trial-based designs. It supports analysis of continuous M/EEG and generation of temporal response functions from continuous signals or real-valued events (for example, word-level or phoneme-level features).
 
 You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.html).
 
 > ⚠️**Caution**:
-> - Note that this code repository is **unmaintained** and intended for personal use. Most of the code about computing TRF is contained in `pyeeg/models.py`, especially in the class `TRFEstimator` and the function `_svd_regress`: the latter implements TRF estimation with memory efficient and accelerated computation for handling multiple epochs or multiple subjects.
+> - This code repository is **unmaintained** and intended for personal use. Most of the code for computing TRFs is contained in `pyeeg/models.py`, especially in the class `TRFEstimator` and the function `_svd_regress`: the latter implements TRF estimation with memory-efficient and accelerated computation for handling multiple epochs or multiple subjects.
 > - It is recommended to use the code as a reference for your own implementation rather than relying on it for production use.
-> - Finaly note that the repository went through a name change from `pyEEG` to `natMEEG`, so you might find references to `pyEEG` in the code and documentation.
+> - Finally, the repository went through a name change from `pyEEG` to `natMEEG`, so you may still find references to `pyEEG` in the code and documentation.
 
 ------
 
