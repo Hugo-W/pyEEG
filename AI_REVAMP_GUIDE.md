@@ -2,6 +2,10 @@
 
 This branch is intentionally narrow in scope.
 
+The actionable checklists now live in:
+- `TODO.md`
+- `NEXT_STEPS.md`
+
 ## Branch goals
 
 - Write cleaner, clearer documentation
