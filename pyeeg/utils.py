@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 from pyeeg.ratemap import make_rate_map as ratemap
 from pyeeg.ratemap import hz_to_erb_rate, erb_rate_to_hz, generate_cfs
 from pyeeg.gammatone import gammatone_filter
+from pyeeg._decorators import deprecated_warning
 
 logging.basicConfig(level=logging.ERROR)
 LOGGER = logging.getLogger(__name__.split('.')[0])
@@ -116,8 +117,11 @@ def print_title(msg, line='=', frame=True):
     """
     print((line*len(msg)+"\n" if frame else "") + msg + '\n'+line*len(msg)+'\n')
 
-def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False):
+def lag_matrix_(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False):
     """Helper function to create a matrix of lagged time series.
+    
+    .. deprecated::
+        Use :func:`lag_matrix` instead. This function is kept for backward compatibility.
 
     The lag can be arbitrarily spaced. Check other functions to create series of lags
     whether they are contiguous or sparsely spanning a time window :func:`lag_span` and
@@ -150,7 +154,7 @@ def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False)
     Example
     -------
     >>> data = np.asarray([[1,2,3,4,5,6],[7,8,9,10,11,12]]).T
-    >>> out = lag_matrix(data, (0,1))
+    >>> out = lag_matrix_(data, (0,1))
     >>> out
     array([[ 1.,  7., nan, nan],
            [ 2.,  8.,  1.,  7.],
@@ -176,7 +180,118 @@ def lag_matrix(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False)
         dframe.dropna(inplace=True)
 
     return dframe.values
+
     #return dframe.loc[:, ::-1].get_values()
+
+
+@deprecated_warning("filling", "drop_missing", "lag_samples")
+def lag_matrix(x, lags=(0,1), mode='full', fill_value=0., **kwargs):
+    """Helper function to create a Toeplitz matrix of lagged time series.
+
+    The lag can be arbitrarily spaced. Check other functions to create series of lags
+    whether they are contiguous or sparsely spanning a time window :func:`lag_span` and
+    :func:`lag_sparse`.
+
+    Parameters
+    ----------
+    x : ndarray (nsamples x nfeats)
+        Multivariate data
+    lags : list
+        Shift in _samples_ to be applied to data. Negative shifts are lagged in the past,
+        positive shits in the future, and a shift of 0 represents the data array as it is
+        in the input `data`.
+    fill_value : float
+        What value to use to fill entries which are not defined (Default: NaN).
+    mode : str
+       'valid' or 'full' (default: 'valid').
+       'valid' returns only the part of the lagged matrix that is valid (i.e. no NaN values).
+       'full' returns the full lagged matrix, including missing values, which are filled with `fill_value`.
+    **kwargs : keyword arguments
+        Additional arguments to be passed to the function for backward compatibility.
+        For example, `filling` and `drop_missing` are deprecated and will be removed in future versions.
+
+    Returns
+    -------
+    lagged : ndarray (nsamples_new x nfeats*len(lag_samples))
+        Matrix of lagged time series.
+
+    Raises
+    ------
+    ValueError
+        If ``mode`` is not 'valid' or 'full'.
+
+    Example
+    -------
+    >>> data = np.asarray([[1,2,3,4,5,6],[7,8,9,10,11,12]]).T
+    >>> out = lag_matrix(data, (-1, 0, 2), mode='full')
+    >>> out # doctest: +NORMALIZE_WHITESPACE
+    array([[ 2,  1,  0,  8,  7,  0],
+           [ 3,  2,  0,  9,  8,  0],
+           [ 4,  3,  1, 10,  9,  7],
+           [ 5,  4,  2, 11, 10,  8],
+           [ 6,  5,  3, 12, 11,  9],
+           [ 0,  6,  4,  0, 12, 10]])
+    """
+    if 'filling' in kwargs:
+        fill_value = kwargs['filling']
+    if 'drop_missing' in kwargs:
+        if kwargs['drop_missing']:
+            mode = 'valid'
+        else:
+            mode = 'full'
+    if 'lag_samples' in kwargs:
+        lags = kwargs['lag_samples']
+    
+    x = np.atleast_2d(np.asarray(x, dtype=float))
+    if x.shape[0] == 1:
+        x = x.T
+    if x.shape[1] > 1:
+        # Multi-feature: iterate per lag (not per feature) to match old column ordering
+        # Old pandas approach: [feat0_lag0, feat1_lag0, feat0_lag1, feat1_lag1, ...]
+        n = x.shape[0]
+        lags_arr = -np.asarray(lags)
+        cols = []
+        for lag in lags_arr:
+            block = np.full((n, x.shape[1]), fill_value, dtype=float)
+            for j in range(x.shape[1]):
+                col = x[:, j]
+                if lag < 0:
+                    block[-lag:, j] = col[:n + lag]
+                else:
+                    block[:n - lag, j] = col[lag:]
+            cols.append(block)
+        X_full = np.hstack(cols)
+        if mode == 'full':
+            return X_full
+        elif mode == 'valid':
+            min_lag, max_lag = lags_arr.min(), lags_arr.max()
+            start = max(0, -min_lag)
+            end = n - max_lag
+            return X_full[start:end]
+        else:
+            raise ValueError("mode must be 'valid' or 'full'")
+    x = x.squeeze()
+    n = len(x)
+    lags_arr = -np.asarray(lags)  # Negated to match expected behavior from TRFEstimator
+    min_lag, max_lag = lags_arr.min(), lags_arr.max()
+    
+    # Use float dtype to support NaN values
+    X_full = np.full((n, len(lags_arr)), fill_value, dtype=float)
+    
+    for i, lag in enumerate(lags_arr):
+        if lag < 0:
+            X_full[-lag:, i] = x[:n + lag]
+        else:
+            X_full[:n - lag, i] = x[lag:]
+    if mode == 'full':
+        return X_full
+    elif mode == 'valid':
+        start = max(0, -min_lag)
+        end = n - max_lag
+        return X_full[start:end]
+    else:
+        raise ValueError("mode must be 'valid' or 'full'")
+
 
 def lag_span(tmin, tmax, srate=125):
     """Create an array of lags spanning the time window [tmin, tmax].
