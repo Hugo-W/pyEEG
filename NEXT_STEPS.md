@@ -99,16 +99,26 @@ Acceptance target:
 
 ## Step 5: Add or fix tests
 
+**Status: PARTIALLY COMPLETED (Issues #8, #10)**
+
 Start with the weakest spots first:
-- `tests/test_utils.py` currently contains a placeholder
+- `tests/test_utils.py` currently contains a placeholder (Issue #9 — next to tackle)
 - `tests/test_connectivity.py` currently contains a placeholder
 - `tests/test_gammatone.py` should be checked for robust assertions
 
 Then add coverage for:
-- TRF fitting behavior
-- CCA sanity checks
+- TRF fitting behavior ✅ (Issue #10: 8 tests in test_regression.py)
+- CCA sanity checks ✅ (Issue #10: 5 tests in test_regression.py)
 - connectivity metrics
 - backwards-compatible imports
+
+**Completed:**
+- Issue #8: test_solvers.py (4 solver tests + TRF basic test) + performance_solvers.ipynb
+- Issue #10: test_regression.py (8 TRF + 5 CCA simulation-based regression tests)
+- Tests use pyeeg.simulate utilities (dummy_trf_kernel, simulate_pulse_inputs, etc.)
+
+**Known bug:** `models.py:380` t-value computation breaks with `fit_intercept=False`.
+Tests use `alpha > 0` to skip stats and avoid this.
 
 Acceptance target:
 - tests protect the refactor
