@@ -68,18 +68,27 @@ Goal:
 
 ### 3) Modularize the architecture
 
+**Status: COMPLETED (Issue #8)**
+
 Current rough split:
-- `models.py` = high-level estimators and model fitting logic
-- `solvers.py` = low-level linear regression helpers used by models
-- `solver.py` = standalone experimental / alternate solver implementations
+- `pyeeg/models.py` = high-level estimators and model fitting logic
+- `pyeeg/solvers.py` = low-level linear regression helpers used by models
+- `solver.py` (root-level) = DELETED - merged into pyeeg/solvers.py
 
 Weak point:
-- the solver story is not yet cleanly separated
+- the solver story is now cleanly separated
+
+**Completed:**
+- Issue #8: Merged root solver.py into pyeeg/solvers.py ✅
+  - Added: svd_solver, conjugate_gradient, incomplete_cholesky_preconditioner, diagonal_preconditioner
+  - Deleted root-level solver.py
+  - Added tests: test_solvers.py, performance_solvers.ipynb
+  - _svd_regress remains only in solvers.py (not duplicated)
 
 Goal:
-- decide which solver layer is the canonical one
-- move duplicated math into one place
-- keep compatibility wrappers if any public import path changes
+- decide which solver layer is the canonical one ✅
+- move duplicated math into one place ✅
+- keep compatibility wrappers if any public import path changes ✅
 
 ### 4) Extend tests
 

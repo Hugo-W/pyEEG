@@ -52,28 +52,29 @@ Acceptance target:
 
 ## Step 3: Clarify solver boundaries
 
-**Status: PARTIALLY COMPLETED (Issue #7)**
+**Status: COMPLETED (Issue #8)**
 
 This is the most important architectural cleanup.
 
 Current rough reading:
 - `pyeeg/models.py` = high-level TRF / regression / estimator logic
 - `pyeeg/solvers.py` = reusable low-level linear solvers used by models
-- `solver.py` = standalone solver experiments / alternate implementations
+- `solver.py` (root-level) = DELETED - merged into pyeeg/solvers.py
 
 Questions to answer:
-- which solver module is canonical?
-- should `solver.py` stay standalone or be folded into the package layer?
-- can `_svd_regress` / related helper code be centralized?
+- which solver module is canonical? ✅ (pyeeg/solvers.py)
+- should `solver.py` stay standalone or be folded into the package layer? ✅ (deleted)
+- can `_svd_regress` / related helper code be centralized? ✅ (yes, in solvers.py, not duplicated)
 
 **Completed:**
-- Issue #7: Consolidated `_svd_regress` - removed from models.py, canonical version now in solvers.py ✅
-  - Both implementations were mathematically correct (just duplicated)
-  - Updated models.py to import from solvers
-  - Updated docs/source/models.rst
+- Issue #8: Merged root solver.py into pyeeg/solvers.py
+  - added: svd_solver, conjugate_gradient, incomplete_cholesky_preconditioner, diagonal_preconditioner
+  - deleted root-level solver.py (no duplicate code)
+  - added tests: test_solvers.py, performance_solvers.ipynb
+  - _svd_regress remains only in solvers.py (not duplicated) ✅
 
 Acceptance target:
-- one clear solver story
+- one clear solver story ✅
 - no duplicated math without a reason ✅
 - compatibility preserved via wrappers if needed ✅
 
