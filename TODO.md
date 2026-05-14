@@ -115,6 +115,26 @@ Goal:
 - check import compatibility
 - confirm docs and examples still reference the right names
 
+### 6) Banded ridge support (lag_matrix block_order + TRFEstimator)
+
+**Status: PLANNED**
+
+The `lag_matrix` function now supports `block_order` parameter:
+- `'lags'` (default): [feat0_lag0, feat1_lag0, ...] — used by current TRFEstimator
+- `'features'`: [feat0_lag0, feat0_lag1, ..., feat1_lag0, feat1_lag1, ...] — per-feature blocks
+
+Remaining work:
+- TRFEstimator needs a way to toggle `block_order` (constructor param or fit param)
+- With `block_order='features'`, per-feature regularization (banded ridge) is possible
+  by adding a block-diagonal alpha matrix to XtX instead of scalar alpha
+- The `_lstsq_regress` solver in solvers.py needs a banded ridge variant
+- The reshape in TRFEstimator.fit (coef_ assignment) depends on column ordering,
+  so it must handle both orderings
+
+Goal:
+- enable per-feature alpha (different regularization per feature)
+- keep backward compatibility with scalar alpha
+
 ## Quick notes for future agents
 
 - `pyeeg/__init__.py` still exposes the historical package name and should be treated as compatibility-sensitive

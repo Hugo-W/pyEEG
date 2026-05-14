@@ -121,6 +121,25 @@ Minimum checks:
 - run targeted tests
 - confirm docs still describe the intended project name and usage
 
+## Step 7: Banded ridge regularization
+
+**Status: PLANNED**
+
+`lag_matrix` now has a `block_order` parameter enabling per-feature column blocks:
+- `'lags'` (default): legacy ordering, used by current TRFEstimator
+- `'features'`: per-feature blocks, enables banded ridge
+
+Remaining work:
+- Add `block_order` parameter to TRFEstimator (constructor or fit)
+- Implement banded ridge solver: per-feature alpha as block-diagonal matrix in XtX
+- Update coef_ reshape in TRFEstimator.fit to handle both column orderings
+- Add tests for banded ridge path
+
+Acceptance target:
+- TRFEstimator accepts array-like alpha (one per feature) when `block_order='features'`
+- scalar alpha still works as before
+- reshape of coef_ is correct for both orderings
+
 ## Recommended rule of thumb
 
 Make the next change only after you can answer:
