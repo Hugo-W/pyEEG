@@ -14,15 +14,24 @@ This branch is for a focused cleanup of the project while preserving compatibili
 
 ### 1) Documentation cleanup
 
+**Status: COMPLETED (Issues #4, #5)**
+
 Priority areas:
-- `README.md`
-- `docs/source/`
+- `README.md` ✅
+- `docs/source/` ✅
 - example notebooks / tutorials
 
 Weak points seen in the quick scan:
 - several stale `pyEEG` references remain
 - docs still describe the old project name alongside `natMEEG`
 - some wording is dated or unmaintained-sounding
+
+**Completed:**
+- README.md: Updated documentation link, caution notice, PDF reference to natMEEG
+- docs/source/index.rst: Updated header and github_url
+- docs/source/conf.py: Updated man_pages entry
+- docs/source/about.rst: Updated GitHub URLs, improved grammar
+- docs/source/usage.rst: Clarified namespace situation
 
 Goal:
 - make the docs clearer, shorter, and consistent with the current project name

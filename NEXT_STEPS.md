@@ -4,17 +4,29 @@ This is the recommended order for future work.
 
 ## Step 1: Clean the docs
 
+**Status: COMPLETED (Issues #4, #5)**
+
 Start small and safe.
 
 What to check:
-- `README.md` wording and naming
-- `docs/source/` references to `pyEEG` vs `natMEEG`
+- `README.md` wording and naming ✅
+- `docs/source/` references to `pyEEG` vs `natMEEG` ✅
 - installation / usage examples
 
+**Completed:**
+- Issue #4: Cleaned README.md naming and references
+  - Updated documentation link from pyEEG-docs to natMEEG-docs
+  - Changed caution notice to reflect active maintenance
+  - Fixed PDF documentation filename reference
+- Issue #5: Audited docs/source/ for naming consistency
+  - Updated index.rst, conf.py, about.rst, usage.rst to use natMEEG consistently
+  - Kept historical pyEEG references where appropriate
+  - Preserved pyeeg package name in Sphinx directives and code blocks
+
 Acceptance target:
-- docs read cleanly
-- old naming is either removed or intentionally marked as legacy
-- no broken links in the obvious entry points
+- docs read cleanly ✅
+- old naming is either removed or intentionally marked as legacy ✅
+- no broken links in the obvious entry points ✅
 
 ## Step 2: Stabilize the public API
 
