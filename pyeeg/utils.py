@@ -185,7 +185,7 @@ def lag_matrix_(data, lag_samples=(-1, 0, 1), filling=np.nan, drop_missing=False
 
 
 @deprecated_warning("filling", "drop_missing", "lag_samples")
-def lag_matrix(x, lags=(0,1), mode='full', fill_value=0., **kwargs):
+def lag_matrix(x, lags=(0,1), mode='full', fill_value=0., block_order='lags', **kwargs):
     """Helper function to create a Toeplitz matrix of lagged time series.
 
     The lag can be arbitrarily spaced. Check other functions to create series of lags
@@ -206,6 +206,13 @@ def lag_matrix(x, lags=(0,1), mode='full', fill_value=0., **kwargs):
        'valid' or 'full' (default: 'valid').
        'valid' returns only the part of the lagged matrix that is valid (i.e. no NaN values).
        'full' returns the full lagged matrix, including missing values, which are filled with `fill_value`.
+    block_order : str
+        Column ordering for multi-feature inputs:
+        - 'lags' (default): group by lag first — [feat0_lag0, feat1_lag0, feat0_lag1, feat1_lag1, ...]
+          This is the legacy ordering used by TRFEstimator.
+        - 'features': group by feature first — [feat0_lag0, feat0_lag1, ..., feat1_lag0, feat1_lag1, ...]
+          Useful for banded ridge regularization (per-feature alpha).
+        Ignored for single-feature inputs.
     **kwargs : keyword arguments
         Additional arguments to be passed to the function for backward compatibility.
         For example, `filling` and `drop_missing` are deprecated and will be removed in future versions.
@@ -220,11 +227,22 @@ def lag_matrix(x, lags=(0,1), mode='full', fill_value=0., **kwargs):
     ValueError
         If ``mode`` is not 'valid' or 'full'.
 
-    Example
-    -------
+    Examples
+    --------
+    Default ordering (grouped by lag):
     >>> data = np.asarray([[1,2,3,4,5,6],[7,8,9,10,11,12]]).T
     >>> out = lag_matrix(data, (-1, 0, 2), mode='full')
     >>> out # doctest: +NORMALIZE_WHITESPACE
+    array([[ 2,  8,  1,  7,  0,  0],
+           [ 3,  9,  2,  8,  0,  0],
+           [ 4, 10,  3,  9,  1,  7],
+           [ 5, 11,  4, 10,  2,  8],
+           [ 6, 12,  5, 11,  3,  9],
+           [ 0,  0,  6, 12,  4, 10]])
+
+    Per-feature ordering (grouped by feature):
+    >>> out_feat = lag_matrix(data, (-1, 0, 2), mode='full', block_order='features')
+    >>> out_feat # doctest: +NORMALIZE_WHITESPACE
     array([[ 2,  1,  0,  8,  7,  0],
            [ 3,  2,  0,  9,  8,  0],
            [ 4,  3,  1, 10,  9,  7],
@@ -241,48 +259,48 @@ def lag_matrix(x, lags=(0,1), mode='full', fill_value=0., **kwargs):
             mode = 'full'
     if 'lag_samples' in kwargs:
         lags = kwargs['lag_samples']
-    
+
     x = np.atleast_2d(np.asarray(x, dtype=float))
     if x.shape[0] == 1:
         x = x.T
-    if x.shape[1] > 1:
-        # Multi-feature: iterate per lag (not per feature) to match old column ordering
-        # Old pandas approach: [feat0_lag0, feat1_lag0, feat0_lag1, feat1_lag1, ...]
-        n = x.shape[0]
-        lags_arr = -np.asarray(lags)
-        cols = []
-        for lag in lags_arr:
-            block = np.full((n, x.shape[1]), fill_value, dtype=float)
-            for j in range(x.shape[1]):
-                col = x[:, j]
-                if lag < 0:
-                    block[-lag:, j] = col[:n + lag]
-                else:
-                    block[:n - lag, j] = col[lag:]
-            cols.append(block)
-        X_full = np.hstack(cols)
-        if mode == 'full':
-            return X_full
-        elif mode == 'valid':
-            min_lag, max_lag = lags_arr.min(), lags_arr.max()
-            start = max(0, -min_lag)
-            end = n - max_lag
-            return X_full[start:end]
-        else:
-            raise ValueError("mode must be 'valid' or 'full'")
-    x = x.squeeze()
-    n = len(x)
+
+    nfeats = x.shape[1]
+    n = x.shape[0]
     lags_arr = -np.asarray(lags)  # Negated to match expected behavior from TRFEstimator
     min_lag, max_lag = lags_arr.min(), lags_arr.max()
-    
-    # Use float dtype to support NaN values
-    X_full = np.full((n, len(lags_arr)), fill_value, dtype=float)
-    
-    for i, lag in enumerate(lags_arr):
-        if lag < 0:
-            X_full[-lag:, i] = x[:n + lag]
+    n_lags = len(lags_arr)
+
+    if nfeats > 1:
+        # Build shifted columns for each (feature, lag) pair
+        shifted = {}  # (feat_idx, lag_idx) -> 1D array
+        for j in range(nfeats):
+            col = x[:, j]
+            for i, lag in enumerate(lags_arr):
+                buf = np.full(n, fill_value, dtype=float)
+                if lag < 0:
+                    buf[-lag:] = col[:n + lag]
+                else:
+                    buf[:n - lag] = col[lag:]
+                shifted[(j, i)] = buf
+
+        if block_order == 'features':
+            # [feat0_lag0, feat0_lag1, ..., feat1_lag0, feat1_lag1, ...]
+            cols = [shifted[(j, i)] for j in range(nfeats) for i in range(n_lags)]
+        elif block_order == 'lags':
+            # [feat0_lag0, feat1_lag0, feat0_lag1, feat1_lag1, ...]  (legacy)
+            cols = [shifted[(j, i)] for i in range(n_lags) for j in range(nfeats)]
         else:
-            X_full[:n - lag, i] = x[lag:]
+            raise ValueError("block_order must be 'lags' or 'features'")
+        X_full = np.column_stack(cols)
+    else:
+        x = x.squeeze()
+        X_full = np.full((n, n_lags), fill_value, dtype=float)
+        for i, lag in enumerate(lags_arr):
+            if lag < 0:
+                X_full[-lag:, i] = x[:n + lag]
+            else:
+                X_full[:n - lag, i] = x[lag:]
+
     if mode == 'full':
         return X_full
     elif mode == 'valid':
