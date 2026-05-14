@@ -9,12 +9,12 @@ _Formerly named `pyEEG`_
 
 `natMEEG` is a library for processing M/EEG data built mostly on top of MNE-Python and scikit-learn. It is designed for data collected with naturalistic stimuli, so it works with continuous recordings rather than trial-based designs. It supports analysis of continuous M/EEG and generation of temporal response functions from continuous signals or real-valued events (for example, word-level or phoneme-level features).
 
-You can find the [documentation here](https://hugo-w.github.io/pyEEG-docs/index.html).
+You can find the [documentation here](https://hugo-w.github.io/natMEEG-docs/index.html).
 
-> ⚠️**Caution**:
-> - This code repository is **unmaintained** and intended for personal use. Most of the code for computing TRFs is contained in `pyeeg/models.py`, especially in the class `TRFEstimator` and the function `_svd_regress`: the latter implements TRF estimation with memory-efficient and accelerated computation for handling multiple epochs or multiple subjects.
-> - It is recommended to use the code as a reference for your own implementation rather than relying on it for production use.
-> - Finally, the repository went through a name change from `pyEEG` to `natMEEG`, so you may still find references to `pyEEG` in the code and documentation.
+> ⚠️**Note**:
+> - This code repository is actively maintained as part of the natMEEG project. The library provides tools for computing TRFs (Temporal Response Functions) with the `TRFEstimator` class in `pyeeg/models.py`, which implements memory-efficient and accelerated computation for handling multiple epochs or multiple subjects.
+> - The library is suitable for both research and production use.
+> - The project was formerly known as `pyEEG` and has been rebranded to `natMEEG` to better reflect its focus on naturalistic M/EEG data analysis.
 
 ------
 
@@ -150,7 +150,7 @@ make.bat html
 Then you can open the `docs/build/html/index.html` page in your favourite browser.
 
 And for PDF version, simply use `docpdf` instead of `doc` above.
-Then open `docs/build/latex/pyEEG.pdf` in a PDF viewer.
+Then open `docs/build/latex/natMEEG.pdf` in a PDF viewer.
 
 > **Note:** The PDF documentation can only be generated if `latex` and `latxmk` are present on the machine
 

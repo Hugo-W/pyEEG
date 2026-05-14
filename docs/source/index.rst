@@ -1,9 +1,9 @@
-.. pyEEG documentation master file, created by
+.. natMEEG documentation master file, created by
    sphinx-quickstart on Mon Jan 28 17:25:13 2019.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-:github_url: https://github.com/Hugo-W/pyEEG
+:github_url: https://github.com/Hugo-W/natMEEG
 
 Welcome to natMEEG's documentation!
 ===================================

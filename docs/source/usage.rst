@@ -1,8 +1,8 @@
 Usage
 =====
 
-First of all, while the package is still undergoing development and changes, the top-level namespace is
-``pyeeg``. This will change in the future to ``natmeeg``.
+First of all, the top-level namespace for the package is currently
+``pyeeg``. This may change in the future to ``natmeeg`` to match the project name.
 So to import the package, you can do:
 
 .. code-block:: python
