@@ -30,18 +30,29 @@ Acceptance target:
 
 ## Step 2: Stabilize the public API
 
+**Status: COMPLETED (Issue #6)**
+
 Before refactoring internals, make sure the current entry points are covered.
 
 Focus on:
-- `pyeeg/__init__.py`
+- `pyeeg/__init__.py` ✅
 - core imports from `pyeeg.models`, `pyeeg.cca`, `pyeeg.utils`
 - compatibility with existing names and expected signatures
 
+**Completed:**
+- Updated package docstring from pyEEG to natMEEG
+- Added `__all__` list to define public API explicitly
+- Verified all existing imports still work (backward compatibility maintained)
+- Verified submodules (connectivity, io, models, preprocess, vizu, utils, simulate) are exposed
+- Verified key classes (TRFEstimator, CCA_Estimator, MultichanWienerFilter, Whitener, mCCA) are exposed
+
 Acceptance target:
-- old imports still work
-- no accidental API breakage
+- old imports still work ✅
+- no accidental API breakage ✅
 
 ## Step 3: Clarify solver boundaries
+
+**Status: PARTIALLY COMPLETED (Issue #7)**
 
 This is the most important architectural cleanup.
 
@@ -55,10 +66,16 @@ Questions to answer:
 - should `solver.py` stay standalone or be folded into the package layer?
 - can `_svd_regress` / related helper code be centralized?
 
+**Completed:**
+- Issue #7: Consolidated `_svd_regress` - removed from models.py, canonical version now in solvers.py ✅
+  - Both implementations were mathematically correct (just duplicated)
+  - Updated models.py to import from solvers
+  - Updated docs/source/models.rst
+
 Acceptance target:
 - one clear solver story
-- no duplicated math without a reason
-- compatibility preserved via wrappers if needed
+- no duplicated math without a reason ✅
+- compatibility preserved via wrappers if needed ✅
 
 ## Step 4: Modularize the large modules
 

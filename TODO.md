@@ -39,6 +39,8 @@ Goal:
 
 ### 2) Refactor redundant code
 
+**Status: PARTIALLY COMPLETED (Issues #6, #7)**
+
 Priority areas:
 - `pyeeg/models.py`
 - `pyeeg/utils.py`
@@ -51,6 +53,13 @@ Weak points seen in the scan:
 - `models.py` is large and mixes several model families
 - some helper logic appears duplicated across modeling and solver code
 - `connectivity.py` already carries a long TODO block
+
+**Completed:**
+- Issue #6: Stabilized and documented public API entry points ✅
+  - Updated package docstring from pyEEG to natMEEG
+  - Added __all__ to define public API
+  - All existing imports still work
+- Issue #7: Consolidated duplicate `_svd_regress` function from models.py to solvers.py ✅
 
 Goal:
 - extract repeated logic into shared helpers

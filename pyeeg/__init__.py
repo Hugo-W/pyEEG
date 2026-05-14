@@ -1,9 +1,31 @@
 """
-pyEEG package for analyszing EEG with speech and word-level features.
+natMEEG package for analyzing M/EEG data with naturalistic stimuli.
 
- import pyeeg.* and have fun decoding!
+This library provides tools for processing M/EEG (Magnetoencephalography and Electroencephalography)
+data, particularly for experiments using naturalistic stimuli such as continuous speech,
+music, or other complex, real-world inputs. It supports analysis of continuous M/EEG data
+and generation of temporal response functions (TRFs) from continuous signals or
+real-valued events (e.g., word-level or phoneme-level features).
 
- 2019, Hugo Weissbart
+The package is built on top of MNE-Python and scikit-learn.
+
+Main Classes:
+    TRFEstimator: Temporal Response Function estimation
+    CCA_Estimator: Canonical Correlation Analysis
+    MultichanWienerFilter: Multi-channel Wiener filtering
+    Whitener: Data whitening
+    mCCA: Multi-way CCA (also known as hyperalignment)
+
+Usage:
+    import pyeeg
+    from pyeeg import TRFEstimator
+
+    trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=fs, alpha=100.0)
+    trf.fit(X, y)  # X: stimulus, y: M/EEG signal
+
+See README.md for more details and examples.
+
+2019-2026, Hugo Weissbart <hugo.weissbart@donders.ru.nl>
 """
 # Python 2/3 compatibility (obsolete as of 2020, removing)
 # from __future__ import division, print_function, absolute_import
@@ -15,3 +37,23 @@ from .cca import CCA_Estimator
 from .preprocess import MultichanWienerFilter, Whitener
 from .mcca import mCCA
 from .version import __version__
+
+# Public API
+__all__ = [
+    # Classes
+    'TRFEstimator',
+    'CCA_Estimator',
+    'MultichanWienerFilter',
+    'Whitener',
+    'mCCA',
+    # Submodules
+    'connectivity',
+    'io',
+    'models',
+    'preprocess',
+    'vizu',
+    'utils',
+    'simulate',
+    # Version
+    '__version__',
+]
