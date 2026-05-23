@@ -735,3 +735,79 @@ def mem_check(units='Gb'):
         factor = 1.
         print("Did not get what unit you want, will memory return in bytes")
     return stats.available * factor
+
+
+def robust_loss(residuals, sigma=1.0):
+    """
+    Compute robust loss function d(e) = log(1 + (e/σ)²).
+    
+    This is a smooth, robust loss function that reduces the influence of outliers
+    compared to standard MSE.
+    
+    Parameters:
+    ----------
+    residuals : ndarray
+        Residuals (y_pred - y_true).
+    sigma : float, optional
+        Scale parameter. Default is 1.0.
+        
+    Returns:
+    -------
+    loss : ndarray
+        Loss values for each residual.
+    """
+    return np.log(1 + (residuals / sigma) ** 2)
+
+
+def robust_weights(residuals, sigma=1.0):
+    """
+    Compute weights for IRLS (Iteratively Reweighted Least Squares) based on residuals.
+    
+    Uses the robust loss function d(e) = log(1 + (e/σ)²) to compute
+    weights w = 1 / (1 + (e/σ)²).
+    
+    Parameters:
+    ----------
+    residuals : ndarray
+        Residuals (y_pred - y_true).
+    sigma : float, optional
+        Scale parameter. Default is 1.0.
+        
+    Returns:
+    -------
+    weights : ndarray
+        Weights for each sample (diagonal of W matrix).
+    """
+    return 1.0 / (1 + (residuals / sigma) ** 2)
+
+
+def apply_sample_weights(X, y, weights):
+    """
+    Apply sample weights to X and y for weighted least squares.
+    
+    For weighted least squares, we transform the problem:
+        min ||W(y - Xβ)||²
+    by multiplying both X and y by sqrt(W):
+        min ||W^(1/2)(y - Xβ)||² = ||W^(1/2)y - W^(1/2)Xβ||²
+    
+    Parameters:
+    ----------
+    X : ndarray (n_samples, n_features)
+        Design matrix.
+    y : ndarray (n_samples, n_channels)
+        Target matrix.
+    weights : ndarray (n_samples,)
+        Sample weights (positive).
+        
+    Returns:
+    -------
+    X_weighted : ndarray
+        Weighted design matrix (sqrt(W) @ X).
+    y_weighted : ndarray
+        Weighted target matrix (sqrt(W) @ y).
+    """
+    weights = np.asarray(weights)
+    sqrt_W = np.sqrt(weights)
+    X_weighted = X * sqrt_W[:, np.newaxis]
+    y_weighted = y * sqrt_W[:, np.newaxis]
+    return X_weighted, y_weighted

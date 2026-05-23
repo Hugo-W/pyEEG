@@ -190,10 +190,10 @@ class TRFEstimator(BaseEstimator):
         trf.n_feats_ = arr.shape[1]
         trf.fitted = True
         return trf
-
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
-                 alpha=0., fit_intercept=True, verbose=True):
-
+                 alpha=0., fit_intercept=True, verbose=True,
+                 quadratic_reg=None, solver='auto'):
+        
         # if tmin and tmax:
         #     LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
         #     self.lags = lag_span(tmin, tmax, srate=srate)[::-1] #pylint: disable=invalid-unary-operand-type
@@ -202,7 +202,7 @@ class TRFEstimator(BaseEstimator):
         # else:
         #     self.times = np.asarray(times)
         #     self.lags = lag_sparse(self.times, srate)[::-1]
-
+        
         self.tmin = tmin
         self.tmax = tmax
         self.times = times
@@ -227,8 +227,10 @@ class TRFEstimator(BaseEstimator):
         # The two following are only defined if simple least-square (no reg.) is used
         self.tvals_ = None
         self.pvals_ = None
-
-    def fill_lags(self):
+        # Quadratic regularization
+        self.quadratic_reg = quadratic_reg  # Can be None, a matrix, or a string ('smoothness', 'laplacian')
+        # Solver choice: 'auto', 'svd', 'cg' (conjugate gradient)
+        self.solver = solver
         """Fill the lags attributes.
 
         Note
@@ -246,9 +248,10 @@ class TRFEstimator(BaseEstimator):
             self.times = np.asarray(self.times)
             self.lags = lag_sparse(self.times, self.srate)[::-1]
         
-
-    def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=()):
-        """Fit the TRF model.
+    def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=(),
+             weights=None, robust=False, max_irls_iter=10, robust_sigma=1.0):
+        """
+        Fit the TRF model.
 
         Parameters
         ----------
@@ -267,6 +270,15 @@ class TRFEstimator(BaseEstimator):
         rotations : list of ndarrays (shape (nlag x nlags))
             List of rotation matrices (if ``V`` is one such rotation, ``V @ V.T`` is a projection).
             Can use empty item in place of identity matrix.
+        weights : ndarray (nsamples,), optional
+            Sample weights for weighted least squares. If provided, applies W to X and y.
+        robust : bool, optional
+            If True, use robust TRF with IRLS (Iteratively Reweighted Least Squares)
+            and log-based error function: d(e) = log(1 + (e/σ)²)
+        max_irls_iter : int, optional
+            Maximum number of IRLS iterations (default: 10).
+        robust_sigma : float, optional
+            Scale parameter for robust loss function (default: 1.0).
 
         Returns
         -------
@@ -279,8 +291,10 @@ class TRFEstimator(BaseEstimator):
             if self.verbose: LOGGER.info("Supplied a list of data portions... Will compute covariance matrices by 'accumulating' them.")
             assert len(y) == len(X), "Both lists (X and y) should have the same number of elements"
             assert all([len(yy)==len(xx) for xx,yy in zip(X,y)]), "Each data portion should have the same number of samples"
-            return self._fitlists(X, y, drop, feat_names, lagged, self.verbose)
-        
+            return self._fitlists(X, y, drop, feat_names, lagged, self.verbose,
+                               weights=weights, robust=robust, max_irls_iter=max_irls_iter,
+                               robust_sigma=robust_sigma)
+
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
         estimated_mem_usage = (sum([x.nbytes for x in X]) if np.ndim(X) == 3 else X.nbytes)* (len(self.lags) if not lagged else 1) + y_memory
@@ -310,37 +324,58 @@ class TRFEstimator(BaseEstimator):
         y = y[self.valid_samples_, :] if y.ndim == 2 else y[:, self.valid_samples_, :]
         if not lagged:
             X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.)
-        #else: # simply do the dropping assuming it hasn't been done when default values are supplied
-        #    X = X[self.valid_samples_, :]
-        '''
-        if not lagged:
-            if drop:
-                X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
-
-                # Droping rows of NaN values in y
-                if any(np.asarray(self.lags) < 0):
-                    drop_top = abs(min(self.lags))
-                    y = y[drop_top:, :] if y.ndim == 2 else y[:, drop_top:, :]
-                if any(np.asarray(self.lags) > 0):
-                    drop_bottom = abs(max(self.lags))
-                    y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
-            else:
-                X = lag_matrix(X, lag_samples=self.lags, filling=0.)
-        '''
+        
+        # Apply sample weights if provided (map X to WX)
+        if weights is not None:
+            from pyeeg.utils import apply_sample_weights
+            weights = np.asarray(weights)[self.valid_samples_]
+            X, y = apply_sample_weights(X, y, weights)
+            if self.verbose: LOGGER.info("Applied sample weights (weighted least squares)")
+        
         # Adding intercept feature:
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])
 
-        # Solving with svd or least square:
-        if self.verbose: LOGGER.info("Computing coefficients..")
-        if self.use_regularisation or np.ndim(y) == 3:
-            # svd method:
-            betas = _svd_regress(X, y, self.alpha, self.verbose)
-            self.all_betas = betas
-            # Storing only the first as the main
-            betas = betas[..., 0]
+        # Robust TRF with IRLS
+        if robust:
+            if self.verbose: LOGGER.info("Robust TRF with IRLS (log-based error)...")
+            # Initial fit with standard method
+            betas = self._solve_trf(X, y, use_cg=True)
+            
+            for iter_idx in range(max_irls_iter):
+                # Compute residuals
+                y_pred = X @ betas
+                residuals = y - y_pred
+                
+                # Compute new weights from robust loss
+                from pyeeg.utils import robust_weights
+                new_weights = robust_weights(residuals, sigma=robust_sigma)
+                # Average weights across channels
+                new_weights = np.mean(new_weights, axis=1) if new_weights.ndim > 1 else new_weights
+                
+                # Re-weight X and y
+                from pyeeg.utils import apply_sample_weights
+                X_weighted, y_weighted = apply_sample_weights(X, y, new_weights)
+                
+                # Re-solve with new weights
+                betas_new = self._solve_trf(X_weighted, y_weighted, use_cg=True)
+                
+                # Check convergence
+                delta = np.max(np.abs(betas_new - betas))
+                betas = betas_new
+                
+                if self.verbose:
+                    LOGGER.info("IRLS iteration %d, max delta: %.6f", iter_idx+1, delta)
+                
+                if delta < 1e-6:
+                    if self.verbose:
+                        LOGGER.info("IRLS converged after %d iterations", iter_idx+1)
+                    break
+            
+            self.all_betas = betas[:, np.newaxis, :] if betas.ndim == 1 else betas
         else:
-            betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+            # Standard (non-robust) fit
+            betas = self._solve_trf(X, y)
 
         # Reshaping and getting coefficients
         if self.fit_intercept:
@@ -359,7 +394,23 @@ class TRFEstimator(BaseEstimator):
         self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
         self.fitted = True
 
-        # Get t-statistic and p-vals if regularization is ommited
+        # Compute standardized coefficients (beta * std(X) / std(y))
+        # This gives the change in y (in SDs) for a 1 SD change in X
+        if not lagged and self.fitted:
+            try:
+                X_std = np.std(X[:, self.fit_intercept:], axis=0, keepdims=True)  # (1, n_lags*nfeats)
+                y_std = np.std(y, axis=0, keepdims=True)  # (1, n_chans)
+                # Reshape X_std to match coef_ shape: (n_lags, n_feats, n_chans)
+                X_std_reshaped = X_std.reshape(len(self.lags), self.n_feats_, 1)
+                self.standardized_coef_ = self.coef_ * X_std_reshaped / y_std[None, None, :]
+            except Exception as e:
+                if self.verbose:
+                    LOGGER.warning("Could not compute standardized coefficients: %s", e)
+                self.standardized_coef_ = None
+        else:
+            self.standardized_coef_ = None
+
+        # Get t-statistic and p-vals if regularization is omitted
         if not self.use_regularisation:
             if self.verbose: LOGGER.info("Computing statistics...")
             cov_betas = X.T @ X
@@ -381,39 +432,6 @@ class TRFEstimator(BaseEstimator):
             self.pvals_ = 2 * (1-stats.t.cdf(abs(self.tvals_), df=dof))
 
         return self
-    
-    def _fitlists(self, X, y, drop=True, feat_names=(), lagged=False, verbose=True):
-        """
-        Fit the TRF by accumulating the covariance matrices of each item in the 
-        list of arrays in ``X`` and ``Y``.
-        This is more memory efficient and can follow nicely an experiment design
-        where several audio clips of variable length are aligned with M/EEG.
-
-        Parameters
-        ----------
-        X : list of ndarray of shape (nsamples, nfeats) or (nsamples, nfeats*nlags)
-            List of predictor data
-        y : list of ndarray, shape (nsamples, nchans)
-            List of M/EEG data
-        drop : bool, optional
-            Whether to drop invalid samples on lagged matrices. The default is True.
-        feat_names : tuple (str), optional
-            Feature names. The default is ().
-        lagged : Bool, optional
-            Whether the predictor matrices have been lagged already. The default is False.
-        verbose : bool, optional
-            The default is True.
-
-        Returns
-        -------
-        TRFEstimator
-            Fitted instance of TRF model.
-
-        """
-        #if drop:
-            #raise NotImplementedError("Please use drop=False, this feature has not been implemented yet")
-
-        # For each element (subject or segment) in Y list, check which sample to drop
         valid_samples = []
         for yy in y:
             n_samples_all = yy.shape[0]
@@ -1004,6 +1022,183 @@ class TRFEstimator(BaseEstimator):
         trf.n_feats_ = trf.coef_.shape[1]
         trf.fitted = True
         return trf
-        
-        
 
+
+    def _solve_trf(self, X, y, use_cg=False):
+        """
+        Solve TRF using appropriate method (SVD or Conjugate Gradient).
+        
+        Parameters:
+        ----------
+        X : ndarray
+            Design matrix.
+        y : ndarray
+            Target matrix.
+        use_cg : bool, optional
+            If True, use Conjugate Gradient solver. Default is False (use SVD).
+            
+        Returns:
+        -------
+        betas : ndarray
+            Coefficients.
+        """
+        # Build quadratic regularization matrix M if specified
+        M = None
+        if self.quadratic_reg is not None:
+            if isinstance(self.quadratic_reg, str):
+                from pyeeg.solvers import create_quadratic_regularizer
+                n_lags = len(self.lags)
+                n_feats = self.n_feats_
+                L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags)
+                M = np.kron(np.eye(n_feats), L_single)
+            else:
+                M = self.quadratic_reg
+        
+        # Choose solver
+        if use_cg or self.solver == 'cg':
+            # Use Conjugate Gradient
+            from pyeeg.solvers import conjugate_gradient
+            # Solve (XᵀX + λI + M) β = Xᵀy
+            XtX = X.T @ X
+            Xty = X.T @ y
+            n = XtX.shape[0]
+            
+            if M is not None:
+                XtX = XtX + M
+            
+            # Solve for each channel
+            betas = np.zeros((n, y.shape[1]))
+            for ch in range(y.shape[1]):
+                betas[:, ch] = conjugate_gradient(XtX, Xty[:, ch], 
+                                                 lambda_=self.alpha if self.use_regularisation else 0.,
+                                                 verbose=self.verbose)
+        else:
+            # Use SVD method
+            if self.use_regularisation or np.ndim(y) == 3:
+                betas = _svd_regress(X, y, self.alpha, M=M, verbose=self.verbose)
+                # Storing only the first as the main
+                if betas.ndim == 3:
+                    betas = betas[..., 0]
+            else:
+                betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+        
+        return betas
+
+
+    def _fitlists(self, X, y, drop=True, feat_names=(), lagged=False, verbose=True,
+                  weights=None, robust=False, max_irls_iter=10, robust_sigma=1.0):
+        """
+        Fit the TRF by accumulating the covariance matrices of each item in the 
+        list of arrays in ``X`` and ``Y``.
+        This is more memory efficient and can follow nicely an experiment design
+        where several audio clips of variable length are aligned with M/EEG.
+
+        Parameters
+        ----------
+        X : list of ndarray of shape (nsamples, nfeats) or (nsamples, nfeats*nlags)
+            List of predictor data
+        y : list of ndarray, shape (nsamples, nchans)
+            List of M/EEG data
+        drop : bool, optional
+            Whether to drop invalid samples on lagged matrices. The default is True.
+        feat_names : tuple (str), optional
+            Feature names. The default is ().
+        lagged : Bool, optional
+            Whether the predictor matrices have been lagged already. The default is False.
+        verbose : bool, optional
+            The default is True.
+        weights : ndarray, optional
+            Sample weights for weighted least squares.
+        robust : bool, optional
+            If True, use robust TRF with IRLS.
+        max_irls_iter : int, optional
+            Maximum number of IRLS iterations.
+        robust_sigma : float, optional
+            Scale parameter for robust loss.
+
+        Returns
+        -------
+        TRFEstimator
+            Fitted instance of TRF model.
+        """
+        # For each element (subject or segment) in Y list, check which sample to drop
+        valid_samples = []
+        for yy in y:
+            n_samples_all = yy.shape[0]
+            if drop:
+                valid_samples.append(np.logical_not(np.logical_or(np.arange(n_samples_all) < abs(max(self.lags)),
+                                                                np.arange(n_samples_all)[::-1] < abs(min(self.lags))))
+            else:
+                valid_samples.append(np.ones((n_samples_all,), dtype=bool))
+
+        self.n_chans_ = y[0].shape[1]
+        self.n_feats_ = X[0].shape[1] if not lagged else X[0].shape[1]//len(self.lags)
+        if feat_names:
+            err_msg = "Length of feature names does not match number of columns from feature matrix"
+            if lagged:
+                assert len(feat_names) == X.shape[1] // len(self.lags), err_msg
+            else:
+                assert len(feat_names) == X.shape[1], err_msg
+            self.feat_names_ = feat_names
+            
+        # Build quadratic regularization matrix M if specified
+        M = None
+        if self.quadratic_reg is not None:
+            if isinstance(self.quadratic_reg, str):
+                from pyeeg.solvers import create_quadratic_regularizer
+                n_lags = len(self.lags)
+                n_feats = self.n_feats_
+                L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags)
+                M = np.kron(np.eye(n_feats), L_single)
+            else:
+                M = self.quadratic_reg
+        
+        if lagged:
+            X_list = [np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X
+            y_list = [yy[s] for s,yy in zip(valid_samples, y)]
+            if weights is not None:
+                from pyeeg.utils import apply_sample_weights
+                # Apply weights to each segment
+                X_list_new, y_list_new = [], []
+                for xx, yy, w in zip(X_list, y_list, weights):
+                    xw, yw = apply_sample_weights(xx, yy, w)
+                    X_list_new.append(xw)
+                    y_list_new.append(yw)
+                X_list, y_list = X_list_new, y_list_new
+            betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=verbose)
+        else:
+            filling = np.nan if drop else 0.
+            X_list = []
+            for s,x in zip(valid_samples, X):
+                xx = lag_matrix(x, self.lags, filling=filling, drop_missing=drop)
+                if self.fit_intercept:
+                    xx = np.hstack([np.ones((sum(s), 1)), xx])
+                X_list.append(xx)
+            y_list = [yy[s] for s,yy in zip(valid_samples, y)]
+            
+            if weights is not None:
+                from pyeeg.utils import apply_sample_weights
+                # Apply weights to each segment
+                X_list_new, y_list_new = [], []
+                for xx, yy, w in zip(X_list, y_list, weights):
+                    xw, yw = apply_sample_weights(xx, yy, w)
+                    X_list_new.append(xw)
+                    y_list_new.append(yw)
+                X_list, y_list = X_list_new, y_list_new
+            
+            betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=verbose)
+        
+        # Storing all alpha's betas
+        self.all_betas = betas
+        # Storing only the first as the main
+        betas = betas[..., 0] if betas.ndim == 3 else betas
+        
+        if self.fit_intercept:
+            self.intercept_ = betas[0, :]
+            betas = betas[1:, :]
+        
+        self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
+        self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
+        
+        self.fitted = True
+        return self
