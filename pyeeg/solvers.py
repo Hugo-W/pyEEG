@@ -4,17 +4,82 @@ from scipy.sparse import csc_matrix
 from functools import reduce
 from tqdm import tqdm
 import logging
-from typing import Union, List
+from typing import Union, List, Optional
 
 LOGGER = logging.getLogger(__name__)
 
 
-def svd_solver(A, b, lambda_=0., truncated_svd=False, verbose=False):
+def create_laplacian_matrix(n_lags: int, alpha: float = 1.0) -> np.ndarray:
+    """
+    Create a Laplacian matrix for smoothness constraints in quadratic regularization.
+    
+    The Laplacian matrix approximates the second derivative, promoting smoothness
+    in the TRF coefficients across time lags.
+    
+    Parameters:
+    ----------
+    n_lags : int
+        Number of time lags (dimension of the TRF).
+    alpha : float, optional
+        Scaling factor for the Laplacian. Default is 1.0.
+        
+    Returns:
+    -------
+    L : ndarray (n_lags, n_lags)
+        Laplacian matrix for smoothness regularization.
+        
+    Notes:
+    -----
+    The Laplacian matrix L has the form:
+        L[i, i-1] = -1
+        L[i, i] = 2
+        L[i, i+1] = -1
+    for interior points, with appropriate boundary conditions.
+    """
+    L = np.zeros((n_lags, n_lags))
+    for i in range(n_lags):
+        L[i, i] = 2.0
+        if i > 0:
+            L[i, i-1] = -1.0
+            L[i-1, i] = -1.0
+    return alpha * L
+
+
+def create_quadratic_regularizer(reg_type: str, n_lags: int, alpha: float = 1.0) -> np.ndarray:
+    """
+    Factory function to create quadratic regularization matrices.
+    
+    Parameters:
+    ----------
+    reg_type : str
+        Type of regularization: 'smoothness' or 'laplacian'.
+    n_lags : int
+        Number of time lags.
+    alpha : float, optional
+        Regularization strength. Default is 1.0.
+        
+    Returns:
+    -------
+    M : ndarray
+        Quadratic regularization matrix.
+        
+    Raises:
+    ------
+    ValueError
+        If reg_type is not recognized.
+    """
+    if reg_type in ('smoothness', 'laplacian'):
+        return create_laplacian_matrix(n_lags, alpha)
+    else:
+        raise ValueError(f"Unknown regularization type: {reg_type}. Use 'smoothness' or 'laplacian'.")
+
+
+def svd_solver(A, b, lambda_=0., M=None, truncated_svd=False, verbose=False):
     """
     Solve the linear system Ax = b using the SVD method.
     
-    This method assunes that we are solving the normal equation:
-    (X^T X + lambda I) x = X^T y
+    This method assumes that we are solving the normal equation:
+    (X^T X + lambda I + M) x = X^T y
     Thus, A = X^T X and b = X^T y.
 
     Parameters:
@@ -23,7 +88,10 @@ def svd_solver(A, b, lambda_=0., truncated_svd=False, verbose=False):
     b : ndarray
         Right-hand side vector. Typically of shape (n_features * n_lags, n_outputs) in the context of TRF.
     lambda_ : float, optional
-        Regularization parameter.
+        Regularization parameter (Tikhonov/L2 regularization).
+    M : ndarray, optional
+        Quadratic regularization matrix. If provided, solves (A + M) x = b instead of (A + lambda I) x = b.
+        Useful for smoothness constraints (e.g., Laplacian matrix).
     truncated_svd : bool, optional
         Whether to use the truncated SVD method. If True, lambda_ must be between 0 and 1; 
         it represents the fraction of the total variance to keep.
@@ -34,6 +102,15 @@ def svd_solver(A, b, lambda_=0., truncated_svd=False, verbose=False):
     """
     # Check symmetricity of A
     assert np.allclose(A, A.T), 'Matrix A must be symmetric'
+    
+    if M is not None:
+        # Quadratic regularization: solve (A + M) x = b
+        # Use eigendecomposition for (A + M)
+        C = A + M
+        eigvals, eigvecs = np.linalg.eigh(C)
+        s_inv = np.diag(1 / eigvals)
+        return eigvecs @ s_inv @ eigvecs.T @ b
+    
     U, s, Vt = np.linalg.svd(A, full_matrices=False, hermitian=True)
     if truncated_svd:
         assert 0 < lambda_ < 1
@@ -211,12 +288,13 @@ def _lstsq_regress(x: Union[np.ndarray, List[np.ndarray]],
     else:
         betas = np.linalg.lstsq(x, y)[0]
     return betas
-
 def _svd_regress(x: Union[np.ndarray, List[np.ndarray]],
                  y: Union[np.ndarray, List[np.ndarray]],
                  alpha: Union[float, np.ndarray],
+                 M: np.ndarray = None,
                  verbose: bool = False) -> np.ndarray:
-    """Linear regression using svd.
+    """
+    Linear regression using svd.
 
     Parameters
     ----------
@@ -229,7 +307,13 @@ def _svd_regress(x: Union[np.ndarray, List[np.ndarray]],
         list is treated as an individual subject, the resulting `betas` coefficients
         are thus computed on the averaged covariance matrices.
     alpha : float or array-like
-        If array, will compute betas for every regularisation parameters at once
+        If array, will compute betas for every regularisation parameters at once.
+        Used for Tikhonov/L2 regularization.
+    M : ndarray, optional
+        Quadratic regularization matrix. If provided, used in conjunction with alpha.
+        The solution becomes: betas = (XᵀX + M + alpha*I)⁻¹ Xᵀy
+    verbose : bool, optional
+        Whether to print progress information.
 
     Returns
     -------
@@ -266,6 +350,11 @@ def _svd_regress(x: Union[np.ndarray, List[np.ndarray]],
     if (len(x) == len(y)) and np.ndim(x[0])==2: # will accumulate covariances
         assert all([xtr.shape[0] == ytr.shape[0] for xtr, ytr in zip(x, y)]), "Inconsistent trial lengths!"
         XtX = reduce(lambda x, y: x + y, [xx.T @ xx for xx in x])
+        
+        # Add quadratic regularization matrix M if provided
+        if M is not None:
+            XtX = XtX + M
+        
         [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
         XtY = np.zeros((XtX.shape[0], y[0].shape[1]), dtype=y[0].dtype)
         count = 1
@@ -282,13 +371,22 @@ def _svd_regress(x: Union[np.ndarray, List[np.ndarray]],
         
         #betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
         
-        eigenvals_scaled = np.zeros((*V.shape, np.size(alpha)))
-        eigenvals_scaled[range(len(V)), range(len(V)), :] = 1 / \
+        eigvals_scaled = np.zeros((*V.shape, np.size(alpha)))
+        eigvals_scaled[range(len(V)), range(len(V)), :] = 1 / \
             (np.repeat(s[:, None], np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
-        Vsreg = np.dot(V.T, eigenvals_scaled) # np.diag(1/(s + alpha))
+        Vsreg = np.dot(V.T, eigvals_scaled) # np.diag(1/(s + alpha))
         betas = np.einsum('...jk, jl -> ...lk', Vsreg, U.T @ XtY) #Vsreg @ Ut
     else:
         [U, s, V] = np.linalg.svd(x, full_matrices=False)
+        if M is not None:
+            # For single matrix case, we need to handle M properly
+            # XᵀX + M regularization
+            if np.ndim(x) == 2:
+                XtX = x.T @ x
+                XtX = XtX + M
+                # Recompute SVD with regularization
+                [U, s, V] = np.linalg.svd(XtX, full_matrices=False)
+        
         if np.ndim(y) == 3:
             Uty = np.zeros((U.shape[1], y.shape[2]))
             for Y in y:
@@ -299,11 +397,11 @@ def _svd_regress(x: Union[np.ndarray, List[np.ndarray]],
 
         # Broadcast all alphas (regularization param) in a 3D matrix,
         # each slice being a diagonal matrix of s/(s**2+lambda)
-        eigenvals_scaled = np.zeros((*V.shape, np.size(alpha)))
-        eigenvals_scaled[range(len(V)), range(len(V)), :] = np.repeat(s[:, None], np.size(alpha), axis=1) / \
+        eigvals_scaled = np.zeros((*V.shape, np.size(alpha)))
+        eigvals_scaled[range(len(V)), range(len(V)), :] = np.repeat(s[:, None], np.size(alpha), axis=1) / \
             (np.repeat(s[:, None]**2, np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
         # A dot product instead of matmul allows to repeat multiplication alike across third dimension (alphas)
-        Vsreg = np.dot(V.T, eigenvals_scaled) # np.diag(s/(s**2 + alpha))
+        Vsreg = np.dot(V.T, eigvals_scaled) # np.diag(s/(s**2 + alpha))
         # Using einsum to control which access get multiplied, again leaving alpha's dimension "untouched"
         betas = np.einsum('...jk, jl -> ...lk', Vsreg, Uty) #Vsreg @ Uty
     
