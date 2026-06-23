@@ -27,21 +27,32 @@ See README.md for more details and examples.
 
 2019-2026, Hugo Weissbart <hugo.weissbart@donders.ru.nl>
 """
-# Python 2/3 compatibility (obsolete as of 2020, removing)
-# from __future__ import division, print_function, absolute_import
 
-# This enables access to all submodules from the top-level `pyeeg` module
-from . import connectivity, io, models, preprocess, vizu, utils, simulate
+# This enables access to all submodules from the top-level
+# pyeeg module
+from . import connectivity, io, models, preprocess, vizu, utils, simulate, features
 from .models import TRFEstimator
 from .cca import CCA_Estimator
 from .preprocess import MultichanWienerFilter, Whitener
 from .mcca import mCCA
+from .features import (
+    LLMFeatureExtractor,
+    SyntacticFeatureExtractor,
+    AlignmentHandler,
+    TextGridParser,
+    FeaturePipeline,
+    FeatureReducer,
+    StimulusEncoder
+)
 from .version import __version__
 
 # Public API
 __all__ = [
     # Classes
     'TRFEstimator',
+    'AlignmentHandler',
+    'FeaturePipeline',
+    'StimulusEncoder'
     'CCA_Estimator',
     'MultichanWienerFilter',
     'Whitener',
@@ -54,6 +65,7 @@ __all__ = [
     'vizu',
     'utils',
     'simulate',
+    'features',
     # Version
     '__version__',
 ]
