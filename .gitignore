@@ -9,6 +9,10 @@ __pycache__/
 .ideas/*
 .vscode
 
+# Dev
+uv.lock
+.venv/
+
 # doc build
 docs/build/
 docs/source/_build/
@@ -21,10 +25,11 @@ natmeeg.egg-info*/
 
 # Ignore pyEEG build binaries
 pyeeg/bin/*.pyd
-
-# Ignore CRUSH.md
-CRUSH.md
+pyeeg/bin/*so
 build/
+
+# Ignore Agents
+
 
 # Version file (managed by setuptools-scm)
 pyeeg/version.py
@@ -36,3 +41,4 @@ examples/.*/
 docs/source/examples/.ipynb_checkpoints/TRF_wordonsets-checkpoint.ipynb
 docs/source/examples/.ipynb_checkpoints/CCA_wordvectors-checkpoint.ipynb
 docs/source/examples/.ipynb_checkpoints/CCA_envelope-checkpoint.ipynb
+.worktrees/

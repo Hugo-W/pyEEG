@@ -25,103 +25,10 @@ from sklearn.base import BaseEstimator
 import matplotlib.pyplot as plt
 from .utils import lag_matrix, lag_span, lag_sparse, mem_check, design_lagmatrix
 from .vizu import get_spatial_colors, plot_interactive
+from .solvers import _svd_regress
 
 logging.basicConfig(level=logging.WARNING)
 LOGGER = logging.getLogger(__name__.split('.')[0])
-
-def _svd_regress(x, y, alpha=0., verbose=False):
-    """Linear regression using svd.
-
-    Parameters
-    ----------
-    x : ndarray (nsamples, nfeats) or list of such
-        If a list of such is given (with possibly different nsamples), covariance matrices
-        will be computed by accumulating them for each trials. The number of samples must then be the same
-        in both x and y per each trial.
-    y : ndarray (nsamples, nchans) or list of such
-        If a list of such arrays is given, each element of the
-        list is treated as an individual subject, the resulting `betas` coefficients
-        are thus computed on the averaged covariance matrices.
-    alpha : float or array-like
-        If array, will compute betas for every regularisation parameters at once
-
-    Returns
-    -------
-    betas : ndarray (nfeats, nchans, len(alpha))
-        Coefficients
-
-    Raises
-    ------
-    ValueError
-        If alpha < 0 (coefficient of L2 - regularization)
-    AssertionError
-        If trial length for each x and y differ.
-
-    Notes
-    -----
-    A warning is shown in the case where nfeats > nsamples, if so the user
-    should rather use partial regression.
-    """
-    # cast alpha in ndarray
-    if np.isscalar(alpha):
-        alpha = np.asarray([alpha], dtype=float)
-    else:
-        alpha = np.asarray(alpha)
-
-    if not isinstance(x, list) and np.ndim(x) == 2:
-        if x.shape[0] < x.shape[1]:
-            LOGGER.warning("Less samples than features! The linear problem is not stable in that form. Consider using partial regression instead.")
-
-    try:
-        assert np.all(alpha >= 0), "Alpha must be positive"
-    except AssertionError:
-        raise ValueError
-
-    if (len(x) == len(y)) and np.ndim(x[0])==2: # will accumulate covariances
-        assert all([xtr.shape[0] == ytr.shape[0] for xtr, ytr in zip(x, y)]), "Inconsistent trial lengths!"
-        XtX = reduce(lambda x, y: x + y, [xx.T @ xx for xx in x])
-        [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
-        XtY = np.zeros((XtX.shape[0], y[0].shape[1]), dtype=y[0].dtype)
-        count = 1
-        if verbose:
-            pbar = tqdm(total=len(x), leave=False, desc='Covariance accumulation')
-        for X, Y in zip(x, y):
-            if verbose:
-                LOGGER.info("Accumulating segment %d/%d", count, len(x))
-                pbar.update()
-            XtY += X.T @ Y
-            count += 1
-        if verbose: pbar.close()
-        # XtY /= len(x) # NO: IT SHOULD BE A SUM
-        
-        #betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
-        
-        eigenvals_scaled = np.zeros((*V.shape, np.size(alpha)))
-        eigenvals_scaled[range(len(V)), range(len(V)), :] = 1 / \
-            (np.repeat(s[:, None], np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
-        Vsreg = np.dot(V.T, eigenvals_scaled) # np.diag(1/(s + alpha))
-        betas = np.einsum('...jk, jl -> ...lk', Vsreg, U.T @ XtY) #Vsreg @ Ut
-    else:
-        [U, s, V] = np.linalg.svd(x, full_matrices=False)
-        if np.ndim(y) == 3:
-            Uty = np.zeros((U.shape[1], y.shape[2]))
-            for Y in y:
-                Uty += U.T @ Y
-            Uty /= len(y)
-        else:
-            Uty = U.T @ y
-
-        # Broadcast all alphas (regularization param) in a 3D matrix,
-        # each slice being a diagonal matrix of s/(s**2+lambda)
-        eigenvals_scaled = np.zeros((*V.shape, np.size(alpha)))
-        eigenvals_scaled[range(len(V)), range(len(V)), :] = np.repeat(s[:, None], np.size(alpha), axis=1) / \
-            (np.repeat(s[:, None]**2, np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
-        # A dot product instead of matmul allows to repeat multiplication alike across third dimension (alphas)
-        Vsreg = np.dot(V.T, eigenvals_scaled) # np.diag(s/(s**2 + alpha))
-        # Using einsum to control which access get multiplied, again leaving alpha's dimension "untouched"
-        betas = np.einsum('...jk, jl -> ...lk', Vsreg, Uty) #Vsreg @ Uty
-    
-    return betas
 
 def fit_ar(x, nlags=1, time_axis=0):
     """
@@ -285,8 +192,9 @@ class TRFEstimator(BaseEstimator):
         return trf
 
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
-                 alpha=0., fit_intercept=True, verbose=True):
-
+                 alpha=0., fit_intercept=True, verbose=True,
+                 quadratic_reg=None):
+        
         # if tmin and tmax:
         #     LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
         #     self.lags = lag_span(tmin, tmax, srate=srate)[::-1] #pylint: disable=invalid-unary-operand-type
@@ -295,7 +203,7 @@ class TRFEstimator(BaseEstimator):
         # else:
         #     self.times = np.asarray(times)
         #     self.lags = lag_sparse(self.times, srate)[::-1]
-
+        
         self.tmin = tmin
         self.tmax = tmax
         self.times = times
@@ -320,6 +228,8 @@ class TRFEstimator(BaseEstimator):
         # The two following are only defined if simple least-square (no reg.) is used
         self.tvals_ = None
         self.pvals_ = None
+        # Quadratic regularization
+        self.quadratic_reg = quadratic_reg  # Can be None, a matrix, or a string ('smoothness', 'laplacian')
 
     def fill_lags(self):
         """Fill the lags attributes.
@@ -426,9 +336,26 @@ class TRFEstimator(BaseEstimator):
 
         # Solving with svd or least square:
         if self.verbose: LOGGER.info("Computing coefficients..")
+        
+        # Build quadratic regularization matrix M if specified
+        M = None
+        if self.quadratic_reg is not None:
+            if isinstance(self.quadratic_reg, str):
+                # Create matrix from string spec (e.g., 'smoothness', 'laplacian')
+                from pyeeg.solvers import create_quadratic_regularizer
+                n_lags = len(self.lags)
+                n_feats = self.n_feats_
+                # Create block-diagonal matrix for per-feature smoothness
+                L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags)
+                # Repeat for each feature (block diagonal)
+                M = np.kron(np.eye(n_feats), L_single)
+            else:
+                # Assume it's already a matrix
+                M = self.quadratic_reg
+        
         if self.use_regularisation or np.ndim(y) == 3:
             # svd method:
-            betas = _svd_regress(X, y, self.alpha, self.verbose)
+            betas = _svd_regress(X, y, self.alpha, M=M, verbose=self.verbose)
             self.all_betas = betas
             # Storing only the first as the main
             betas = betas[..., 0]
@@ -451,6 +378,22 @@ class TRFEstimator(BaseEstimator):
         self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
         self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
         self.fitted = True
+
+        # Compute standardized coefficients (beta * std(X) / std(y))
+        # This gives the change in y (in SDs) for a 1 SD change in X
+        if not lagged and self.fitted:
+            try:
+                X_std = np.std(X[:, self.fit_intercept:], axis=0, keepdims=True)  # (1, n_lags*n_feats)
+                y_std = np.std(y, axis=0, keepdims=True)  # (1, n_chans)
+                # Reshape X_std to match coef_ shape: (n_lags, n_feats, n_chans)
+                X_std_reshaped = X_std.reshape(len(self.lags), self.n_feats_, 1)
+                self.standardized_coef_ = self.coef_ * X_std_reshaped / y_std[None, None, :]
+            except Exception as e:
+                if self.verbose:
+                    LOGGER.warning("Could not compute standardized coefficients: %s", e)
+                self.standardized_coef_ = None
+        else:
+            self.standardized_coef_ = None
 
         # Get t-statistic and p-vals if regularization is ommited
         if not self.use_regularisation:
@@ -526,12 +469,24 @@ class TRFEstimator(BaseEstimator):
                 assert len(feat_names) == X.shape[1], err_msg
             self.feat_names_ = feat_names
             
+        # Build quadratic regularization matrix M if specified
+        M = None
+        if self.quadratic_reg is not None:
+            if isinstance(self.quadratic_reg, str):
+                from pyeeg.solvers import create_quadratic_regularizer
+                n_lags = len(self.lags)
+                n_feats = self.n_feats_
+                L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags)
+                M = np.kron(np.eye(n_feats), L_single)
+            else:
+                M = self.quadratic_reg
+        
         if lagged:
-            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, self.verbose)
+            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, M=M, verbose=self.verbose)
         else:
             filling = np.nan if drop else 0.
             betas = _svd_regress([np.hstack([np.ones((sum(s), 1)), lag_matrix(x, self.lags, filling=filling, drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=filling, drop_missing=drop)
-                                  for s,x in zip(valid_samples, X)], [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, self.verbose)
+                                  for s,x in zip(valid_samples, X)], [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, M=M, verbose=self.verbose)
         # Storing all alpha's betas
         self.all_betas = betas
         # Storing only the first as the main

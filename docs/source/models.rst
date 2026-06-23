@@ -28,12 +28,19 @@ Classes
 
 Functions
 ---------
-.. currentmodule:: pyeeg.models
+.. currentmodule:: pyeeg.solvers
 
 .. autosummary:: 
     :toctree: generated/
     :template: function.rst
 
     _svd_regress
+
+.. currentmodule:: pyeeg.models
+
+.. autosummary:: 
+    :toctree: generated/
+    :template: function.rst
+
     fit_ar
     fit_var
