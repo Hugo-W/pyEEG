@@ -42,7 +42,7 @@ from .features import (
     TextGridParser,
     FeaturePipeline,
     FeatureReducer,
-    StimulusEncoder
+    # StimulusEncoder
 )
 from .version import __version__
 

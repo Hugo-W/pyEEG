@@ -28,6 +28,7 @@ try:
     from nltk.tokenize import sent_tokenize
     NLTK_AVAILABLE = True
 except ImportError:
+    Tree = None
     NLTK_AVAILABLE = False
 
 try:

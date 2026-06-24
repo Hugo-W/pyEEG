@@ -17,8 +17,13 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
 import logging
-import torch
-from torch.nn import functional as F
+try:
+    import torch
+    from torch.nn import functional as F
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    raise ImportError("torch is not installed. Instal torch to use this module (all optional deps installable via natmeeg[features])")
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,11 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 import logging
 
-from .llm_features import LLMFeatureExtractor, LLMFeatureConfig
+try:
+    from .llm_features import LLMFeatureExtractor, LLMFeatureConfig
+    LLMEXTRACTOR_AVAILABLE = True
+except ImportError:
+    LLMEXTRACTOR_AVAILABLE = False
 from .syntactic_features import SyntacticFeatureExtractor, ParserConfig
 from .alignment import AlignmentHandler, TextGrid
 
@@ -53,7 +57,8 @@ class FeaturePipeline:
                     model_name=spec.config.get('model_name', 'GroNLP/gpt2-small-dutch'),
                     device=spec.config.get('device', 'cpu')
                 )
-                self._extractors[spec.name] = LLMFeatureExtractor(llm_config)
+                if LLMEXTRACTOR_AVAILABLE:
+                    self._extractors[spec.name] = LLMFeatureExtractor(llm_config)
             elif spec.extractor_type == 'syntactic':
                 parser_config = ParserConfig(
                     parser_name=spec.config.get('parser_name', 'stanford'),
