@@ -36,12 +36,12 @@ def create_laplacian_matrix(n_lags: int, alpha: float = 1.0) -> np.ndarray:
         L[i, i+1] = -1
     for interior points, with appropriate boundary conditions.
     """
-    L = np.zeros((n_lags, n_lags))
-    for i in range(n_lags):
-        L[i, i] = 2.0
-        if i > 0:
-            L[i, i-1] = -1.0
-            L[i-1, i] = -1.0
+    L = np.diag(-np.ones(n_lags-1), k=1)
+    L += np.diag(-np.ones(n_lags-1), k=-1)
+    L += np.diag(2*np.ones(n_lags), k=0)
+    # Boundary
+    L[0,0] = 1
+    L[-1, -1] = 1
     return alpha * L
 
 
