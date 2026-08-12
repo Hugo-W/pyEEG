@@ -42,7 +42,6 @@ from .features import (
     TextGridParser,
     FeaturePipeline,
     FeatureReducer,
-    # StimulusEncoder
 )
 from .version import __version__
 
@@ -52,7 +51,6 @@ __all__ = [
     'TRFEstimator',
     'AlignmentHandler',
     'FeaturePipeline',
-    'StimulusEncoder'
     'CCA_Estimator',
     'MultichanWienerFilter',
     'Whitener',
