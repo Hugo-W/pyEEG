@@ -192,7 +192,7 @@ class TRFEstimator(BaseEstimator):
         return trf
 
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
-                 alpha=0., fit_intercept=True, verbose=True,
+                 alpha=None, fit_intercept=True, verbose=True,
                  quadratic_reg=None):
         
         # if tmin and tmax:
@@ -208,12 +208,25 @@ class TRFEstimator(BaseEstimator):
         self.tmax = tmax
         self.times = times
         self.srate = srate
+        # Quadratic regularization: str ('smoothness'/'laplacian') or ndarray.
+        # M REPLACES the L2 regularization; alpha becomes the M-strength knob.
+        self.quadratic_reg = quadratic_reg
+        # alpha is the regularization strength. When quadratic regularization (M)
+        # is active, alpha scales M and defaults to 1 if not provided; without M,
+        # alpha=None means unregularized (plain least squares).
+        if self.quadratic_reg is not None and alpha is None:
+            alpha = 1.0
+        elif alpha is None:
+            alpha = 0.0
         self.alpha = alpha
         self.verbose = verbose
-        if np.ndim(alpha) == 0:
-            self.use_regularisation = alpha > 0.
+        # Regularization is on when alpha > 0 OR when quadratic regularization (M)
+        # is requested (M counts as regularization even when alpha == 0, in which
+        # case M is scaled to zero and the fit reduces to plain least squares)
+        if np.ndim(self.alpha) == 0:
+            self.use_regularisation = self.alpha > 0. or self.quadratic_reg is not None
         else:
-            self.use_regularisation = np.any(np.asarray(alpha) > 0.)
+            self.use_regularisation = np.any(np.asarray(self.alpha) > 0.) or self.quadratic_reg is not None
         self.fit_intercept = fit_intercept
         self.fitted = False
         self.lags = None
@@ -228,8 +241,6 @@ class TRFEstimator(BaseEstimator):
         # The two following are only defined if simple least-square (no reg.) is used
         self.tvals_ = None
         self.pvals_ = None
-        # Quadratic regularization
-        self.quadratic_reg = quadratic_reg  # Can be None, a matrix, or a string ('smoothness', 'laplacian')
 
     def fill_lags(self):
         """Fill the lags attributes.
@@ -249,6 +260,39 @@ class TRFEstimator(BaseEstimator):
             self.times = np.asarray(self.times)
             self.lags = lag_sparse(self.times, self.srate)[::-1]
         
+
+    def _build_quadratic_regularizer(self):
+        """Build the quadratic regularization matrix M from ``self.quadratic_reg``.
+
+        M REPLACES the L2 (``alpha``) regularization: ``alpha`` acts as the
+        M-strength knob (``alpha=0`` scales M to zero, reducing the fit to plain
+        least squares). When ``alpha`` is not provided (``None``) it defaults to 1
+        in :meth:`__init__`.
+
+        ``quadratic_reg`` accepts:
+        - a string (``'smoothness'`` / ``'laplacian'``): M built and scaled by
+          ``alpha`` via :func:`pyeeg.solvers.create_quadratic_regularizer`;
+        - an ndarray: used as-is, scaled by ``alpha``.
+
+        Returns
+        -------
+        M : ndarray or None
+            Block-diagonal (per feature) quadratic regularization matrix, or
+            None when no quadratic regularization is requested.
+        """
+        if self.quadratic_reg is None:
+            return None
+        if isinstance(self.quadratic_reg, str):
+            from pyeeg.solvers import create_quadratic_regularizer
+            n_lags = len(self.lags)
+            n_feats = self.n_feats_
+            # alpha is the M-strength knob (scales the per-feature Laplacian)
+            L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags,
+                                                    alpha=self.alpha)
+            # Block-diagonal matrix for per-feature smoothness
+            return np.kron(np.eye(n_feats), L_single)
+        # Pre-built matrix: scale by alpha (alpha=0 -> M vanishes -> least squares)
+        return np.asarray(self.quadratic_reg) * self.alpha
 
     def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=()):
         """Fit the TRF model.
@@ -338,21 +382,11 @@ class TRFEstimator(BaseEstimator):
         if self.verbose: LOGGER.info("Computing coefficients..")
         
         # Build quadratic regularization matrix M if specified
-        M = None
-        if self.quadratic_reg is not None:
-            if isinstance(self.quadratic_reg, str):
-                # Create matrix from string spec (e.g., 'smoothness', 'laplacian')
-                from pyeeg.solvers import create_quadratic_regularizer
-                n_lags = len(self.lags)
-                n_feats = self.n_feats_
-                # Create block-diagonal matrix for per-feature smoothness
-                L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags)
-                # Repeat for each feature (block diagonal)
-                M = np.kron(np.eye(n_feats), L_single)
-            else:
-                # Assume it's already a matrix
-                M = self.quadratic_reg
+        # (M replaces L2 regularization; alpha has no effect when M is active)
+        M = self._build_quadratic_regularizer()
         
+        # M replaces L2, so the quadratic-regularized path is taken whenever
+        # use_regularisation is set (alpha > 0 or M requested)
         if self.use_regularisation or np.ndim(y) == 3:
             # svd method:
             betas = _svd_regress(X, y, self.alpha, M=M, verbose=self.verbose)
@@ -396,6 +430,7 @@ class TRFEstimator(BaseEstimator):
             self.standardized_coef_ = None
 
         # Get t-statistic and p-vals if regularization is ommited
+        # (M counts as regularization: t-values computed from X.T@X would ignore it)
         if not self.use_regularisation:
             if self.verbose: LOGGER.info("Computing statistics...")
             cov_betas = X.T @ X
@@ -470,16 +505,8 @@ class TRFEstimator(BaseEstimator):
             self.feat_names_ = feat_names
             
         # Build quadratic regularization matrix M if specified
-        M = None
-        if self.quadratic_reg is not None:
-            if isinstance(self.quadratic_reg, str):
-                from pyeeg.solvers import create_quadratic_regularizer
-                n_lags = len(self.lags)
-                n_feats = self.n_feats_
-                L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags)
-                M = np.kron(np.eye(n_feats), L_single)
-            else:
-                M = self.quadratic_reg
+        # (M replaces L2 regularization; alpha has no effect when M is active)
+        M = self._build_quadratic_regularizer()
         
         if lagged:
             betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, M=M, verbose=self.verbose)

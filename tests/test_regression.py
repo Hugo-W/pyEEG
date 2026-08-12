@@ -32,7 +32,7 @@ def _make_trf_data(srate=100, dur=30.0, n_events=200, seed=42,
     return t, x, y, tker, ker
 
 
-def _fit_trf_lagged(tker, ker, x, y, srate=100, alpha=1.0):
+def _fit_trf_lagged(tker, ker, x, y, srate=100, alpha=1.0, quadratic_reg=None):
     """Fit TRFEstimator using the pre-lagged code path (bypasses stats bug).
 
     Uses alpha > 0 by default to skip the stats computation which has a
@@ -43,7 +43,8 @@ def _fit_trf_lagged(tker, ker, x, y, srate=100, alpha=1.0):
     from pyeeg.models import TRFEstimator
     lags = np.round(tker * srate).astype(int)
     X = lag_matrix(x if x.ndim == 2 else x[:, None], lags, filling=0., drop_missing=False)
-    trf = TRFEstimator(times=tker, srate=srate, alpha=alpha, fit_intercept=False)
+    trf = TRFEstimator(times=tker, srate=srate, alpha=alpha, fit_intercept=False,
+                       quadratic_reg=quadratic_reg)
     trf.fit(X[:, ::-1], y if y.ndim == 2 else y[:, None], lagged=True, drop=False)
     return trf.coef_.squeeze()
 
@@ -87,6 +88,62 @@ class TestTRFEstimator:
 
         corr = np.corrcoef(coef, ker)[0, 1]
         assert corr > 0.90, f"Regularised kernel correlation {corr:.3f} < 0.90"
+
+    def test_trf_quadratic_regularization_smoothness(self):
+        """Single-matrix fit with quadratic_reg='smoothness' must run and recover
+        the kernel (issue #24: the M path crashed with a matmul dimension error).
+        alpha is left None so it defaults to the M-strength knob (scale 1)."""
+        srate = 100
+        t, x, y, tker, ker = _make_trf_data(srate=srate, seed=42)
+        coef = _fit_trf_lagged(tker, ker, x, y, srate=srate, alpha=None,
+                               quadratic_reg='smoothness')
+
+        corr = np.corrcoef(coef, ker)[0, 1]
+        assert corr > 0.95, f"Smoothness-regularised kernel correlation {corr:.3f} < 0.95"
+
+    def test_trf_quadratic_regularization_scaled(self):
+        """alpha scales M (the M-strength knob). The result must equal a direct
+        solve of (X.T@X + alpha*M) beta = X.T@y."""
+        from pyeeg.models import TRFEstimator
+        from pyeeg.solvers import create_quadratic_regularizer
+        srate = 100
+        t, x, y, tker, ker = _make_trf_data(srate=srate, seed=42)
+        Y = y[:, None]
+
+        trf = TRFEstimator(times=tker, srate=srate, fit_intercept=False,
+                           alpha=100.0, quadratic_reg='smoothness')
+        trf.fill_lags()
+        X = lag_matrix(x[:, None], trf.lags, filling=0., drop_missing=False)
+        trf.fit(X, Y, lagged=True, drop=False)
+        coef = trf.coef_.squeeze()
+
+        # reference: direct solve of (XtX + alpha*M) beta = XtY in the
+        # estimator's own lag ordering
+        M = np.kron(np.eye(1), create_quadratic_regularizer('smoothness',
+                                                            len(trf.lags),
+                                                            alpha=100.0))
+        ref = np.linalg.solve(X.T @ X + M, X.T @ Y).squeeze()
+        # coef_ is stored lag-flipped relative to the solve
+        assert np.allclose(coef, ref[::-1]), "alpha-scaled M does not match direct solve"
+
+    def test_trf_quadratic_regularization_zero_alpha_is_ols(self):
+        """alpha=0 with quadratic_reg set must reduce to plain least squares
+        (M scaled to zero, regularization path taken, no stats computed)."""
+        from pyeeg.models import TRFEstimator
+        srate = 100
+        t, x, y, tker, ker = _make_trf_data(srate=srate, seed=42)
+        Y = y[:, None]
+
+        trf = TRFEstimator(times=tker, srate=srate, fit_intercept=False,
+                           alpha=0.0, quadratic_reg='smoothness')
+        trf.fill_lags()
+        X = lag_matrix(x[:, None], trf.lags, filling=0., drop_missing=False)
+        trf.fit(X, Y, lagged=True, drop=False)
+        coef = trf.coef_.squeeze()
+
+        # reference: plain OLS via direct lstsq in the estimator's lag ordering
+        ref = np.linalg.lstsq(X, Y, rcond=None)[0].squeeze()
+        assert np.allclose(coef, ref[::-1]), "alpha=0 with M should equal plain OLS"
 
     def test_trf_recovers_bipolar_kernel(self):
         """Bipolar (derivative-of-gaussian) kernel should also be recoverable."""
