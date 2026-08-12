@@ -80,6 +80,9 @@ Acceptance target:
 
 ## Step 4: Modularize the large modules
 
+**Status: NOT STARTED** — `pyeeg/models.py` (~1058 lines), `pyeeg/io.py` (~958),
+`pyeeg/utils.py` (~738) remain large; no decomposition has happened yet. Related: #13.
+
 Target likely hotspots:
 - `pyeeg/models.py`
 - `pyeeg/utils.py`
@@ -99,10 +102,10 @@ Acceptance target:
 
 ## Step 5: Add or fix tests
 
-**Status: PARTIALLY COMPLETED (Issues #8, #10)**
+**Status: PARTIALLY COMPLETED (Issues #8, #9, #10)**
 
 Start with the weakest spots first:
-- `tests/test_utils.py` currently contains a placeholder (Issue #9 — next to tackle)
+- `tests/test_utils.py` placeholder filled (Issue #9 — ~85 tests covering lag_matrix values/shapes/block_order, shift helpers, deprecated kwargs)
 - `tests/test_connectivity.py` currently contains a placeholder
 - `tests/test_gammatone.py` should be checked for robust assertions
 
@@ -117,8 +120,11 @@ Then add coverage for:
 - Issue #10: test_regression.py (8 TRF + 5 CCA simulation-based regression tests)
 - Tests use pyeeg.simulate utilities (dummy_trf_kernel, simulate_pulse_inputs, etc.)
 
-**Known bug:** `models.py:380` t-value computation breaks with `fit_intercept=False`.
-Tests use `alpha > 0` to skip stats and avoid this.
+**Known bug:** `models.py:416` t-value computation breaks with `fit_intercept=False`
+(the unconditional `[1:, :]` slice assumes an intercept row). Note: the earlier claim
+that tests use `alpha > 0` to skip stats is wrong — `tests/test_solvers.py::test_basic_trf`
+uses `fit_intercept=False` with `alpha=None` and currently FAILS on this path
+(100/101 core tests pass). Tracked in issue #25.
 
 Acceptance target:
 - tests protect the refactor

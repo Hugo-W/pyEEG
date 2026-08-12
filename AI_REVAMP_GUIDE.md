@@ -6,6 +6,10 @@ The actionable checklists now live in:
 - `TODO.md`
 - `NEXT_STEPS.md`
 
+> **Status:** Historical snapshot written before issues #4–#10 were completed (2026-06).
+> Some observations below are outdated — treat `TODO.md` / `NEXT_STEPS.md` as the live
+> checklists.
+
 ## Branch goals
 
 - Write cleaner, clearer documentation
@@ -31,7 +35,7 @@ A quick scan suggests these are the best first targets:
 
 Start with the README and docs because they still carry old naming and dated wording.
 
-- `README.md` still says `pyEEG` in a few places
+- `README.md` — only intentional legacy references remain (lines 8, 17); naming otherwise updated to natMEEG
 - documentation and examples still refer to the old project name
 - the repo description now appears to be `natMEEG`, so docs should reflect that consistently
 
@@ -65,7 +69,7 @@ Watch the old `pyEEG` naming carefully:
 
 The tests need attention too:
 
-- `tests/test_utils.py` currently contains a placeholder test
+- `tests/test_utils.py` placeholder has been filled (Issue #9, ~85 tests)
 - `tests/test_connectivity.py` also has a placeholder test
 - `tests/test_gammatone.py` mixes direct execution style with tests and should be reviewed for robustness
 - several existing tests look like they were written for sanity checks rather than long-term regression coverage

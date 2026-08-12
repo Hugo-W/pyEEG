@@ -68,7 +68,7 @@ Goal:
 
 ### 3) Modularize the architecture
 
-**Status: COMPLETED (Issue #8)**
+**Status: PARTIALLY COMPLETED (Issue #8 — solver consolidation only; large-module modularization still pending, see NEXT_STEPS Step 4)**
 
 Current rough split:
 - `pyeeg/models.py` = high-level estimators and model fitting logic
@@ -95,9 +95,9 @@ Goal:
 **Status: PARTIALLY COMPLETED (Issue #10)**
 
 Priority areas:
-- `tests/test_utils.py` (placeholder — Issue #9 planned)
-- `tests/test_connectivity.py` (placeholder)
-- `tests/test_gammatone.py`
+- `tests/test_utils.py` ✅ (placeholder filled — Issue #9)
+- `tests/test_connectivity.py` (placeholder — still `pass`)
+- `tests/test_gammatone.py` (script-style, needs robust assertions)
 - CCA and TRF-related coverage ✅
 
 Weak points seen in the scan:
@@ -107,15 +107,17 @@ Weak points seen in the scan:
 
 **Completed:**
 - Issue #8: Added `tests/test_solvers.py` (solver consistency, TRF basic test) ✅
+- Issue #9: Filled `tests/test_utils.py` placeholder (~85 tests) ✅
 - Issue #10: Added `tests/test_regression.py` (13 simulation-based tests) ✅
   - 8 TRF tests: kernel recovery, shrinkage, multi-channel, score, tmin/tmax
   - 5 CCA tests: correlation recovery, orthonormality, nt vs svd agreement
 - Issue #8: Added `tests/performance_solvers.ipynb` (benchmarking notebook) ✅
 
-**Known pre-existing bug:**
-- `models.py:380` — t-value computation does `[1:, :]` to strip intercept row
-  even when `fit_intercept=False`, causing shape mismatch. Tests work around
-  this by using `alpha > 0` (which skips stats computation entirely).
+**Known pre-existing bug (issue #25):**
+- `models.py:416` — t-value computation does `[1:, :]` to strip intercept row
+  even when `fit_intercept=False`, causing shape mismatch. The previously noted
+  workaround (`alpha > 0` to skip stats) is not used by the failing test:
+  `tests/test_solvers.py::test_basic_trf` currently FAILS on this path.
 
 Goal:
 - turn placeholder checks into real regression tests
@@ -158,4 +160,4 @@ Goal:
 - `connectivity.py` contains explicit TODOs that may help choose the next refactor targets
 - Root `solver.py` has been deleted — all solvers live in `pyeeg/solvers.py`
 - `origin/banded_ridge` and `origin/new_install` branches have been deleted after cherry-picking useful parts
-- Stale branches cleaned: only `origin/ai-revamp` and `origin/master` remain
+- Branch inventory (as of 2026-08): local `ai-revamp` + `feature/stimulus-extraction`; remotes `origin/ai-revamp`, `origin/master`, `origin/feature/stimulus-extraction`, `origin/issue-17-weighted-samples`
