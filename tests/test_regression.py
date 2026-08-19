@@ -33,12 +33,10 @@ def _make_trf_data(srate=100, dur=30.0, n_events=200, seed=42,
 
 
 def _fit_trf_lagged(tker, ker, x, y, srate=100, alpha=1.0, quadratic_reg=None):
-    """Fit TRFEstimator using the pre-lagged code path (bypasses stats bug).
+    """Fit TRFEstimator using the pre-lagged code path.
 
-    Uses alpha > 0 by default to skip the stats computation which has a
-    pre-existing bug when fit_intercept=False (line 380 strips intercept row
-    unconditionally). When alpha > 0, use_regularisation=True and stats are
-    skipped entirely.
+    Uses alpha > 0 by default so regularization is on and the stats
+    computation (which is not needed for kernel recovery) is skipped.
     """
     from pyeeg.models import TRFEstimator
     lags = np.round(tker * srate).astype(int)
@@ -144,6 +142,57 @@ class TestTRFEstimator:
         # reference: plain OLS via direct lstsq in the estimator's lag ordering
         ref = np.linalg.lstsq(X, Y, rcond=None)[0].squeeze()
         assert np.allclose(coef, ref[::-1]), "alpha=0 with M should equal plain OLS"
+
+    def _fit_trf_stats(self, fit_intercept, n_chans=1, seed=42):
+        """Fit an unregularized TRF (alpha=None -> OLS) and return coef_/tvals_/pvals_."""
+        from pyeeg.models import TRFEstimator
+        srate = 100
+        t, x, y, tker, ker = _make_trf_data(srate=srate, seed=seed)
+        Y = y[:, None] if n_chans == 1 else np.concatenate([y[:, None]] * n_chans, axis=1)
+        trf = TRFEstimator(times=tker, srate=srate, fit_intercept=fit_intercept,
+                           alpha=None, verbose=False)
+        trf.fill_lags()
+        X = lag_matrix(x[:, None], trf.lags, filling=0., drop_missing=False)
+        trf.fit(X, Y, lagged=True, drop=False)
+        return trf, X, Y
+
+    def _coef_flat(self, trf):
+        """coef_ flattened over lags x features, keeping the channel axis."""
+        return trf.coef_.reshape(-1, trf.coef_.shape[-1])
+
+    def test_trf_stats_no_intercept(self):
+        """Unregularized fit with fit_intercept=False must compute t-/p-values
+        (issue #25: the unconditional [1:, :] strip crashed)."""
+        trf, X, Y = self._fit_trf_stats(fit_intercept=False)
+        # tvals_/pvals_ must match the flattened coef_ (n_coefs, n_chans)
+        assert trf.tvals_.shape == self._coef_flat(trf).shape, \
+            f"tvals_ {trf.tvals_.shape} != coef_ {self._coef_flat(trf).shape}"
+        assert trf.pvals_.shape == self._coef_flat(trf).shape
+        assert np.all(np.isfinite(trf.tvals_))
+        assert np.all((trf.pvals_ > 0) & (trf.pvals_ <= 1))
+
+        # closed-form cross-check: se = sqrt(diag(inv(XᵀX)) * SSE/dof).
+        # tvals_ are stored in solve order, i.e. the lag-flip of coef_
+        dof = len(Y) - X.shape[1]
+        sigma = np.sum((Y - trf.predict(X)) ** 2, axis=0) / dof
+        se_manual = np.sqrt(np.diag(np.linalg.inv(X.T @ X))[:, None] * sigma)
+        t_manual = self._coef_flat(trf)[::-1] / se_manual
+        assert np.allclose(trf.tvals_, t_manual)
+
+    def test_trf_stats_with_intercept(self):
+        """Unregularized fit with fit_intercept=True must compute t-/p-values
+        with the intercept row stripped correctly."""
+        trf, X, Y = self._fit_trf_stats(fit_intercept=True)
+        assert trf.tvals_.shape == self._coef_flat(trf).shape
+        assert trf.pvals_.shape == self._coef_flat(trf).shape
+        assert np.all(np.isfinite(trf.tvals_))
+        assert np.all((trf.pvals_ > 0) & (trf.pvals_ <= 1))
+
+    def test_trf_stats_multi_channel(self):
+        """Stats must work for multiple channels (se shape (n_coefs, n_chans))."""
+        trf, X, Y = self._fit_trf_stats(fit_intercept=False, n_chans=2)
+        assert trf.tvals_.shape == self._coef_flat(trf).shape
+        assert np.all(np.isfinite(trf.tvals_))
 
     def test_trf_recovers_bipolar_kernel(self):
         """Bipolar (derivative-of-gaussian) kernel should also be recoverable."""

@@ -433,22 +433,29 @@ class TRFEstimator(BaseEstimator):
         # (M counts as regularization: t-values computed from X.T@X would ignore it)
         if not self.use_regularisation:
             if self.verbose: LOGGER.info("Computing statistics...")
+            # Intercept column is present in X / cov_betas only when fit_intercept
+            n_intercept = int(self.fit_intercept)
             cov_betas = X.T @ X
             # Compute variance sigma (MSE)
             if np.ndim(y) == 3:
-                dof = sum(list(map(len, y))) - (len(betas)+1+1) # 1 for mean, 1 for intercept (betas does not contains it)
+                dof = sum(list(map(len, y))) - (len(betas) + n_intercept)
                 sigma = 0.
                 for yy in y:
                     sigma += np.sum((yy - self.predict(X))**2, axis=0)
                 sigma /= dof
             else:
-                dof = len(y)-(len(betas)+1+1)
+                dof = len(y) - (len(betas) + n_intercept)
                 sigma = np.sum((y - self.predict(X))**2, axis=0) / dof
             # Covariance matrix on betas
-            #C = sigma * np.linalg.inv(cov_betas)
-            C = np.einsum('ij,k', np.linalg.inv(cov_betas), sigma)
-            # Actual stats
-            self.tvals_ = betas / np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1)[1:, :])
+            try:
+                cov_betas_inv = np.linalg.inv(cov_betas)
+            except np.linalg.LinAlgError:
+                # Rank-deficient design matrix: fall back to the pseudo-inverse
+                cov_betas_inv = np.linalg.pinv(cov_betas)
+            C = np.einsum('ij,k', cov_betas_inv, sigma)
+            # Actual stats (strip the intercept entry of the diagonal iff present)
+            se = np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1)[n_intercept:, :])
+            self.tvals_ = betas / se
             self.pvals_ = 2 * (1-stats.t.cdf(abs(self.tvals_), df=dof))
 
         return self
