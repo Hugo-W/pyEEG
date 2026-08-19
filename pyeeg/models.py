@@ -193,8 +193,11 @@ class TRFEstimator(BaseEstimator):
 
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
                  alpha=None, fit_intercept=True, verbose=True,
-                 quadratic_reg=None):
+                 quadratic_reg=None, block_order='lags'):
         
+        if block_order not in ('lags', 'features'):
+            raise ValueError("block_order must be 'lags' or 'features'")
+        self.block_order = block_order
         # if tmin and tmax:
         #     LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
         #     self.lags = lag_span(tmin, tmax, srate=srate)[::-1] #pylint: disable=invalid-unary-operand-type
@@ -260,6 +263,39 @@ class TRFEstimator(BaseEstimator):
             self.times = np.asarray(self.times)
             self.lags = lag_sparse(self.times, self.srate)[::-1]
         
+    def _beta_to_coef(self, betas):
+        """Map a flattened (n_lags*n_feats, n_chans) solver beta block to the
+        public ``coef_`` shape (n_lags, n_feats, n_chans).
+
+        The solver beta columns follow ``lag_matrix(..., block_order=...)``:
+        - ``'lags'``: [feat0_lag0, feat1_lag0, feat0_lag1, feat1_lag1, ...]
+        - ``'features'``: [feat0_lag0, feat0_lag1, ..., feat1_lag0, ...]
+
+        ``coef_`` is always stored with shape ``(n_lags, n_feats, n_chans)``;
+        its first axis follows the estimator's public ``times`` ordering. The
+        lag axis is flipped relative to the solve order (``lag_matrix``
+        negates the lags internally), preserving the legacy convention.
+        """
+        betas = np.asarray(betas)
+        n_lags = len(self.lags)
+        n_feats = self.n_feats_
+        if self.block_order == 'lags':
+            coef = betas.reshape(n_lags, n_feats, -1)
+        else:  # 'features': each feature's lags are contiguous in the beta block
+            coef = betas.reshape(n_feats, n_lags, -1).swapaxes(0, 1)
+        return coef[::-1, :, :]  # flip lag axis to increasing lag order
+
+    def _coef_to_beta(self, coef):
+        """Inverse of :meth:`_beta_to_coef`: map a (n_lags, n_feats, n_chans)
+        ``coef_`` back to the flattened solver beta column order for the
+        estimator's ``block_order`` (used by prediction-related paths)."""
+        coef = np.asarray(coef)
+        n_lags = len(self.lags)
+        n_feats = self.n_feats_
+        coef_flipped = coef[::-1, :, :]  # back to solve lag order
+        if self.block_order == 'lags':
+            return coef_flipped.reshape(n_lags * n_feats, -1)
+        return coef_flipped.swapaxes(0, 1).reshape(n_lags * n_feats, -1)
 
     def _build_quadratic_regularizer(self):
         """Build the quadratic regularization matrix M from ``self.quadratic_reg``.
@@ -272,7 +308,12 @@ class TRFEstimator(BaseEstimator):
         ``quadratic_reg`` accepts:
         - a string (``'smoothness'`` / ``'laplacian'``): M built and scaled by
           ``alpha`` via :func:`pyeeg.solvers.create_quadratic_regularizer`;
-        - an ndarray: used as-is, scaled by ``alpha``.
+        - an ndarray: used as-is, scaled by ``alpha``. Custom matrices are
+          currently expected to already match the full solver design order and
+          shape. With ``fit_intercept=True``, provide a zero-padded leading
+          intercept row and column; feature/lag ordering must match
+          ``block_order``. Automatic predictor-space custom-matrix padding is
+          intentionally deferred.
 
         Returns
         -------
@@ -289,8 +330,23 @@ class TRFEstimator(BaseEstimator):
             # alpha is the M-strength knob (scales the per-feature Laplacian)
             L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags,
                                                     alpha=self.alpha)
-            # Block-diagonal matrix for per-feature smoothness
-            return np.kron(np.eye(n_feats), L_single)
+            if self.block_order == 'lags':
+                # Lag-major column ordering:
+                # [feat0_lag0, feat1_lag0, feat0_lag1, feat1_lag1, ...]
+                # Temporal smoothness couples equal-feature entries across
+                # lag blocks: L ⊗ I_features.
+                M = np.kron(L_single, np.eye(n_feats))
+            else:
+                # Feature-major column ordering:
+                # [feat0_lag0, feat0_lag1, ..., feat1_lag0, feat1_lag1, ...]
+                # Each feature occupies one contiguous L-sized block.
+                M = np.kron(np.eye(n_feats), L_single)
+            # When an intercept column is present the solver beta block has
+            # n_lags*n_feats + 1 entries; pad M so the intercept stays
+            # unregularized (all-zero row/column).
+            if self.fit_intercept:
+                M = np.pad(M, ((1, 0), (1, 0)))
+            return M
         # Pre-built matrix: scale by alpha (alpha=0 -> M vanishes -> least squares)
         return np.asarray(self.quadratic_reg) * self.alpha
 
@@ -363,7 +419,8 @@ class TRFEstimator(BaseEstimator):
         if self.verbose: LOGGER.info("Lagging matrix...")
         y = y[self.valid_samples_, :] if y.ndim == 2 else y[:, self.valid_samples_, :]
         if not lagged:
-            X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.)
+            X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.,
+                           block_order=self.block_order)
         #else: # simply do the dropping assuming it hasn't been done when default values are supplied
         #    X = X[self.valid_samples_, :]
         '''
@@ -422,6 +479,11 @@ class TRFEstimator(BaseEstimator):
             betas = betas[1:, :]
 
         if rotations:
+            if self.block_order != 'lags':
+                raise NotImplementedError(
+                    "rotations are only supported with block_order='lags' "
+                    "(the legacy lag-major layout); block_order='features' "
+                    "rotations are not implemented.")
             newbetas = np.zeros((len(self.lags) * self.n_feats_, self.n_chans_))
             for _, rot in zip(range(self.n_feats_), rotations):
                 if not rot:
@@ -429,8 +491,7 @@ class TRFEstimator(BaseEstimator):
                 newbetas[::self.n_feats_, :] = rot @ betas[...]
             betas = newbetas
 
-        self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
-        self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
+        self.coef_ = self._beta_to_coef(betas)
         self.fitted = True
 
         # Compute standardized coefficients (beta * std(X) / std(y))
@@ -439,10 +500,11 @@ class TRFEstimator(BaseEstimator):
         # sqrt(W) here, so their std no longer reflects the original data.
         if not lagged and self.fitted and weights is None:
             try:
-                X_std = np.std(X[:, self.fit_intercept:], axis=0, keepdims=True)  # (1, n_lags*n_feats)
+                X_std = np.std(X[:, self.fit_intercept:], axis=0, keepdims=False)  # (n_lags*n_feats,)
                 y_std = np.std(y, axis=0, keepdims=True)  # (1, n_chans)
-                # Reshape X_std to match coef_ shape: (n_lags, n_feats, n_chans)
-                X_std_reshaped = X_std.reshape(len(self.lags), self.n_feats_, 1)
+                # Map the per-column stds (which follow the estimator's
+                # block_order) to coef_ shape: (n_lags, n_feats, 1)
+                X_std_reshaped = self._beta_to_coef(X_std[:, None])
                 self.standardized_coef_ = self.coef_ * X_std_reshaped / y_std[None, None, :]
             except Exception as e:
                 if self.verbose:
@@ -572,15 +634,19 @@ class TRFEstimator(BaseEstimator):
             X_list = []
             y_list = []
             for i, (s, x, yy) in enumerate(zip(valid_samples, X, y)):
-                xx = lag_matrix(x, self.lags, filling=filling, drop_missing=drop)
+                xx = lag_matrix(x, self.lags, filling=filling, drop_missing=drop,
+                                block_order=self.block_order)
                 yc = yy[s]
+                if self.fit_intercept:
+                    xx = np.hstack([np.ones((len(xx), 1)), xx])
+                # The intercept column is added BEFORE sqrt-weighting so it is
+                # weighted like every other column (correct WLS semantics,
+                # consistent with the single-array path in :meth:`fit`).
                 if weights is not None:
                     wv = np.asarray(weights[i], dtype=float)[s]
                     if np.any(wv < 0):
                         raise ValueError("Sample weights must be non-negative.")
                     xx, yc = apply_sample_weights(xx, yc, wv)
-                if self.fit_intercept:
-                    xx = np.hstack([np.ones((len(xx), 1)), xx])
                 X_list.append(xx)
                 y_list.append(yc)
             betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=self.verbose)
@@ -593,9 +659,7 @@ class TRFEstimator(BaseEstimator):
             self.intercept_ = betas[0, :]
             betas = betas[1:, :]
 
-        self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
-        self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
-        
+        self.coef_ = self._beta_to_coef(betas)
         
         self.fitted = True
         return self
@@ -623,8 +687,7 @@ class TRFEstimator(BaseEstimator):
         if trf.fit_intercept:
             trf.intercept_ = betas[0, :]
             betas = betas[1:, :]
-        trf.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
-        trf.coef_ = trf.coef_[::-1, :, :]
+        trf.coef_ = trf._beta_to_coef(betas)
         return trf
     
     def plot_multialpha_scores(self, X, y):
@@ -666,7 +729,8 @@ class TRFEstimator(BaseEstimator):
         else:
             # Lag X if necessary, and add intercept
             if X.shape[1] != (len(self.lags) * self.n_feats_ + int(self.fit_intercept)):
-                X = lag_matrix(X, lag_samples=self.lags, drop_missing=False, filling=0.)
+                X = lag_matrix(X, lag_samples=self.lags, drop_missing=False, filling=0.,
+                               block_order=self.block_order)
                 if self.fit_intercept:
                     X = np.hstack([np.ones((len(X), 1)), X]) 
             
@@ -734,7 +798,8 @@ class TRFEstimator(BaseEstimator):
         # Creating lag-matrix droping NaN values if necessary
         y = y[self.valid_samples_, :] if y.ndim == 2 else y[:, self.valid_samples_, :]
         if not lagged:
-            X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.)
+            X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.,
+                           block_order=self.block_order)
         
         # Adding intercept feature:
         if self.fit_intercept:
@@ -779,8 +844,7 @@ class TRFEstimator(BaseEstimator):
             self.intercept_ = betas[0, :, peaks[0]]
             betas = betas[1:, :, peaks[0]]
 
-        self.coef_ = np.reshape(betas, (len(self.lags), self.n_feats_, self.n_chans_))
-        self.coef_ = self.coef_[::-1, :, :] # need to flip the first axis of array to get correct lag order
+        self.coef_ = self._beta_to_coef(betas)
         self.fitted = True
 
         if y.ndim == 3:
@@ -809,7 +873,7 @@ class TRFEstimator(BaseEstimator):
 
         """
         assert self.fitted, "Fit model first!"
-        betas = np.reshape(self.coef_[::-1, :, :], (len(self.lags) * self.n_feats_, self.n_chans_))
+        betas = self._coef_to_beta(self.coef_)
 
         if self.fit_intercept:
             betas = np.r_[self.intercept_[:, None].T, betas]
@@ -817,7 +881,8 @@ class TRFEstimator(BaseEstimator):
         # Check if input has been lagged already, if not, do it:
         if X.shape[1] != int(self.fit_intercept) + len(self.lags) * self.n_feats_:
             if self.verbose: LOGGER.info("Creating lagged feature matrix...")
-            X = lag_matrix(X, lag_samples=self.lags, filling=0.)
+            X = lag_matrix(X, lag_samples=self.lags, filling=0.,
+                           block_order=self.block_order)
             # Adding intercept feature:
             if self.fit_intercept:
                 X = np.hstack([np.ones((len(X), 1)), X])
@@ -989,7 +1054,8 @@ class TRFEstimator(BaseEstimator):
         return trf
     
     def _select_features(self, indices):
-        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
+        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha,
+                           block_order=self.block_order)
         trf.coef_ = self.coef_[:, indices]
         trf.feat_names_ = self.feat_names_[indices] if self.feat_names_ else None
         trf.n_feats_ = len(indices)
@@ -1065,7 +1131,8 @@ class TRFEstimator(BaseEstimator):
     def __add__(self, other_trf):
         "Make available the '+' operator. Will simply add coefficients. Be mindful of dividing by the number of elements later if you want the true mean."
         assert (other_trf.n_feats_ == self.n_feats_ and other_trf.n_chans_ == self.n_chans_), "Both TRF objects must have the same number of features and channels"
-        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
+        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha,
+                       block_order=self.block_order)
         trf.coef_ = np.sum([self.coef_, other_trf.coef_], 0)
         trf.intercept_ = np.sum([self.intercept_, other_trf.intercept_], 0)
         trf.feat_names_ = self.feat_names_
@@ -1087,7 +1154,8 @@ class TRFEstimator(BaseEstimator):
         return trf
 
     def copy(self):
-        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha)
+        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha,
+                           block_order=self.block_order)
         trf.coef_ = self.coef_
         trf.intercept_ = self.intercept_
         trf.feat_names_ = self.feat_names_
@@ -1142,7 +1210,7 @@ class TRFEstimator(BaseEstimator):
         """
         npzdata = np.load(filename, allow_pickle=True)
         trf = TRFEstimator(tmin=npzdata['tmin'], tmax=npzdata['tmax'], srate=npzdata['srate'],
-                           alpha=npzdata['alpha'])
+                           alpha=npzdata['alpha'], block_order='lags')
         trf.fill_lags()
         trf.intercept_ = npzdata['intercept_']
         trf.feat_names_ = npzdata['feat_names_']

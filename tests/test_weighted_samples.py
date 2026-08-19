@@ -146,10 +146,13 @@ class TestTRFWeightedFit:
         wa = rng.uniform(0.1, 2.0, 120)
         wb = rng.uniform(0.1, 2.0, 80)
 
-        # reference: stack weighted segments and solve once
+        # reference: stack weighted segments and solve once.
+        # The intercept column is added to X *before* sqrt-W row scaling, so it
+        # is weighted like every other column (correct WLS semantics, consistent
+        # with the single-array path and _wls_reference).
         swa, swb = np.sqrt(wa), np.sqrt(wb)
-        Xref = np.vstack([np.hstack([np.ones((120, 1)), Xa * swa[:, None]]),
-                          np.hstack([np.ones((80, 1)), Xb * swb[:, None]])])
+        Xref = np.vstack([np.hstack([np.ones((120, 1)), Xa]) * swa[:, None],
+                          np.hstack([np.ones((80, 1)), Xb]) * swb[:, None]])
         yref = np.concatenate([ya * swa, yb * swb])
         beta = np.linalg.lstsq(Xref, yref, rcond=None)[0]
         ref_intercept, ref_coef = beta[0], beta[1:]
