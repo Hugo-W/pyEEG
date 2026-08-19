@@ -192,7 +192,7 @@ class TRFEstimator(BaseEstimator):
         return trf
 
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
-                 alpha=0., fit_intercept=True, verbose=True,
+                 alpha=None, fit_intercept=True, verbose=True,
                  quadratic_reg=None):
         
         # if tmin and tmax:
@@ -208,12 +208,25 @@ class TRFEstimator(BaseEstimator):
         self.tmax = tmax
         self.times = times
         self.srate = srate
+        # Quadratic regularization: str ('smoothness'/'laplacian') or ndarray.
+        # M REPLACES the L2 regularization; alpha becomes the M-strength knob.
+        self.quadratic_reg = quadratic_reg
+        # alpha is the regularization strength. When quadratic regularization (M)
+        # is active, alpha scales M and defaults to 1 if not provided; without M,
+        # alpha=None means unregularized (plain least squares).
+        if self.quadratic_reg is not None and alpha is None:
+            alpha = 1.0
+        elif alpha is None:
+            alpha = 0.0
         self.alpha = alpha
         self.verbose = verbose
-        if np.ndim(alpha) == 0:
-            self.use_regularisation = alpha > 0.
+        # Regularization is on when alpha > 0 OR when quadratic regularization (M)
+        # is requested (M counts as regularization even when alpha == 0, in which
+        # case M is scaled to zero and the fit reduces to plain least squares)
+        if np.ndim(self.alpha) == 0:
+            self.use_regularisation = self.alpha > 0. or self.quadratic_reg is not None
         else:
-            self.use_regularisation = np.any(np.asarray(alpha) > 0.)
+            self.use_regularisation = np.any(np.asarray(self.alpha) > 0.) or self.quadratic_reg is not None
         self.fit_intercept = fit_intercept
         self.fitted = False
         self.lags = None
@@ -228,8 +241,6 @@ class TRFEstimator(BaseEstimator):
         # The two following are only defined if simple least-square (no reg.) is used
         self.tvals_ = None
         self.pvals_ = None
-        # Quadratic regularization
-        self.quadratic_reg = quadratic_reg  # Can be None, a matrix, or a string ('smoothness', 'laplacian')
 
     def fill_lags(self):
         """Fill the lags attributes.
@@ -250,7 +261,41 @@ class TRFEstimator(BaseEstimator):
             self.lags = lag_sparse(self.times, self.srate)[::-1]
         
 
-    def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=()):
+    def _build_quadratic_regularizer(self):
+        """Build the quadratic regularization matrix M from ``self.quadratic_reg``.
+
+        M REPLACES the L2 (``alpha``) regularization: ``alpha`` acts as the
+        M-strength knob (``alpha=0`` scales M to zero, reducing the fit to plain
+        least squares). When ``alpha`` is not provided (``None``) it defaults to 1
+        in :meth:`__init__`.
+
+        ``quadratic_reg`` accepts:
+        - a string (``'smoothness'`` / ``'laplacian'``): M built and scaled by
+          ``alpha`` via :func:`pyeeg.solvers.create_quadratic_regularizer`;
+        - an ndarray: used as-is, scaled by ``alpha``.
+
+        Returns
+        -------
+        M : ndarray or None
+            Block-diagonal (per feature) quadratic regularization matrix, or
+            None when no quadratic regularization is requested.
+        """
+        if self.quadratic_reg is None:
+            return None
+        if isinstance(self.quadratic_reg, str):
+            from pyeeg.solvers import create_quadratic_regularizer
+            n_lags = len(self.lags)
+            n_feats = self.n_feats_
+            # alpha is the M-strength knob (scales the per-feature Laplacian)
+            L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags,
+                                                    alpha=self.alpha)
+            # Block-diagonal matrix for per-feature smoothness
+            return np.kron(np.eye(n_feats), L_single)
+        # Pre-built matrix: scale by alpha (alpha=0 -> M vanishes -> least squares)
+        return np.asarray(self.quadratic_reg) * self.alpha
+
+    def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=(),
+            weights=None):
         """Fit the TRF model.
 
         Parameters
@@ -270,6 +315,11 @@ class TRFEstimator(BaseEstimator):
         rotations : list of ndarrays (shape (nlag x nlags))
             List of rotation matrices (if ``V`` is one such rotation, ``V @ V.T`` is a projection).
             Can use empty item in place of identity matrix.
+        weights : ndarray (nsamples,), optional
+            Sample weights for weighted least squares. If provided, each sample
+            is scaled by ``sqrt(weights)`` (after dropping invalid samples and
+            lagging, before the intercept is added). Must be non-negative and
+            of length ``n_samples`` (the full length, before dropping).
 
         Returns
         -------
@@ -282,7 +332,8 @@ class TRFEstimator(BaseEstimator):
             if self.verbose: LOGGER.info("Supplied a list of data portions... Will compute covariance matrices by 'accumulating' them.")
             assert len(y) == len(X), "Both lists (X and y) should have the same number of elements"
             assert all([len(yy)==len(xx) for xx,yy in zip(X,y)]), "Each data portion should have the same number of samples"
-            return self._fitlists(X, y, drop, feat_names, lagged, self.verbose)
+            return self._fitlists(X, y, drop, feat_names, lagged, self.verbose,
+                                  weights=weights)
         
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
@@ -334,25 +385,28 @@ class TRFEstimator(BaseEstimator):
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])
 
+        # Apply sample weights (weighted least squares) after the intercept is
+        # added: every column of X (including the intercept) is row-scaled by
+        # sqrt(weights), so the existing solvers solve the weighted problem
+        # unchanged. Weights are indexed against the full sample axis, so slice
+        # them with valid_samples_ to align with the post-drop X/y rows.
+        if weights is not None:
+            from pyeeg.utils import apply_sample_weights
+            w = np.asarray(weights, dtype=float)[self.valid_samples_]
+            if np.any(w < 0):
+                raise ValueError("Sample weights must be non-negative.")
+            X, y = apply_sample_weights(X, y, w)
+            if self.verbose: LOGGER.info("Applied sample weights (weighted least squares)")
+
         # Solving with svd or least square:
         if self.verbose: LOGGER.info("Computing coefficients..")
         
         # Build quadratic regularization matrix M if specified
-        M = None
-        if self.quadratic_reg is not None:
-            if isinstance(self.quadratic_reg, str):
-                # Create matrix from string spec (e.g., 'smoothness', 'laplacian')
-                from pyeeg.solvers import create_quadratic_regularizer
-                n_lags = len(self.lags)
-                n_feats = self.n_feats_
-                # Create block-diagonal matrix for per-feature smoothness
-                L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags)
-                # Repeat for each feature (block diagonal)
-                M = np.kron(np.eye(n_feats), L_single)
-            else:
-                # Assume it's already a matrix
-                M = self.quadratic_reg
+        # (M replaces L2 regularization; alpha has no effect when M is active)
+        M = self._build_quadratic_regularizer()
         
+        # M replaces L2, so the quadratic-regularized path is taken whenever
+        # use_regularisation is set (alpha > 0 or M requested)
         if self.use_regularisation or np.ndim(y) == 3:
             # svd method:
             betas = _svd_regress(X, y, self.alpha, M=M, verbose=self.verbose)
@@ -380,8 +434,10 @@ class TRFEstimator(BaseEstimator):
         self.fitted = True
 
         # Compute standardized coefficients (beta * std(X) / std(y))
-        # This gives the change in y (in SDs) for a 1 SD change in X
-        if not lagged and self.fitted:
+        # This gives the change in y (in SDs) for a 1 SD change in X.
+        # Skipped when sample weights are applied: X/y have been row-scaled by
+        # sqrt(W) here, so their std no longer reflects the original data.
+        if not lagged and self.fitted and weights is None:
             try:
                 X_std = np.std(X[:, self.fit_intercept:], axis=0, keepdims=True)  # (1, n_lags*n_feats)
                 y_std = np.std(y, axis=0, keepdims=True)  # (1, n_chans)
@@ -396,29 +452,43 @@ class TRFEstimator(BaseEstimator):
             self.standardized_coef_ = None
 
         # Get t-statistic and p-vals if regularization is ommited
+        # (M counts as regularization: t-values computed from X.T@X would ignore it)
         if not self.use_regularisation:
             if self.verbose: LOGGER.info("Computing statistics...")
+            # Intercept column is present in X / cov_betas only when fit_intercept
+            n_intercept = int(self.fit_intercept)
             cov_betas = X.T @ X
             # Compute variance sigma (MSE)
             if np.ndim(y) == 3:
-                dof = sum(list(map(len, y))) - (len(betas)+1+1) # 1 for mean, 1 for intercept (betas does not contains it)
+                dof = sum(list(map(len, y))) - (len(betas) + n_intercept)
                 sigma = 0.
                 for yy in y:
                     sigma += np.sum((yy - self.predict(X))**2, axis=0)
                 sigma /= dof
             else:
-                dof = len(y)-(len(betas)+1+1)
+                dof = len(y) - (len(betas) + n_intercept)
                 sigma = np.sum((y - self.predict(X))**2, axis=0) / dof
             # Covariance matrix on betas
-            #C = sigma * np.linalg.inv(cov_betas)
-            C = np.einsum('ij,k', np.linalg.inv(cov_betas), sigma)
-            # Actual stats
-            self.tvals_ = betas / np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1)[1:, :])
-            self.pvals_ = 2 * (1-stats.t.cdf(abs(self.tvals_), df=dof))
+            try:
+                cov_betas_inv = np.linalg.inv(cov_betas)
+            except np.linalg.LinAlgError:
+                # Rank-deficient design matrix: fall back to the pseudo-inverse
+                cov_betas_inv = np.linalg.pinv(cov_betas)
+            C = np.einsum('ij,k', cov_betas_inv, sigma)
+            # Actual stats (strip the intercept entry of the diagonal iff present)
+            se = np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1)[n_intercept:, :])
+            self.tvals_ = betas / se
+            # Use the survival function (sf = 1 - cdf) instead of "1 - cdf"
+            # to avoid catastrophic cancellation: for large |t| the cdf
+            # saturates to 1.0 in float64 and "1 - 1.0" underflows to 0.0,
+            # yielding spurious exact-zero p-values. sf is computed
+            # accurately in the far tail.
+            self.pvals_ = 2 * stats.t.sf(abs(self.tvals_), df=dof)
 
         return self
     
-    def _fitlists(self, X, y, drop=True, feat_names=(), lagged=False, verbose=True):
+    def _fitlists(self, X, y, drop=True, feat_names=(), lagged=False, verbose=True,
+                  weights=None):
         """
         Fit the TRF by accumulating the covariance matrices of each item in the 
         list of arrays in ``X`` and ``Y``.
@@ -439,6 +509,11 @@ class TRFEstimator(BaseEstimator):
             Whether the predictor matrices have been lagged already. The default is False.
         verbose : bool, optional
             The default is True.
+        weights : list of ndarray, optional
+            Sample weights for weighted least squares, one array per segment
+            (same length as each ``y`` segment). If provided, each segment's X/y
+            rows are scaled by ``sqrt(weights)`` after dropping invalid samples
+            and lagging, before the intercept is added.
 
         Returns
         -------
@@ -470,23 +545,45 @@ class TRFEstimator(BaseEstimator):
             self.feat_names_ = feat_names
             
         # Build quadratic regularization matrix M if specified
-        M = None
-        if self.quadratic_reg is not None:
-            if isinstance(self.quadratic_reg, str):
-                from pyeeg.solvers import create_quadratic_regularizer
-                n_lags = len(self.lags)
-                n_feats = self.n_feats_
-                L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags)
-                M = np.kron(np.eye(n_feats), L_single)
-            else:
-                M = self.quadratic_reg
-        
+        # (M replaces L2 regularization; alpha has no effect when M is active)
+        M = self._build_quadratic_regularizer()
+
+        if weights is not None:
+            from pyeeg.utils import apply_sample_weights
+            if len(weights) != len(X):
+                raise ValueError("weights must be a list with one array per segment.")
+
         if lagged:
-            betas = _svd_regress([np.hstack([np.ones((len(x), 1)), x])for x in X] if self.fit_intercept else X, [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, M=M, verbose=self.verbose)
+            X_list = [np.hstack([np.ones((len(x), 1)), x]) for x in X] if self.fit_intercept else list(X)
+            y_list = [yy[s] for s, yy in zip(valid_samples, y)]
+            if weights is not None:
+                X_list_new, y_list_new = [], []
+                for i, (xx, yy, w) in enumerate(zip(X_list, y_list, weights)):
+                    wv = np.asarray(w, dtype=float)[valid_samples[i]]
+                    if np.any(wv < 0):
+                        raise ValueError("Sample weights must be non-negative.")
+                    xw, yw = apply_sample_weights(xx, yy, wv)
+                    X_list_new.append(xw)
+                    y_list_new.append(yw)
+                X_list, y_list = X_list_new, y_list_new
+            betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=self.verbose)
         else:
             filling = np.nan if drop else 0.
-            betas = _svd_regress([np.hstack([np.ones((sum(s), 1)), lag_matrix(x, self.lags, filling=filling, drop_missing=drop)]) if self.fit_intercept else lag_matrix(x, self.lags, filling=filling, drop_missing=drop)
-                                  for s,x in zip(valid_samples, X)], [yy[s] for s,yy in zip(valid_samples, y)], self.alpha, M=M, verbose=self.verbose)
+            X_list = []
+            y_list = []
+            for i, (s, x, yy) in enumerate(zip(valid_samples, X, y)):
+                xx = lag_matrix(x, self.lags, filling=filling, drop_missing=drop)
+                yc = yy[s]
+                if weights is not None:
+                    wv = np.asarray(weights[i], dtype=float)[s]
+                    if np.any(wv < 0):
+                        raise ValueError("Sample weights must be non-negative.")
+                    xx, yc = apply_sample_weights(xx, yc, wv)
+                if self.fit_intercept:
+                    xx = np.hstack([np.ones((len(xx), 1)), xx])
+                X_list.append(xx)
+                y_list.append(yc)
+            betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=self.verbose)
         # Storing all alpha's betas
         self.all_betas = betas
         # Storing only the first as the main
@@ -935,6 +1032,8 @@ class TRFEstimator(BaseEstimator):
         return self._select_features(indices)
 
     def __repr__(self):
+        tmin = self.tmin if self.tmin is not None else float('nan')
+        tmax = self.tmax if self.tmax is not None else float('nan')
         if self.fitted:
             obj = """TRFEstimator(
                 alpha=%s,
@@ -947,7 +1046,7 @@ class TRFEstimator(BaseEstimator):
                 n_lags=%d,
                 features : %s
             )
-            """%(self.alpha, self.fit_intercept, self.srate, self.tmin, self.tmax,
+            """%(self.alpha, self.fit_intercept, self.srate, tmin, tmax,
                 self.n_feats_, self.n_chans_, len(self.lags), str(self.feat_names_))
             return obj
         else:
@@ -960,7 +1059,7 @@ class TRFEstimator(BaseEstimator):
                 
                 Not fitted yet.
             )
-            """%(self.alpha, self.fit_intercept, self.srate, self.tmin, self.tmax,)
+            """%(self.alpha, self.fit_intercept, self.srate, tmin, tmax,)
             return obj
 
     def __add__(self, other_trf):

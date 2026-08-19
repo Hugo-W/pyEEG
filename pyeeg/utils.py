@@ -735,3 +735,34 @@ def mem_check(units='Gb'):
         factor = 1.
         print("Did not get what unit you want, will memory return in bytes")
     return stats.available * factor
+
+
+def apply_sample_weights(X, y, weights):
+    """Apply sample weights to X and y for weighted least squares.
+
+    Weighted least squares minimises ``||W (y - X b)||^2`` where ``W`` is a
+    diagonal matrix of sample weights. Multiplying both sides by ``sqrt(W)``
+    turns it into an ordinary least squares problem on the transformed arrays:
+    ``min ||sqrt(W) y - sqrt(W) X b||^2``.
+
+    Parameters
+    ----------
+    X : ndarray (n_samples, n_features)
+        Design matrix.
+    y : ndarray (n_samples,) or (n_samples, n_channels)
+        Target values.
+    weights : ndarray (n_samples,)
+        Non-negative sample weights.
+
+    Returns
+    -------
+    X_weighted : ndarray
+        ``sqrt(W) * X`` (row-scaled design matrix).
+    y_weighted : ndarray
+        ``sqrt(W) * y`` (row-scaled target).
+    """
+    weights = np.asarray(weights)
+    sqrt_W = np.sqrt(weights)
+    X_weighted = X * sqrt_W[:, np.newaxis]
+    y_weighted = y * sqrt_W[:, np.newaxis] if y.ndim > 1 else y * sqrt_W
+    return X_weighted, y_weighted

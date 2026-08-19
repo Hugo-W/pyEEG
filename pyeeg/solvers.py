@@ -310,8 +310,10 @@ def _svd_regress(x: Union[np.ndarray, List[np.ndarray]],
         If array, will compute betas for every regularisation parameters at once.
         Used for Tikhonov/L2 regularization.
     M : ndarray, optional
-        Quadratic regularization matrix. If provided, used in conjunction with alpha.
-        The solution becomes: betas = (XᵀX + M + alpha*I)⁻¹ Xᵀy
+        Quadratic regularization matrix (e.g. smoothness / Laplacian). If provided,
+        it REPLACES the L2 (alpha) regularization: the solution becomes
+        betas = (XᵀX + M)⁻¹ Xᵀy. ``alpha`` no longer enters the solve (it only
+        controls the size of the last output axis for API compatibility).
     verbose : bool, optional
         Whether to print progress information.
 
@@ -372,23 +374,33 @@ def _svd_regress(x: Union[np.ndarray, List[np.ndarray]],
         #betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
         
         eigvals_scaled = np.zeros((*V.shape, np.size(alpha)))
-        eigvals_scaled[range(len(V)), range(len(V)), :] = 1 / \
-            (np.repeat(s[:, None], np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
+        if M is not None:
+            # M replaces the L2 (alpha) regularization: alpha does not enter the solve
+            eigvals_scaled[range(len(V)), range(len(V)), :] = np.repeat((1. / s)[:, None], np.size(alpha), axis=1)
+        else:
+            eigvals_scaled[range(len(V)), range(len(V)), :] = 1 / \
+                (np.repeat(s[:, None], np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
         Vsreg = np.dot(V.T, eigvals_scaled) # np.diag(1/(s + alpha))
         betas = np.einsum('...jk, jl -> ...lk', Vsreg, U.T @ XtY) #Vsreg @ Ut
     else:
         [U, s, V] = np.linalg.svd(x, full_matrices=False)
         if M is not None:
-            # For single matrix case, we need to handle M properly
-            # XᵀX + M regularization
+            # M replaces the L2 (alpha) regularization: solve (XᵀX + M) β = Xᵀy.
+            # For a single matrix we SVD the (n_feats × n_feats) normal matrix, so
+            # the projection must use Xᵀy (not y, which is (n_samples, ...)) --
+            # otherwise the dimensions mismatch unless n_samples == n_feats.
             if np.ndim(x) == 2:
-                XtX = x.T @ x
-                XtX = XtX + M
-                # Recompute SVD with regularization
+                XtX = x.T @ x + M
                 [U, s, V] = np.linalg.svd(XtX, full_matrices=False)
-        
-        if np.ndim(y) == 3:
-            Uty = np.zeros((U.shape[1], y.shape[2]))
+            if np.ndim(y) == 3:
+                XtY = np.zeros((x.shape[1], y.shape[2]), dtype=y.dtype)
+                for Y in y:
+                    XtY += x.T @ Y
+            else:
+                XtY = x.T @ y
+            Uty = U.T @ XtY
+        elif np.ndim(y) == 3:
+            Uty = np.zeros((U.shape[1], y.shape[2]), dtype=y.dtype)
             for Y in y:
                 Uty += U.T @ Y
             Uty /= len(y)
@@ -396,10 +408,14 @@ def _svd_regress(x: Union[np.ndarray, List[np.ndarray]],
             Uty = U.T @ y
 
         # Broadcast all alphas (regularization param) in a 3D matrix,
-        # each slice being a diagonal matrix of s/(s**2+lambda)
+        # each slice being a diagonal matrix of s/(s**2+lambda) (L2 path) or
+        # 1/s (M path, where alpha does not enter the solve)
         eigvals_scaled = np.zeros((*V.shape, np.size(alpha)))
-        eigvals_scaled[range(len(V)), range(len(V)), :] = np.repeat(s[:, None], np.size(alpha), axis=1) / \
-            (np.repeat(s[:, None]**2, np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
+        if M is not None:
+            eigvals_scaled[range(len(V)), range(len(V)), :] = np.repeat((1. / s)[:, None], np.size(alpha), axis=1)
+        else:
+            eigvals_scaled[range(len(V)), range(len(V)), :] = np.repeat(s[:, None], np.size(alpha), axis=1) / \
+                (np.repeat(s[:, None]**2, np.size(alpha), axis=1) + np.repeat(alpha[:, None].T, len(s), axis=0))
         # A dot product instead of matmul allows to repeat multiplication alike across third dimension (alphas)
         Vsreg = np.dot(V.T, eigvals_scaled) # np.diag(s/(s**2 + alpha))
         # Using einsum to control which access get multiplied, again leaving alpha's dimension "untouched"
