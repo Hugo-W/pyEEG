@@ -456,7 +456,12 @@ class TRFEstimator(BaseEstimator):
             # Actual stats (strip the intercept entry of the diagonal iff present)
             se = np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1)[n_intercept:, :])
             self.tvals_ = betas / se
-            self.pvals_ = 2 * (1-stats.t.cdf(abs(self.tvals_), df=dof))
+            # Use the survival function (sf = 1 - cdf) instead of "1 - cdf"
+            # to avoid catastrophic cancellation: for large |t| the cdf
+            # saturates to 1.0 in float64 and "1 - 1.0" underflows to 0.0,
+            # yielding spurious exact-zero p-values. sf is computed
+            # accurately in the far tail.
+            self.pvals_ = 2 * stats.t.sf(abs(self.tvals_), df=dof)
 
         return self
     
@@ -969,6 +974,8 @@ class TRFEstimator(BaseEstimator):
         return self._select_features(indices)
 
     def __repr__(self):
+        tmin = self.tmin if self.tmin is not None else float('nan')
+        tmax = self.tmax if self.tmax is not None else float('nan')
         if self.fitted:
             obj = """TRFEstimator(
                 alpha=%s,
@@ -981,7 +988,7 @@ class TRFEstimator(BaseEstimator):
                 n_lags=%d,
                 features : %s
             )
-            """%(self.alpha, self.fit_intercept, self.srate, self.tmin, self.tmax,
+            """%(self.alpha, self.fit_intercept, self.srate, tmin, tmax,
                 self.n_feats_, self.n_chans_, len(self.lags), str(self.feat_names_))
             return obj
         else:
@@ -994,7 +1001,7 @@ class TRFEstimator(BaseEstimator):
                 
                 Not fitted yet.
             )
-            """%(self.alpha, self.fit_intercept, self.srate, self.tmin, self.tmax,)
+            """%(self.alpha, self.fit_intercept, self.srate, tmin, tmax,)
             return obj
 
     def __add__(self, other_trf):

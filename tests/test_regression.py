@@ -143,11 +143,19 @@ class TestTRFEstimator:
         ref = np.linalg.lstsq(X, Y, rcond=None)[0].squeeze()
         assert np.allclose(coef, ref[::-1]), "alpha=0 with M should equal plain OLS"
 
-    def _fit_trf_stats(self, fit_intercept, n_chans=1, seed=42):
-        """Fit an unregularized TRF (alpha=None -> OLS) and return coef_/tvals_/pvals_."""
+    def _fit_trf_stats(self, fit_intercept, n_chans=1, seed=42, noise_frac=0.5):
+        """Fit an unregularized TRF (alpha=None -> OLS) and return coef_/tvals_/pvals_.
+
+        Adds Gaussian noise at ``noise_frac * std(y)`` so the regression has a
+        finite residual and the resulting t-/p-values are meaningful. Without
+        noise the data is a deterministic convolution, producing |t| so large
+        that even sf-based p-values underflow to 0.0.
+        """
         from pyeeg.models import TRFEstimator
         srate = 100
         t, x, y, tker, ker = _make_trf_data(srate=srate, seed=seed)
+        rng = np.random.default_rng(seed)
+        y = y + noise_frac * np.std(y) * rng.standard_normal(len(y))
         Y = y[:, None] if n_chans == 1 else np.concatenate([y[:, None]] * n_chans, axis=1)
         trf = TRFEstimator(times=tker, srate=srate, fit_intercept=fit_intercept,
                            alpha=None, verbose=False)
