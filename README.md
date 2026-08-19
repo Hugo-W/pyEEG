@@ -3,7 +3,8 @@
 [![PyPI version](https://badge.fury.io/py/natMEEG.svg)](https://badge.fury.io/py/natMEEG)
 [![DOI (v1.6.10)](https://zenodo.org/badge/DOI/10.5281/zenodo.17084930.svg)](https://doi.org/10.5281/zenodo.17084930)
 
-> v1.6.10 (2025-04-15)
+> Latest released version: v1.6.10 (2025-04-15). The current branch is under
+> development toward the next release.
 
 _Formerly named `pyEEG`_
 
@@ -117,7 +118,7 @@ See [examples/TRF_wordonsets.ipynb](docs/source/examples/TRF_wordonsets.ipynb)
 
 ### Working with Word vectors
 
-See [examples/import_WordVectors.ipynb](docs/source/examples/importWordVectors.ipynb)
+See [examples/import_WordVectors.ipynb](docs/source/examples/import_WordVectors.ipynb)
 
 ## Documentation
 
