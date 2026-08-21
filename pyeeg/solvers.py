@@ -422,3 +422,235 @@ def _svd_regress(x: Union[np.ndarray, List[np.ndarray]],
         betas = np.einsum('...jk, jl -> ...lk', Vsreg, Uty) #Vsreg @ Uty
     
     return betas
+
+
+def _as_regression_segments(x, y):
+    """Normalize array or segmented regression inputs for robust solvers."""
+    if isinstance(x, list):
+        x_segments = [np.asarray(xx, dtype=float) for xx in x]
+        if isinstance(y, list):
+            y_segments = [np.asarray(yy, dtype=float) for yy in y]
+        else:
+            y_array = np.asarray(y, dtype=float)
+            if y_array.ndim != 3 or len(x_segments) != y_array.shape[0]:
+                raise ValueError("Segmented X and y inputs must have matching lists.")
+            y_segments = [yy for yy in y_array]
+    else:
+        x_array = np.asarray(x, dtype=float)
+        y_array = np.asarray(y, dtype=float)
+        if y_array.ndim == 3:
+            x_segments = [x_array] * y_array.shape[0]
+            y_segments = [yy for yy in y_array]
+        else:
+            x_segments = [x_array]
+            y_segments = [y_array]
+
+    if not x_segments or len(x_segments) != len(y_segments):
+        raise ValueError("X and y must contain at least one matching segment.")
+
+    normalized_y = []
+    for xx, yy in zip(x_segments, y_segments):
+        if xx.ndim != 2 or yy.ndim not in (1, 2):
+            raise ValueError("Each X must be 2-D and each y must be 1-D or 2-D.")
+        yy = yy[:, None] if yy.ndim == 1 else yy
+        if len(xx) != len(yy):
+            raise ValueError("Each X and y segment must have the same number of rows.")
+        normalized_y.append(yy)
+
+    n_chans = normalized_y[0].shape[1]
+    if any(yy.shape[1] != n_chans for yy in normalized_y):
+        raise ValueError("All y segments must have the same number of channels.")
+    n_features = x_segments[0].shape[1]
+    if any(xx.shape[1] != n_features for xx in x_segments):
+        raise ValueError("All X segments must have the same number of columns.")
+    return x_segments, normalized_y
+
+
+def _robust_scale(residuals):
+    """Estimate a positive Cauchy scale from residuals using MAD."""
+    residuals = np.asarray(residuals, dtype=float)
+    centered = residuals - np.median(residuals, axis=0, keepdims=True)
+    scale = 1.4826 * np.median(np.abs(centered), axis=0)
+    fallback = np.std(residuals, axis=0)
+    scale = np.where(scale > np.finfo(float).eps, scale, fallback)
+    return np.maximum(scale, np.finfo(float).eps)
+
+
+def _solve_weighted_normal_equations(x_segments, y_segments, weights, beta,
+                                     alpha=0., M=None, inner_solver='svd',
+                                     tol=1e-8, max_iter=None):
+    """Solve one weighted least-squares subproblem for all output channels."""
+    n_features = x_segments[0].shape[1]
+    n_chans = y_segments[0].shape[1]
+    betas = np.empty((n_features, n_chans), dtype=float)
+
+    for channel in range(n_chans):
+        xtx = np.zeros((n_features, n_features), dtype=float)
+        xty = np.zeros(n_features, dtype=float)
+        for xx, yy, ww in zip(x_segments, y_segments, weights):
+            ww_channel = ww[:, channel] if ww.ndim == 2 else ww
+            weighted_x = xx * ww_channel[:, None]
+            xtx += xx.T @ weighted_x
+            xty += xx.T @ (ww_channel * yy[:, channel])
+
+        if M is not None:
+            system = xtx + M
+            ridge = 0.
+        else:
+            system = xtx
+            ridge = alpha
+
+        if inner_solver == 'cg':
+            # CG operates on the assembled normal equations. The weighted
+            # design is still never materialized, which keeps this path useful
+            # for segmented inputs.
+            betas[:, channel] = conjugate_gradient(
+                system, xty, x0=beta[:, channel], tol=tol,
+                max_iter=max_iter, lambda_=ridge)
+        else:
+            if ridge:
+                system = system + ridge * np.eye(n_features)
+            betas[:, channel] = np.linalg.lstsq(system, xty, rcond=None)[0]
+    return betas
+
+
+def _robust_irls_regress(x, y, alpha=0., M=None, loss='cauchy',
+                          scale=None, max_iter=20, tol=1e-6, damping=1.0,
+                          inner_solver='svd', inner_tol=1e-8,
+                          inner_max_iter=None, verbose=False):
+    """Fit a robust linear model using Cauchy-loss IRLS.
+
+    The Cauchy loss is ``log(1 + (residual / scale)**2)``. Each IRLS step
+    solves a weighted least-squares problem with weights
+    ``1 / (1 + (residual / scale)**2)``. Array, list-of-arrays, and 3-D
+    multi-segment targets are accepted.
+
+    Returns
+    -------
+    betas : ndarray, shape (n_features, n_channels)
+    info : dict
+        Convergence metadata including ``n_iter``, ``converged`` and ``scale``.
+    """
+    if loss != 'cauchy':
+        raise ValueError("Only loss='cauchy' is supported by robust IRLS.")
+    if inner_solver not in ('svd', 'cg'):
+        raise ValueError("inner_solver must be 'svd' or 'cg'.")
+    if not np.isscalar(alpha):
+        raise ValueError("Robust fitting requires a scalar alpha.")
+    if max_iter < 1 or tol <= 0 or not 0 < damping <= 1:
+        raise ValueError("max_iter must be positive, tol > 0, and damping in (0, 1].")
+
+    x_segments, y_segments = _as_regression_segments(x, y)
+    n_features = x_segments[0].shape[1]
+    n_chans = y_segments[0].shape[1]
+
+    # Use the existing regression path for a stable initial estimate.
+    initial = _svd_regress(x_segments, y_segments, float(alpha), M=M,
+                           verbose=False)[..., 0]
+    betas = np.asarray(initial, dtype=float).reshape(n_features, n_chans)
+
+    residual_segments = [yy - xx @ betas for xx, yy in zip(x_segments, y_segments)]
+    scales = (_robust_scale(np.vstack(residual_segments)) if scale is None
+              else np.full(n_chans, float(scale)))
+    if np.any(~np.isfinite(scales)) or np.any(scales <= 0):
+        raise ValueError("scale must be positive and finite.")
+
+    reg_matrix = M if M is not None else float(alpha) * np.eye(n_features)
+
+    def objective(current):
+        value = 0.
+        for xx, yy in zip(x_segments, y_segments):
+            residual = yy - xx @ current
+            value += 0.5 * np.sum(scales[None, :] ** 2 *
+                                   np.log1p((residual / scales[None, :]) ** 2))
+        if reg_matrix is not None:
+            value += float(np.sum(current * (reg_matrix @ current))) / 2.
+        return value
+
+    previous_value = objective(betas)
+    converged = False
+    n_iter = 0
+    for n_iter in range(1, max_iter + 1):
+        residual_segments = [yy - xx @ betas
+                             for xx, yy in zip(x_segments, y_segments)]
+        weights = [1. / (1. + (residual / scales[None, :]) ** 2)
+                   for residual in residual_segments]
+        candidate = _solve_weighted_normal_equations(
+            x_segments, y_segments, weights, betas, alpha=float(alpha), M=M,
+            inner_solver=inner_solver, tol=inner_tol,
+            max_iter=inner_max_iter)
+
+        # Damping and a small backtracking safeguard help with the non-convex
+        # Cauchy objective, especially when the initial OLS fit is poor.
+        step = damping
+        updated = (1. - step) * betas + step * candidate
+        updated_value = objective(updated)
+        while updated_value > previous_value and step > 1e-3:
+            step *= 0.5
+            updated = (1. - step) * betas + step * candidate
+            updated_value = objective(updated)
+
+        delta = np.max(np.abs(updated - betas))
+        betas = updated
+        if verbose:
+            LOGGER.info("Robust IRLS iteration %d: delta=%g, objective=%g",
+                        n_iter, delta, updated_value)
+        if delta <= tol * max(1., np.max(np.abs(betas))):
+            converged = True
+            previous_value = updated_value
+            break
+        previous_value = updated_value
+
+    return betas, {
+        'n_iter': n_iter,
+        'converged': converged,
+        'scale': scales,
+        'objective': previous_value,
+    }
+
+
+def _robust_least_squares_regress(x, y, scale=None, max_nfev=200,
+                                  ftol=1e-8, xtol=1e-8, gtol=1e-8,
+                                  verbose=False):
+    """Fit Cauchy-loss regression with SciPy's nonlinear least-squares solver.
+
+    This reference path intentionally handles only unregularized regression.
+    It is useful for small dense problems and for validating the IRLS path.
+    """
+    from scipy.optimize import least_squares
+
+    x_segments, y_segments = _as_regression_segments(x, y)
+    x_all = np.vstack(x_segments)
+    y_all = np.vstack(y_segments)
+    n_chans = y_all.shape[1]
+    betas = np.empty((x_all.shape[1], n_chans), dtype=float)
+    scales = (_robust_scale(y_all - x_all @ np.linalg.lstsq(x_all, y_all,
+                                                             rcond=None)[0])
+              if scale is None else np.full(n_chans, float(scale)))
+    if np.any(~np.isfinite(scales)) or np.any(scales <= 0):
+        raise ValueError("scale must be positive and finite.")
+
+    results = []
+    for channel in range(n_chans):
+        target = y_all[:, channel]
+        beta0 = np.linalg.lstsq(x_all, target, rcond=None)[0]
+        result = least_squares(
+            lambda beta, target=target: x_all @ beta - target,
+            beta0,
+            loss='cauchy',
+            f_scale=scales[channel],
+            max_nfev=max_nfev,
+            ftol=ftol,
+            xtol=xtol,
+            gtol=gtol,
+            verbose=2 if verbose else 0,
+        )
+        betas[:, channel] = result.x
+        results.append(result)
+
+    return betas, {
+        'n_iter': max(result.nfev for result in results),
+        'converged': all(result.success for result in results),
+        'scale': scales,
+        'results': results,
+    }

@@ -81,6 +81,28 @@ A simple TRF example
     f.tight_layout()
     plt.show()
 
+Robust TRF fitting
+------------------
+
+For data containing occasional large response artefacts, select the Cauchy
+loss with ``loss='cauchy'``. The default ``robust_solver='irls'`` repeatedly
+solves weighted TRF problems using the existing SVD path. For small dense,
+unregularised problems, ``robust_solver='least_squares'`` uses SciPy's
+nonlinear Cauchy solver instead. Sample weights are intentionally not combined
+with robust fitting yet.
+
+.. code-block:: python
+
+    trf = TRFEstimator(
+        tmin=-0.2, tmax=0.5, srate=fs,
+        loss='cauchy', robust_sigma=0.1,
+        robust_max_iter=30,
+    )
+    trf.fit(X, y[:, None])
+    print(trf.robust_converged_, trf.robust_n_iter_)
+
+Classical ``tvals_`` and ``pvals_`` are not computed for robust fits.
+
 This will show a figure in the line of:
 
 .. image:: img/example_output.png
