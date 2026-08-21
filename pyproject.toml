@@ -35,7 +35,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/Hugo-W/pyEEG"
-Documentation = "https://hugo-w.github.io/pyEEG-docs/"
+Documentation = "https://hugo-w.github.io/pyEEG/"
 Repository = "https://github.com/Hugo-W/pyEEG"
 Issues = "https://github.com/Hugo-W/pyEEG/issues"
 

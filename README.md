@@ -10,9 +10,10 @@ _Formerly named `pyEEG`_
 
 `natMEEG` is a library for processing M/EEG data built mostly on top of MNE-Python and scikit-learn. It is designed for data collected with naturalistic stimuli, so it works with continuous recordings rather than trial-based designs. It supports analysis of continuous M/EEG and generation of temporal response functions from continuous signals or real-valued events (for example, word-level or phoneme-level features).
 
-You can find the [documentation here](https://hugo-w.github.io/natMEEG-docs/index.html).
+You can find the [documentation here](https://hugo-w.github.io/pyEEG/).
 
 > ⚠️**Note**:
+>
 > - This code repository is actively maintained as part of the natMEEG project. The library provides tools for computing TRFs (Temporal Response Functions) with the `TRFEstimator` class in `pyeeg/models.py`, which implements memory-efficient and accelerated computation for handling multiple epochs or multiple subjects.
 > - The library is suitable for both research and production use.
 > - The project was formerly known as `pyEEG` and has been rebranded to `natMEEG` to better reflect its focus on naturalistic M/EEG data analysis.
@@ -80,7 +81,7 @@ pip install .
 
 #### Windows Users
 
-There are C-extensions in the library, so you need to have a C compiler installed on your machine. 
+There are C-extensions in the library, so you need to have a C compiler installed on your machine.
 If the default compiler does not work, you can try to install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and try again.
 
 Optionally try with [MinGW](http://www.mingw.org/), making sure after instalation of it to add the path to `mingw/bin` in your `PATH` environment variable. You can check if it is correctly installed by running the following command in your terminal:
@@ -160,6 +161,7 @@ To clean files created during build process (can be necessary to re-build the do
 ```bash
 make clean
 ```
+
 ---
 
 ## License
@@ -170,4 +172,4 @@ This project is licensed under the terms of the GPL-3.0 license. See the [LICENS
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17084930.svg)](https://doi.org/10.5281/zenodo.17084930)
 
-> Weissbart, H. Natmeeg - M/EEG Data Analysis in Naturalistic Context. 1.6.10, Zenodo, 9 Sept. 2025, https://doi.org/10.5281/zenodo.17084930.
+> Weissbart, H. Natmeeg - M/EEG Data Analysis in Naturalistic Context. 1.6.10, Zenodo, 9 Sept. 2025, <https://doi.org/10.5281/zenodo.17084930>.
