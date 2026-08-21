@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # pylint: disable=invalid-name,wrong-import-position,unsubscriptable-object
 """
 In this module, we can find different method to model the relationship
@@ -14,22 +13,24 @@ Updates:
 - 10/11/2023: added VAR model estimation (see :func:`fit_var` and :func:`fit_ar`)
 
 """
+
 import logging
-import numpy as np
-from tqdm.auto import tqdm
-from functools import reduce
-from scipy import stats
-from sklearn.model_selection import KFold
-from sklearn.base import BaseEstimator
-#logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
+# logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
-from .utils import lag_matrix, lag_span, lag_sparse, mem_check, design_lagmatrix
+import numpy as np
+from scipy import stats
+from sklearn.base import BaseEstimator
+from sklearn.model_selection import KFold
+from tqdm.auto import tqdm
+
+from .solvers import _robust_irls_regress, _robust_least_squares_regress, _svd_regress
+from .utils import design_lagmatrix, lag_matrix, lag_span, lag_sparse, mem_check
 from .vizu import get_spatial_colors, plot_interactive
-from .solvers import (_svd_regress, _robust_irls_regress,
-                      _robust_least_squares_regress)
 
 logging.basicConfig(level=logging.WARNING)
-LOGGER = logging.getLogger(__name__.split('.')[0])
+LOGGER = logging.getLogger(__name__.split(".")[0])
+
 
 def fit_ar(x, nlags=1, time_axis=0):
     """
@@ -56,11 +57,13 @@ def fit_ar(x, nlags=1, time_axis=0):
     if x.ndim == 1:
         time_axis = 1
     x = np.atleast_2d(x)
-    if time_axis == 1: # transpose if time is in columns
+    if time_axis == 1:  # transpose if time is in columns
         x = x.T
-    n, k = x.shape # n: number of observations, k: number of dimensions
+    n, k = x.shape  # n: number of observations, k: number of dimensions
 
-    X = design_lagmatrix(x, nlags=nlags, time_axis=0) # time axis was already transposed
+    X = design_lagmatrix(
+        x, nlags=nlags, time_axis=0
+    )  # time axis was already transposed
     if k == 1:
         X = np.atleast_3d(X)
     Y = x[nlags:, :]
@@ -68,7 +71,8 @@ def fit_ar(x, nlags=1, time_axis=0):
     betas = np.zeros((k, nlags))
     for i in range(k):
         betas[i] = np.linalg.lstsq(X[:, :, i], Y[:, i], rcond=None)[0]
-    return betas.squeeze() if k==1 else betas
+    return betas.squeeze() if k == 1 else betas
+
 
 def fit_var(x, nlags=1, time_axis=0):
     """
@@ -94,18 +98,21 @@ def fit_var(x, nlags=1, time_axis=0):
     if x.ndim == 1:
         time_axis = 1
     x = np.atleast_2d(x)
-    if time_axis == 1: # transpose if time is in columns
+    if time_axis == 1:  # transpose if time is in columns
         x = x.T
-    n, k = x.shape # n: number of observations, k: number of dimensions
+    n, k = x.shape  # n: number of observations, k: number of dimensions
 
-    X = design_lagmatrix(x, nlags=nlags, time_axis=0) # time axis was already transposed
+    X = design_lagmatrix(
+        x, nlags=nlags, time_axis=0
+    )  # time axis was already transposed
     if k == 1:
         X = np.atleast_3d(X)
     Y = x[nlags:, :]
     # Now instead of looping over thrid axies of X (dimensions), we reshape it to a 2D matrix
     # And fit a single model
-    betas = np.linalg.lstsq(X.reshape(-1, nlags*k), Y, rcond=None)[0]
-    return betas.reshape(k, nlags, k)#.transpose(2, 1, 0) # reshape back to 3D
+    betas = np.linalg.lstsq(X.reshape(-1, nlags * k), Y, rcond=None)[0]
+    return betas.reshape(k, nlags, k)  # .transpose(2, 1, 0) # reshape back to 3D
+
 
 class TRFEstimator(BaseEstimator):
     """Temporal Response Function (TRF) Estimator Class.
@@ -170,7 +177,7 @@ class TRFEstimator(BaseEstimator):
     .. seealso::
         :func:`_svd_regress`
     """
-    
+
     def fromArray(arr, tmin, tmax, fs):
         """
         Creates a TRF instance from a 3D array.
@@ -192,40 +199,61 @@ class TRFEstimator(BaseEstimator):
         """
         trf = TRFEstimator(tmin=tmin, tmax=tmax, srate=fs)
         trf.fill_lags()
-        assert arr.shape[0] == len(trf.lags), "Mismatch in lags! Supplied array has %d in first dimension, while %d lags were spanned"%(arr.shape[0], len(trf.lags))
+        assert arr.shape[0] == len(trf.lags), (
+            "Mismatch in lags! Supplied array has %d in first dimension, while %d lags were spanned"
+            % (arr.shape[0], len(trf.lags))
+        )
         trf.coef_ = arr
         trf.n_chans_ = arr.shape[-1]
         trf.n_feats_ = arr.shape[1]
         trf.fitted = True
         return trf
 
-    def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
-                 alpha=None, fit_intercept=True, verbose=True,
-                 quadratic_reg=None, block_order='lags', loss='linear',
-                 robust_solver='irls', robust_sigma=None,
-                 robust_max_iter=20, robust_tol=1e-6,
-                 robust_damping=1.0, robust_inner_solver='svd',
-                 robust_inner_tol=1e-8, robust_inner_max_iter=None,
-                 feature_alphas=None):
-        
-        if block_order not in ('lags', 'features'):
+    def __init__(
+        self,
+        times=(0.0,),
+        tmin=None,
+        tmax=None,
+        srate=1.0,
+        alpha=None,
+        fit_intercept=True,
+        verbose=True,
+        quadratic_reg=None,
+        block_order="lags",
+        loss="linear",
+        robust_solver="irls",
+        robust_sigma=None,
+        robust_max_iter=20,
+        robust_tol=1e-6,
+        robust_damping=1.0,
+        robust_inner_solver="svd",
+        robust_inner_tol=1e-8,
+        robust_inner_max_iter=None,
+        feature_alphas=None,
+    ):
+
+        if block_order not in ("lags", "features"):
             raise ValueError("block_order must be 'lags' or 'features'")
-        if loss not in ('linear', 'none', 'cauchy'):
+        if loss not in ("linear", "none", "cauchy"):
             raise ValueError("loss must be 'linear', 'none', or 'cauchy'")
-        if robust_solver not in ('irls', 'least_squares'):
+        if robust_solver not in ("irls", "least_squares"):
             raise ValueError("robust_solver must be 'irls' or 'least_squares'")
-        if robust_inner_solver not in ('svd', 'cg'):
+        if robust_inner_solver not in ("svd", "cg"):
             raise ValueError("robust_inner_solver must be 'svd' or 'cg'")
-        if robust_sigma is not None and (not np.isscalar(robust_sigma) or
-                                         robust_sigma <= 0 or
-                                         not np.isfinite(robust_sigma)):
+        if robust_sigma is not None and (
+            not np.isscalar(robust_sigma)
+            or robust_sigma <= 0
+            or not np.isfinite(robust_sigma)
+        ):
             raise ValueError("robust_sigma must be positive and finite")
         if feature_alphas is not None:
             feature_alphas = np.asarray(feature_alphas, dtype=float)
             if feature_alphas.ndim != 1 or feature_alphas.size == 0:
                 raise ValueError("feature_alphas must be a non-empty 1-D array")
             if np.any(~np.isfinite(feature_alphas)) or np.any(feature_alphas < 0):
-                raise ValueError("feature_alphas must contain finite non-negative values")
+                raise ValueError(
+                    "feature_alphas must contain finite non-negative values"
+                )
             if quadratic_reg is not None:
                 raise ValueError("feature_alphas cannot be combined with quadratic_reg")
             if alpha is not None and np.ndim(alpha) != 0:
@@ -234,7 +262,7 @@ class TRFEstimator(BaseEstimator):
         if robust_max_iter < 1 or robust_tol <= 0 or not 0 < robust_damping <= 1:
             raise ValueError("Invalid robust iteration parameters")
         self.block_order = block_order
-        self.loss = 'linear' if loss == 'none' else loss
+        self.loss = "linear" if loss == "none" else loss
         self.robust_solver = robust_solver
         self.robust_sigma = robust_sigma
         self.robust_max_iter = robust_max_iter
@@ -251,7 +279,7 @@ class TRFEstimator(BaseEstimator):
         # else:
         #     self.times = np.asarray(times)
         #     self.lags = lag_sparse(self.times, srate)[::-1]
-        
+
         self.tmin = tmin
         self.tmax = tmax
         self.times = times
@@ -272,13 +300,17 @@ class TRFEstimator(BaseEstimator):
         # is requested (M counts as regularization even when alpha == 0, in which
         # case M is scaled to zero and the fit reduces to plain least squares)
         if np.ndim(self.alpha) == 0:
-            self.use_regularisation = (self.alpha > 0. or
-                                       self.quadratic_reg is not None or
-                                       self.feature_alphas is not None)
+            self.use_regularisation = (
+                self.alpha > 0.0
+                or self.quadratic_reg is not None
+                or self.feature_alphas is not None
+            )
         else:
-            self.use_regularisation = (np.any(np.asarray(self.alpha) > 0.) or
-                                       self.quadratic_reg is not None or
-                                       self.feature_alphas is not None)
+            self.use_regularisation = (
+                np.any(np.asarray(self.alpha) > 0.0)
+                or self.quadratic_reg is not None
+                or self.feature_alphas is not None
+            )
         self.fit_intercept = fit_intercept
         self.fitted = False
         self.lags = None
@@ -286,7 +318,7 @@ class TRFEstimator(BaseEstimator):
         self.intercept_ = None
         self.coef_ = None
         self.n_feats_ = None
-        self.rotations_ = None # matrices to be used to rotate coefficients into a 'better conditonned subspace'
+        self.rotations_ = None  # matrices to be used to rotate coefficients into a 'better conditonned subspace'
         self.n_chans_ = None
         self.feat_names_ = None
         self.valid_samples_ = None
@@ -305,17 +337,17 @@ class TRFEstimator(BaseEstimator):
         ----
         Necessary to call this function if one wishes to use trf.lags _before_
         :func:`trf.fit` is called.
-        
+
         """
         if (self.tmin is not None) and (self.tmax is not None):
-            #LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
-            self.lags = lag_span(self.tmin, self.tmax, srate=self.srate)[::-1] #pylint: disable=invalid-unary-operand-type
-            #self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
+            # LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
+            self.lags = lag_span(self.tmin, self.tmax, srate=self.srate)[::-1]  # pylint: disable=invalid-unary-operand-type
+            # self.lags = lag_span(-tmax, -tmin, srate=srate) #pylint: disable=invalid-unary-operand-type
             self.times = self.lags[::-1] / self.srate
         else:
             self.times = np.asarray(self.times)
             self.lags = lag_sparse(self.times, self.srate)[::-1]
-        
+
     def _beta_to_coef(self, betas):
         """Map a flattened (n_lags*n_feats, n_chans) solver beta block to the
         public ``coef_`` shape (n_lags, n_feats, n_chans).
@@ -332,7 +364,7 @@ class TRFEstimator(BaseEstimator):
         betas = np.asarray(betas)
         n_lags = len(self.lags)
         n_feats = self.n_feats_
-        if self.block_order == 'lags':
+        if self.block_order == "lags":
             coef = betas.reshape(n_lags, n_feats, -1)
         else:  # 'features': each feature's lags are contiguous in the beta block
             coef = betas.reshape(n_feats, n_lags, -1).swapaxes(0, 1)
@@ -346,7 +378,7 @@ class TRFEstimator(BaseEstimator):
         n_lags = len(self.lags)
         n_feats = self.n_feats_
         coef_flipped = coef[::-1, :, :]  # back to solve lag order
-        if self.block_order == 'lags':
+        if self.block_order == "lags":
             return coef_flipped.reshape(n_lags * n_feats, -1)
         return coef_flipped.swapaxes(0, 1).reshape(n_lags * n_feats, -1)
 
@@ -382,8 +414,9 @@ class TRFEstimator(BaseEstimator):
             if len(self.feature_alphas) != self.n_feats_:
                 raise ValueError(
                     "feature_alphas must have one value per input feature "
-                    f"({self.n_feats_} expected, got {len(self.feature_alphas)})")
-            if self.block_order == 'lags':
+                    f"({self.n_feats_} expected, got {len(self.feature_alphas)})"
+                )
+            if self.block_order == "lags":
                 diagonal = np.tile(self.feature_alphas, len(self.lags))
             else:
                 diagonal = np.repeat(self.feature_alphas, len(self.lags))
@@ -395,12 +428,14 @@ class TRFEstimator(BaseEstimator):
             return None
         if isinstance(self.quadratic_reg, str):
             from pyeeg.solvers import create_quadratic_regularizer
+
             n_lags = len(self.lags)
             n_feats = self.n_feats_
             # alpha is the M-strength knob (scales the per-feature Laplacian)
-            L_single = create_quadratic_regularizer(self.quadratic_reg, n_lags,
-                                                    alpha=self.alpha)
-            if self.block_order == 'lags':
+            L_single = create_quadratic_regularizer(
+                self.quadratic_reg, n_lags, alpha=self.alpha
+            )
+            if self.block_order == "lags":
                 # Lag-major column ordering:
                 # [feat0_lag0, feat1_lag0, feat0_lag1, feat1_lag1, ...]
                 # Temporal smoothness couples equal-feature entries across
@@ -422,31 +457,41 @@ class TRFEstimator(BaseEstimator):
 
     def _fit_robust(self, X, y, M):
         """Fit the configured Cauchy-loss model and store convergence metadata."""
-        if self.robust_solver == 'least_squares':
+        if self.robust_solver == "least_squares":
             if self.use_regularisation:
                 raise ValueError(
                     "robust_solver='least_squares' currently supports only "
                     "unregularized fitting (alpha=0, feature_alphas=None, "
-                    "and quadratic_reg=None).")
+                    "and quadratic_reg=None)."
+                )
             betas, info = _robust_least_squares_regress(
-                X, y, scale=self.robust_sigma, verbose=self.verbose)
+                X, y, scale=self.robust_sigma, verbose=self.verbose
+            )
         else:
             betas, info = _robust_irls_regress(
-                X, y, alpha=self.alpha, M=M, loss='cauchy',
-                scale=self.robust_sigma, max_iter=self.robust_max_iter,
-                tol=self.robust_tol, damping=self.robust_damping,
+                X,
+                y,
+                alpha=self.alpha,
+                M=M,
+                loss="cauchy",
+                scale=self.robust_sigma,
+                max_iter=self.robust_max_iter,
+                tol=self.robust_tol,
+                damping=self.robust_damping,
                 inner_solver=self.robust_inner_solver,
                 inner_tol=self.robust_inner_tol,
                 inner_max_iter=self.robust_inner_max_iter,
-                verbose=self.verbose)
-        self.robust_n_iter_ = info['n_iter']
-        self.robust_converged_ = info['converged']
-        self.robust_scale_ = info['scale']
-        self.robust_objective_ = info.get('objective')
+                verbose=self.verbose,
+            )
+        self.robust_n_iter_ = info["n_iter"]
+        self.robust_converged_ = info["converged"]
+        self.robust_scale_ = info["scale"]
+        self.robust_objective_ = info.get("objective")
         return betas
 
-    def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=(),
-            weights=None):
+    def fit(
+        self, X, y, lagged=False, drop=True, feat_names=(), rotations=(), weights=None
+    ):
         """Fit the TRF model.
 
         Parameters
@@ -490,17 +535,30 @@ class TRFEstimator(BaseEstimator):
         self.fill_lags()
 
         if isinstance(y, list) and isinstance(X, list):
-            if self.verbose: LOGGER.info("Supplied a list of data portions... Will compute covariance matrices by 'accumulating' them.")
-            assert len(y) == len(X), "Both lists (X and y) should have the same number of elements"
-            assert all([len(yy)==len(xx) for xx,yy in zip(X,y)]), "Each data portion should have the same number of samples"
-            return self._fitlists(X, y, drop, feat_names, lagged, self.verbose,
-                                  weights=weights)
-        
+            if self.verbose:
+                LOGGER.info(
+                    "Supplied a list of data portions... Will compute covariance matrices by 'accumulating' them."
+                )
+            assert len(y) == len(X), (
+                "Both lists (X and y) should have the same number of elements"
+            )
+            assert all([len(yy) == len(xx) for xx, yy in zip(X, y)]), (
+                "Each data portion should have the same number of samples"
+            )
+            return self._fitlists(
+                X, y, drop, feat_names, lagged, self.verbose, weights=weights
+            )
+
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
-        estimated_mem_usage = (sum([x.nbytes for x in X]) if np.ndim(X) == 3 else X.nbytes)* (len(self.lags) if not lagged else 1) + y_memory
-        if estimated_mem_usage/1024.**3 > mem_check():
-            raise MemoryError("Not enough RAM available! (needed %.1fGB, but only %.1fGB available)"%(estimated_mem_usage/1024.**3, mem_check()))
+        estimated_mem_usage = (
+            sum([x.nbytes for x in X]) if np.ndim(X) == 3 else X.nbytes
+        ) * (len(self.lags) if not lagged else 1) + y_memory
+        if estimated_mem_usage / 1024.0**3 > mem_check():
+            raise MemoryError(
+                "Not enough RAM available! (needed %.1fGB, but only %.1fGB available)"
+                % (estimated_mem_usage / 1024.0**3, mem_check())
+            )
 
         self.n_feats_ = X.shape[1] if not lagged else X.shape[1] // len(self.lags)
         self.n_chans_ = y.shape[1] if y.ndim == 2 else y.shape[2]
@@ -512,29 +570,41 @@ class TRFEstimator(BaseEstimator):
                 assert len(feat_names) == X.shape[1], err_msg
             self.feat_names_ = feat_names
 
-        n_samples_all = y.shape[0] if y.ndim == 2 else y.shape[1] # this include non-valid samples for now
+        n_samples_all = (
+            y.shape[0] if y.ndim == 2 else y.shape[1]
+        )  # this include non-valid samples for now
 
         if drop:
-            self.valid_samples_ = np.logical_not(np.logical_or(np.arange(n_samples_all) < abs(max(self.lags)),
-                                                               np.arange(n_samples_all)[::-1] < abs(min(self.lags))))
+            self.valid_samples_ = np.logical_not(
+                np.logical_or(
+                    np.arange(n_samples_all) < abs(max(self.lags)),
+                    np.arange(n_samples_all)[::-1] < abs(min(self.lags)),
+                )
+            )
         else:
             self.valid_samples_ = np.ones((n_samples_all,), dtype=bool)
 
         # Creating lag-matrix droping NaN values if necessary
-        if self.verbose: LOGGER.info("Lagging matrix...")
+        if self.verbose:
+            LOGGER.info("Lagging matrix...")
         y = y[self.valid_samples_, :] if y.ndim == 2 else y[:, self.valid_samples_, :]
         if not lagged:
-            X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.,
-                           block_order=self.block_order)
+            X = lag_matrix(
+                X,
+                lags=self.lags,
+                mode="valid" if drop else "full",
+                fill_value=np.nan if drop else 0.0,
+                block_order=self.block_order,
+            )
         elif len(X) == n_samples_all:
             # Pre-lagged callers may provide the full sample axis. Align it
             # with y when edge samples are dropped; already-trimmed inputs are
             # left unchanged.
             X = X[self.valid_samples_, :]
-        '''
+        """
         if not lagged:
             if drop:
-                X = lag_matrix(X, lag_samples=self.lags, drop_missing=True)
+                X = lag_matrix(X, lags=self.lags, mode='valid')
 
                 # Droping rows of NaN values in y
                 if any(np.asarray(self.lags) < 0):
@@ -544,13 +614,13 @@ class TRFEstimator(BaseEstimator):
                     drop_bottom = abs(max(self.lags))
                     y = y[:-drop_bottom, :] if y.ndim == 2 else y[:, :-drop_bottom, :]
             else:
-                X = lag_matrix(X, lag_samples=self.lags, filling=0.)
-        '''
+                X = lag_matrix(X, lags=self.lags, mode='full', fill_value=0.)
+        """
         # Adding intercept feature:
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])
 
-        robust = self.loss == 'cauchy'
+        robust = self.loss == "cauchy"
         if robust and weights is not None:
             raise ValueError("weights cannot currently be combined with loss='cauchy'.")
 
@@ -561,14 +631,17 @@ class TRFEstimator(BaseEstimator):
         # them with valid_samples_ to align with the post-drop X/y rows.
         if weights is not None:
             from pyeeg.utils import apply_sample_weights
+
             w = np.asarray(weights, dtype=float)[self.valid_samples_]
             if np.any(w < 0):
                 raise ValueError("Sample weights must be non-negative.")
             X, y = apply_sample_weights(X, y, w)
-            if self.verbose: LOGGER.info("Applied sample weights (weighted least squares)")
+            if self.verbose:
+                LOGGER.info("Applied sample weights (weighted least squares)")
 
         # Solving with robust IRLS/SciPy or the existing linear solvers.
-        if self.verbose: LOGGER.info("Computing coefficients..")
+        if self.verbose:
+            LOGGER.info("Computing coefficients..")
         M = self._build_quadratic_regularizer()
         if robust:
             betas = self._fit_robust(X, y, M)
@@ -587,16 +660,17 @@ class TRFEstimator(BaseEstimator):
             betas = betas[1:, :]
 
         if rotations:
-            if self.block_order != 'lags':
+            if self.block_order != "lags":
                 raise NotImplementedError(
                     "rotations are only supported with block_order='lags' "
                     "(the legacy lag-major layout); block_order='features' "
-                    "rotations are not implemented.")
+                    "rotations are not implemented."
+                )
             newbetas = np.zeros((len(self.lags) * self.n_feats_, self.n_chans_))
             for _, rot in zip(range(self.n_feats_), rotations):
                 if not rot:
                     rot = np.eye(self.lags)
-                newbetas[::self.n_feats_, :] = rot @ betas[...]
+                newbetas[:: self.n_feats_, :] = rot @ betas[...]
             betas = newbetas
 
         self.coef_ = self._beta_to_coef(betas)
@@ -608,12 +682,16 @@ class TRFEstimator(BaseEstimator):
         # sqrt(W) here, so their std no longer reflects the original data.
         if not lagged and self.fitted and weights is None and not robust:
             try:
-                X_std = np.std(X[:, self.fit_intercept:], axis=0, keepdims=False)  # (n_lags*n_feats,)
+                X_std = np.std(
+                    X[:, self.fit_intercept :], axis=0, keepdims=False
+                )  # (n_lags*n_feats,)
                 y_std = np.std(y, axis=0, keepdims=True)  # (1, n_chans)
                 # Map the per-column stds (which follow the estimator's
                 # block_order) to coef_ shape: (n_lags, n_feats, 1)
                 X_std_reshaped = self._beta_to_coef(X_std[:, None])
-                self.standardized_coef_ = self.coef_ * X_std_reshaped / y_std[None, None, :]
+                self.standardized_coef_ = (
+                    self.coef_ * X_std_reshaped / y_std[None, None, :]
+                )
             except Exception as e:
                 if self.verbose:
                     LOGGER.warning("Could not compute standardized coefficients: %s", e)
@@ -624,27 +702,28 @@ class TRFEstimator(BaseEstimator):
         # Get t-statistic and p-vals if regularization is ommited
         # (M counts as regularization: t-values computed from X.T@X would ignore it)
         if not self.use_regularisation and not robust:
-            if self.verbose: LOGGER.info("Computing statistics...")
+            if self.verbose:
+                LOGGER.info("Computing statistics...")
             # Intercept column is present in X / cov_betas only when fit_intercept
             n_intercept = int(self.fit_intercept)
             cov_betas = X.T @ X
             # Compute variance sigma (MSE)
             if np.ndim(y) == 3:
                 dof = sum(list(map(len, y))) - (len(betas) + n_intercept)
-                sigma = 0.
+                sigma = 0.0
                 for yy in y:
-                    sigma += np.sum((yy - self.predict(X))**2, axis=0)
+                    sigma += np.sum((yy - self.predict(X)) ** 2, axis=0)
                 sigma /= dof
             else:
                 dof = len(y) - (len(betas) + n_intercept)
-                sigma = np.sum((y - self.predict(X))**2, axis=0) / dof
+                sigma = np.sum((y - self.predict(X)) ** 2, axis=0) / dof
             # Covariance matrix on betas
             try:
                 cov_betas_inv = np.linalg.inv(cov_betas)
             except np.linalg.LinAlgError:
                 # Rank-deficient design matrix: fall back to the pseudo-inverse
                 cov_betas_inv = np.linalg.pinv(cov_betas)
-            C = np.einsum('ij,k', cov_betas_inv, sigma)
+            C = np.einsum("ij,k", cov_betas_inv, sigma)
             # Actual stats (strip the intercept entry of the diagonal iff present)
             se = np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1)[n_intercept:, :])
             # tvals_/pvals_ are stored in the same canonical flattened ordering
@@ -662,11 +741,12 @@ class TRFEstimator(BaseEstimator):
             self.pvals_ = 2 * stats.t.sf(abs(self.tvals_), df=dof)
 
         return self
-    
-    def _fitlists(self, X, y, drop=True, feat_names=(), lagged=False, verbose=True,
-                  weights=None):
+
+    def _fitlists(
+        self, X, y, drop=True, feat_names=(), lagged=False, verbose=True, weights=None
+    ):
         """
-        Fit the TRF by accumulating the covariance matrices of each item in the 
+        Fit the TRF by accumulating the covariance matrices of each item in the
         list of arrays in ``X`` and ``Y``.
         This is more memory efficient and can follow nicely an experiment design
         where several audio clips of variable length are aligned with M/EEG.
@@ -697,21 +777,27 @@ class TRFEstimator(BaseEstimator):
             Fitted instance of TRF model.
 
         """
-        #if drop:
-            #raise NotImplementedError("Please use drop=False, this feature has not been implemented yet")
+        # if drop:
+        # raise NotImplementedError("Please use drop=False, this feature has not been implemented yet")
 
         # For each element (subject or segment) in Y list, check which sample to drop
         valid_samples = []
         for yy in y:
             n_samples_all = yy.shape[0]
             if drop:
-                valid_samples.append(np.logical_not(np.logical_or(np.arange(n_samples_all) < abs(max(self.lags)),
-                                                                np.arange(n_samples_all)[::-1] < abs(min(self.lags)))))
+                valid_samples.append(
+                    np.logical_not(
+                        np.logical_or(
+                            np.arange(n_samples_all) < abs(max(self.lags)),
+                            np.arange(n_samples_all)[::-1] < abs(min(self.lags)),
+                        )
+                    )
+                )
             else:
                 valid_samples.append(np.ones((n_samples_all,), dtype=bool))
 
         self.n_chans_ = y[0].shape[1]
-        self.n_feats_ = X[0].shape[1] if not lagged else X[0].shape[1]//len(self.lags)
+        self.n_feats_ = X[0].shape[1] if not lagged else X[0].shape[1] // len(self.lags)
         if feat_names:
             err_msg = "Length of feature names does not match number of columns from feature matrix"
             if lagged:
@@ -719,21 +805,26 @@ class TRFEstimator(BaseEstimator):
             else:
                 assert len(feat_names) == X.shape[1], err_msg
             self.feat_names_ = feat_names
-            
+
         # Build quadratic regularization matrix M if specified
         # (M replaces L2 regularization; alpha has no effect when M is active)
         M = self._build_quadratic_regularizer()
-        robust = self.loss == 'cauchy'
+        robust = self.loss == "cauchy"
         if robust and weights is not None:
             raise ValueError("weights cannot currently be combined with loss='cauchy'.")
 
         if weights is not None:
             from pyeeg.utils import apply_sample_weights
+
             if len(weights) != len(X):
                 raise ValueError("weights must be a list with one array per segment.")
 
         if lagged:
-            X_list = [np.hstack([np.ones((len(x), 1)), x]) for x in X] if self.fit_intercept else list(X)
+            X_list = (
+                [np.hstack([np.ones((len(x), 1)), x]) for x in X]
+                if self.fit_intercept
+                else list(X)
+            )
             y_list = [yy[s] for s, yy in zip(valid_samples, y)]
             if weights is not None:
                 X_list_new, y_list_new = [], []
@@ -748,14 +839,21 @@ class TRFEstimator(BaseEstimator):
             if robust:
                 betas = self._fit_robust(X_list, y_list, M)
             else:
-                betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=self.verbose)
+                betas = _svd_regress(
+                    X_list, y_list, self.alpha, M=M, verbose=self.verbose
+                )
         else:
-            filling = np.nan if drop else 0.
+            filling = np.nan if drop else 0.0
             X_list = []
             y_list = []
             for i, (s, x, yy) in enumerate(zip(valid_samples, X, y)):
-                xx = lag_matrix(x, self.lags, filling=filling, drop_missing=drop,
-                                block_order=self.block_order)
+                xx = lag_matrix(
+                    x,
+                    self.lags,
+                    fill_value=filling,
+                    mode="valid" if drop else "full",
+                    block_order=self.block_order,
+                )
                 yc = yy[s]
                 if self.fit_intercept:
                     xx = np.hstack([np.ones((len(xx), 1)), xx])
@@ -772,7 +870,9 @@ class TRFEstimator(BaseEstimator):
             if robust:
                 betas = self._fit_robust(X_list, y_list, M)
             else:
-                betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=self.verbose)
+                betas = _svd_regress(
+                    X_list, y_list, self.alpha, M=M, verbose=self.verbose
+                )
         # Preserve the existing alpha-path shape for linear fits. Robust
         # fitting has one coefficient solution per output channel.
         if robust:
@@ -781,16 +881,16 @@ class TRFEstimator(BaseEstimator):
             self.all_betas = betas
             # Storing only the first as the main
             betas = betas[..., 0]
-        
+
         if self.fit_intercept:
             self.intercept_ = betas[0, :]
             betas = betas[1:, :]
 
         self.coef_ = self._beta_to_coef(betas)
-        
+
         self.fitted = True
         return self
-    
+
     def select_best_coefs(self, best_index, in_place=False):
         """
         This method can be used to select the best set of coefficients when the
@@ -807,7 +907,9 @@ class TRFEstimator(BaseEstimator):
         -------
         :class:`TRFEstimator` instance
         """
-        assert hasattr(self, 'all_betas'), "TRF must be fitted with several regularisation values alpha at once."
+        assert hasattr(self, "all_betas"), (
+            "TRF must be fitted with several regularisation values alpha at once."
+        )
         trf = self if in_place else self.copy()
         betas = self.all_betas[..., best_index]
         trf.alpha = self.alpha[best_index]
@@ -816,10 +918,10 @@ class TRFEstimator(BaseEstimator):
             betas = betas[1:, :]
         trf.coef_ = trf._beta_to_coef(betas)
         return trf
-    
+
     def plot_multialpha_scores(self, X, y):
         """
-        Plot the score against different alphas to visualise effect of 
+        Plot the score against different alphas to visualise effect of
         regularisation.
 
         Parameters
@@ -834,51 +936,95 @@ class TRFEstimator(BaseEstimator):
         None.
 
         """
-        assert hasattr(self, 'all_betas'), "TRF must be fitted with several regularisation values alpha at once."
+        assert hasattr(self, "all_betas"), (
+            "TRF must be fitted with several regularisation values alpha at once."
+        )
         scores = self.multialpha_score(X, y)
         scores_toplot = scores.mean(0).mean(-1).T
         # Best alpha
         peaks = scores.mean(0).mean(-1).argmax(1)
         lines = plt.semilogx(self.alpha, scores_toplot)
-        if y.ndim == 3: # multi-subject (search best alpha PER subject)
+        if y.ndim == 3:  # multi-subject (search best alpha PER subject)
             for k, p in enumerate(peaks):
-                plt.semilogx(self.alpha[p], scores_toplot[p, k], '*', ms=10, color=lines[k].get_color())
+                plt.semilogx(
+                    self.alpha[p],
+                    scores_toplot[p, k],
+                    "*",
+                    ms=10,
+                    color=lines[k].get_color(),
+                )
         else:
-            plt.semilogx(self.alpha[scores.mean(0).mean(-1).argmax()],
-                        scores_toplot[scores.mean(0).mean(-1).argmax()], '*k', ms=10,)
-        
+            plt.semilogx(
+                self.alpha[scores.mean(0).mean(-1).argmax()],
+                scores_toplot[scores.mean(0).mean(-1).argmax()],
+                "*k",
+                ms=10,
+            )
+
     def multialpha_score(self, X, y):
-        assert hasattr(self, 'all_betas'), "TRF must be fitted with several regularisation values alpha at once."
+        assert hasattr(self, "all_betas"), (
+            "TRF must be fitted with several regularisation values alpha at once."
+        )
         # For several story-parts
-        if isinstance(X, list) and len(X)==len(y):
-            scores = np.mean([self.multialpha_score(x, yy)for x, yy in tqdm(zip(X, y), total=len(X), desc='Scoring each segment ')], 0)
+        if isinstance(X, list) and len(X) == len(y):
+            scores = np.mean(
+                [
+                    self.multialpha_score(x, yy)
+                    for x, yy in tqdm(
+                        zip(X, y), total=len(X), desc="Scoring each segment "
+                    )
+                ],
+                0,
+            )
             return scores
         else:
             # Lag X if necessary, and add intercept
             if X.shape[1] != (len(self.lags) * self.n_feats_ + int(self.fit_intercept)):
-                X = lag_matrix(X, lag_samples=self.lags, drop_missing=False, filling=0.,
-                               block_order=self.block_order)
+                X = lag_matrix(
+                    X,
+                    lags=self.lags,
+                    mode="full",
+                    fill_value=0.0,
+                    block_order=self.block_order,
+                )
                 if self.fit_intercept:
-                    X = np.hstack([np.ones((len(X), 1)), X]) 
-            
+                    X = np.hstack([np.ones((len(X), 1)), X])
+
             # Estimate yhat
-            yhat = np.einsum('ij,jkl->ikl', X, self.all_betas)
+            yhat = np.einsum("ij,jkl->ikl", X, self.all_betas)
             y = np.asarray(y)
-            
+
             # Compute scores
             # A single X and a single y
-            if y.ndim == 2: # single-subject
+            if y.ndim == 2:  # single-subject
                 scores = np.zeros((1, len(self.alpha), self.n_chans_), dtype=y.dtype)
                 for lamb in range(len(self.alpha)):
-                    scores[0, lamb, :] = np.diag(np.corrcoef(yhat[..., lamb], y, rowvar=False), k=self.n_chans_)
-            else: # multi-subject (one X several ys)
-                scores = np.zeros((y.shape[0], len(self.alpha), self.n_chans_), dtype=y[0].dtype)
+                    scores[0, lamb, :] = np.diag(
+                        np.corrcoef(yhat[..., lamb], y, rowvar=False), k=self.n_chans_
+                    )
+            else:  # multi-subject (one X several ys)
+                scores = np.zeros(
+                    (y.shape[0], len(self.alpha), self.n_chans_), dtype=y[0].dtype
+                )
                 for ksubj, yy in enumerate(y):
                     for lamb in range(len(self.alpha)):
-                        scores[ksubj, lamb, :] = np.diag(np.corrcoef(yhat[..., lamb], yy, rowvar=False), k=self.n_chans_)
+                        scores[ksubj, lamb, :] = np.diag(
+                            np.corrcoef(yhat[..., lamb], yy, rowvar=False),
+                            k=self.n_chans_,
+                        )
             return scores
 
-    def xfit(self, X, y, n_splits=5, lagged=False, drop=True, feat_names=(), plot=False, verbose=False):
+    def xfit(
+        self,
+        X,
+        y,
+        n_splits=5,
+        lagged=False,
+        drop=True,
+        feat_names=(),
+        plot=False,
+        verbose=False,
+    ):
         """Apply a cross-validation procedure to find the best regularisation parameters
         among the list of alphas given (ndim alpha must be == 1, and len(alphas)>1).
         If there are several subjects, will return a list of best alphas for each subjetc individually.
@@ -893,15 +1039,22 @@ class TRFEstimator(BaseEstimator):
         """
         # Make sure we have several alphas
         if np.ndim(self.alpha) < 1 or len(self.alpha) <= 1:
-            raise ValueError("Supply several alphas to TRF constructor to use this method.")
+            raise ValueError(
+                "Supply several alphas to TRF constructor to use this method."
+            )
 
         self.fill_lags()
 
         y = np.asarray(y)
         y_memory = sum([yy.nbytes for yy in y]) if np.ndim(y) == 3 else y.nbytes
-        estimated_mem_usage = X.nbytes * (len(self.lags) if not lagged else 1) + y_memory
-        if estimated_mem_usage/1024.**3 > mem_check():
-            raise MemoryError("Not enough RAM available! (needed %.1fGB, but only %.1fGB available)"%(estimated_mem_usage/1024.**3, mem_check()))
+        estimated_mem_usage = (
+            X.nbytes * (len(self.lags) if not lagged else 1) + y_memory
+        )
+        if estimated_mem_usage / 1024.0**3 > mem_check():
+            raise MemoryError(
+                "Not enough RAM available! (needed %.1fGB, but only %.1fGB available)"
+                % (estimated_mem_usage / 1024.0**3, mem_check())
+            )
 
         self.n_feats_ = X.shape[1] if not lagged else X.shape[1] // len(self.lags)
         self.n_chans_ = y.shape[1] if y.ndim == 2 else y.shape[2]
@@ -914,43 +1067,62 @@ class TRFEstimator(BaseEstimator):
                 assert len(feat_names) == X.shape[1], err_msg
             self.feat_names_ = feat_names
 
-        n_samples_all = y.shape[0] if y.ndim == 2 else y.shape[1] # this include non-valid samples for now
+        n_samples_all = (
+            y.shape[0] if y.ndim == 2 else y.shape[1]
+        )  # this include non-valid samples for now
 
         if drop:
-            self.valid_samples_ = np.logical_not(np.logical_or(np.arange(n_samples_all) < abs(max(self.lags)),
-                                                               np.arange(n_samples_all)[::-1] < abs(min(self.lags))))
+            self.valid_samples_ = np.logical_not(
+                np.logical_or(
+                    np.arange(n_samples_all) < abs(max(self.lags)),
+                    np.arange(n_samples_all)[::-1] < abs(min(self.lags)),
+                )
+            )
         else:
             self.valid_samples_ = np.ones((n_samples_all,), dtype=bool)
 
         # Creating lag-matrix droping NaN values if necessary
         y = y[self.valid_samples_, :] if y.ndim == 2 else y[:, self.valid_samples_, :]
         if not lagged:
-            X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.,
-                           block_order=self.block_order)
-        
+            X = lag_matrix(
+                X,
+                lags=self.lags,
+                mode="valid" if drop else "full",
+                fill_value=np.nan if drop else 0.0,
+                block_order=self.block_order,
+            )
+
         # Adding intercept feature:
         if self.fit_intercept:
-            X = np.hstack([np.ones((len(X), 1)), X])        
+            X = np.hstack([np.ones((len(X), 1)), X])
 
         # Now cross-validation procedure:
         kf = KFold(n_splits=n_splits)
-        if y.ndim == 2: # single-subject
+        if y.ndim == 2:  # single-subject
             scores = np.zeros((n_splits, 1, len(self.alpha), self.n_chans_))
             for kfold, (train, test) in enumerate(kf.split(X)):
-                if verbose: print("Training/Evaluating fold %d/%d"%(kfold+1, n_splits))
+                if verbose:
+                    print("Training/Evaluating fold %d/%d" % (kfold + 1, n_splits))
                 betas = _svd_regress(X[train, :], y[train, :], self.alpha)
-                yhat = np.einsum('ij,jkl->ikl', X[test, :], betas)
+                yhat = np.einsum("ij,jkl->ikl", X[test, :], betas)
                 for lamb in range(len(self.alpha)):
-                    scores[kfold, 0, lamb, :] = np.diag(np.corrcoef(yhat[..., lamb], y[test, :], rowvar=False), k=self.n_chans_)
-        else: # multi-subject
+                    scores[kfold, 0, lamb, :] = np.diag(
+                        np.corrcoef(yhat[..., lamb], y[test, :], rowvar=False),
+                        k=self.n_chans_,
+                    )
+        else:  # multi-subject
             scores = np.zeros((n_splits, y.shape[0], len(self.alpha), self.n_chans_))
             for kfold, (train, test) in enumerate(kf.split(X)):
-                if verbose: print("Training/Evaluating fold %d/%d"%(kfold+1, n_splits))
+                if verbose:
+                    print("Training/Evaluating fold %d/%d" % (kfold + 1, n_splits))
                 betas = _svd_regress(X[train, :], y[:, train, :], self.alpha)
-                yhat = np.einsum('ij,jkl->ikl', X[test, :], betas)
+                yhat = np.einsum("ij,jkl->ikl", X[test, :], betas)
                 for ksubj, yy in enumerate(y[:, test, :]):
                     for lamb in range(len(self.alpha)):
-                        scores[kfold, ksubj, lamb, :] = np.diag(np.corrcoef(yhat[..., lamb], yy, rowvar=False), k=self.n_chans_)
+                        scores[kfold, ksubj, lamb, :] = np.diag(
+                            np.corrcoef(yhat[..., lamb], yy, rowvar=False),
+                            k=self.n_chans_,
+                        )
 
         # Best alpha
         peaks = scores.mean(0).mean(-1).argmax(1)
@@ -959,13 +1131,23 @@ class TRFEstimator(BaseEstimator):
         if plot:
             scores_toplot = scores.mean(0).mean(-1).T
             lines = plt.semilogx(self.alpha, scores_toplot)
-            if y.ndim == 3: # multi-subject (search best alpha PER subject)
+            if y.ndim == 3:  # multi-subject (search best alpha PER subject)
                 for k, p in enumerate(peaks):
-                    plt.semilogx(self.alpha[p], scores_toplot[p, k], '*', ms=10, color=lines[k].get_color())
+                    plt.semilogx(
+                        self.alpha[p],
+                        scores_toplot[p, k],
+                        "*",
+                        ms=10,
+                        color=lines[k].get_color(),
+                    )
             else:
-                plt.semilogx(self.alpha[scores.mean(0).mean(-1).argmax()],
-                            scores_toplot[scores.mean(0).mean(-1).argmax()], '*k', ms=10,)
-            
+                plt.semilogx(
+                    self.alpha[scores.mean(0).mean(-1).argmax()],
+                    scores_toplot[scores.mean(0).mean(-1).argmax()],
+                    "*k",
+                    ms=10,
+                )
+
         # Reshaping and getting coefficients
         if self.fit_intercept:
             self.intercept_ = betas[0, :, peaks[0]]
@@ -1007,9 +1189,15 @@ class TRFEstimator(BaseEstimator):
 
         # Check if input has been lagged already, if not, do it:
         if X.shape[1] != int(self.fit_intercept) + len(self.lags) * self.n_feats_:
-            if self.verbose: LOGGER.info("Creating lagged feature matrix...")
-            X = lag_matrix(X, lag_samples=self.lags, filling=0.,
-                           block_order=self.block_order)
+            if self.verbose:
+                LOGGER.info("Creating lagged feature matrix...")
+            X = lag_matrix(
+                X,
+                lags=self.lags,
+                mode="full",
+                fill_value=0.0,
+                block_order=self.block_order,
+            )
             # Adding intercept feature:
             if self.fit_intercept:
                 X = np.hstack([np.ones((len(X), 1)), X])
@@ -1040,14 +1228,16 @@ class TRFEstimator(BaseEstimator):
             Score value computed on whole segment.
         """
         yhat = self.predict(Xtest)
-        if scoring == 'corr':
-            score =  np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
-        elif scoring == 'rmse':
-            score = np.sqrt(np.mean((yhat-ytrue)**2, 0))
+        if scoring == "corr":
+            score = np.diag(np.corrcoef(x=yhat, y=ytrue, rowvar=False), k=self.n_chans_)
+        elif scoring == "rmse":
+            score = np.sqrt(np.mean((yhat - ytrue) ** 2, 0))
         elif scoring == "mse":
-            score = np.mean((yhat-ytrue)**2, 0)
+            score = np.mean((yhat - ytrue) ** 2, 0)
         else:
-            raise NotImplementedError("Only correlation score or (r)mse is valid for now...")
+            raise NotImplementedError(
+                "Only correlation score or (r)mse is valid for now..."
+            )
         if reduce_multi is None:
             return score
         else:
@@ -1072,12 +1262,22 @@ class TRFEstimator(BaseEstimator):
         """
         trf = self.copy()
         trf.coef_ = func(self.coef_)
-        assert trf.coef_.shape == self.coef_.shape, f"{func} must apply to array and return an array of same shape."
+        assert trf.coef_.shape == self.coef_.shape, (
+            f"{func} must apply to array and return an array of same shape."
+        )
         trf.intercept_ = func(self.intercept_)
         return trf
 
-
-    def plot(self, feat_id=None, ax=None, spatial_colors=False, info=None, picks=None, plot_kws={}, **kwargs):
+    def plot(
+        self,
+        feat_id=None,
+        ax=None,
+        spatial_colors=False,
+        info=None,
+        picks=None,
+        plot_kws={},
+        **kwargs,
+    ):
         """Plot the TRF of the feature requested as a *butterfly* plot.
 
         Parameters
@@ -1097,50 +1297,70 @@ class TRFEstimator(BaseEstimator):
         fig : :class:`plt.Figure`
         """
         if isinstance(feat_id, int):
-            feat_id = list(feat_id) # cast into list to be able to use min, len, etc...
+            feat_id = list(feat_id)  # cast into list to be able to use min, len, etc...
         if not feat_id:
             feat_id = range(self.n_feats_)
 
         assert self.fitted, "Fit the model first!"
-        assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), "Feat ids not in range"
+        assert all([min(feat_id) >= 0, max(feat_id) < self.n_feats_]), (
+            "Feat ids not in range"
+        )
 
         if ax is None:
-            if 'figsize' not in kwargs.keys():
-                fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), squeeze=False,
-                                       figsize=(plt.rcParams['figure.figsize'][0] * np.size(feat_id), plt.rcParams['figure.figsize'][1]), **kwargs)
+            if "figsize" not in kwargs:
+                fig, ax = plt.subplots(
+                    nrows=1,
+                    ncols=np.size(feat_id),
+                    squeeze=False,
+                    figsize=(
+                        plt.rcParams["figure.figsize"][0] * np.size(feat_id),
+                        plt.rcParams["figure.figsize"][1],
+                    ),
+                    **kwargs,
+                )
                 ax = ax.ravel()
             else:
                 fig, ax = plt.subplots(nrows=1, ncols=np.size(feat_id), **kwargs)
         else:
-            if hasattr(ax, '__len__'):
+            if hasattr(ax, "__len__"):
                 fig = ax[0].figure
             else:
                 fig = ax.figure
                 ax = [ax]
-        
+
         if info is not None:
-            info['sfreq'] = self.srate # need that fix in case info is from some other processed data
-            for k, feat in enumerate(feat_id):        
-                plot_interactive(self.coef_[:, feat, :].T, info=info, ax=ax[k], tmin=self.tmin, picks=picks)
+            info["sfreq"] = (
+                self.srate
+            )  # need that fix in case info is from some other processed data
+            for k, feat in enumerate(feat_id):
+                plot_interactive(
+                    self.coef_[:, feat, :].T,
+                    info=info,
+                    ax=ax[k],
+                    tmin=self.tmin,
+                    picks=picks,
+                )
                 if self.feat_names_:
-                    ax[k].set_title('{:s}'.format(self.feat_names_[feat]))
+                    ax[k].set_title(f"{self.feat_names_[feat]:s}")
             return fig
 
         if spatial_colors:
-            assert info is not None, "To use spatial colouring, you must supply raw.info instance"
+            assert info is not None, (
+                "To use spatial colouring, you must supply raw.info instance"
+            )
             colors = get_spatial_colors(info)
-            
+
         for k, feat in enumerate(feat_id):
             ax[k].plot(self.times, self.coef_[:, feat, :], **plot_kws)
             if self.feat_names_:
-                ax[k].set_title('{:s}'.format(self.feat_names_[feat]))
+                ax[k].set_title(f"{self.feat_names_[feat]:s}")
             if spatial_colors:
                 lines = ax[k].get_lines()
                 for kc, l in enumerate(lines):
                     l.set_color(colors[kc])
-                        
+
         return fig
-    
+
     def plot_topomap(self, time_lag, feat_id, info, ax=None, plot_kws={}, **kwargs):
         """Plot the topomap of the TRF at a given time-lag.
 
@@ -1161,31 +1381,46 @@ class TRFEstimator(BaseEstimator):
         """
         assert self.fitted, "Fit the model first!"
         assert self.tmin <= time_lag <= self.tmax, "Time-lag not in range"
-        if isinstance(feat_id, int): assert 0 <= feat_id < self.n_feats_, "Feat id not in range"
+        if isinstance(feat_id, int):
+            assert 0 <= feat_id < self.n_feats_, "Feat id not in range"
         if isinstance(feat_id, str):
-            assert feat_id in self.feat_names_, f"Features {feat_id} not in {self.feat_names_}"
+            assert feat_id in self.feat_names_, (
+                f"Features {feat_id} not in {self.feat_names_}"
+            )
             feat_id = self.feat_names_.index(feat_id)
         if ax is None:
             fig, ax = plt.subplots(1, 1, **kwargs)
         else:
             fig = ax.figure
         from pyeeg.vizu import topomap
-        topomap(self.coef_[np.argmin(np.abs(self.times - time_lag)), feat_id, :], info, ax=ax, **plot_kws)
+
+        topomap(
+            self.coef_[np.argmin(np.abs(self.times - time_lag)), feat_id, :],
+            info,
+            ax=ax,
+            **plot_kws,
+        )
         return fig
-    
+
     def _select_time_lag(self, indices):
         trf = self.copy()
         trf.coef_ = self.coef_[indices, :, :]
         trf.times = self.times[indices]
         trf.lags = self.lags[indices]
         return trf
-    
+
     def _select_features(self, indices):
-        selected_feature_alphas = (self.feature_alphas[indices]
-                                   if self.feature_alphas is not None else None)
-        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha,
-                           feature_alphas=selected_feature_alphas,
-                           block_order=self.block_order)
+        selected_feature_alphas = (
+            self.feature_alphas[indices] if self.feature_alphas is not None else None
+        )
+        trf = TRFEstimator(
+            tmin=self.tmin,
+            tmax=self.tmax,
+            srate=self.srate,
+            alpha=self.alpha,
+            feature_alphas=selected_feature_alphas,
+            block_order=self.block_order,
+        )
         trf.coef_ = self.coef_[:, indices]
         trf.feat_names_ = self.feat_names_[indices] if self.feat_names_ else None
         trf.n_feats_ = len(indices)
@@ -1202,34 +1437,48 @@ class TRFEstimator(BaseEstimator):
         If a float, or an array of floats is supplied, will return a new TRF instance with only the corresponding time-lags.
         """
         # Argument check
-        integer_indices = isinstance(feats, int) or (np.ndim(feats) > 0 and all([isinstance(f, int) for f in feats]))
+        integer_indices = isinstance(feats, int) or (
+            np.ndim(feats) > 0 and all([isinstance(f, int) for f in feats])
+        )
         if isinstance(feats, (float, np.ndarray)):
-            assert np.all([f >= self.tmin and f <= self.tmax for f in feats]), "Time-lags not in range"
+            assert np.all([f >= self.tmin and f <= self.tmax for f in feats]), (
+                "Time-lags not in range"
+            )
             indices = np.argmin(np.abs(self.times - feats))
             return self._select_time_lag(indices)
-        
+
         if self.feat_names_ is None or integer_indices:
             if np.ndim(feats) > 0:
-                assert isinstance(feats[0], int), "Type not understood, feat_names are ot defined, can only index with int"
+                assert isinstance(feats[0], int), (
+                    "Type not understood, feat_names are ot defined, can only index with int"
+                )
                 indices = feats
 
             else:
-                assert isinstance(feats, int), "Type not understood, feat_names are ot defined, can only index with int"
+                assert isinstance(feats, int), (
+                    "Type not understood, feat_names are ot defined, can only index with int"
+                )
                 indices = [feats]
                 feats = [feats]
         else:
             if np.ndim(feats) > 0:
-                assert all([f in self.feat_names_ for f in feats]), "an element in argument %s in not present in %s"%(feats, self.feat_names_)
+                assert all([f in self.feat_names_ for f in feats]), (
+                    "an element in argument %s in not present in %s"
+                    % (feats, self.feat_names_)
+                )
                 indices = [self.feat_names_.index(f) for f in feats]
             else:
-                assert feats in self.feat_names_, "argument %s not present in %s"%(feats, self.feat_names_)
+                assert feats in self.feat_names_, "argument %s not present in %s" % (
+                    feats,
+                    self.feat_names_,
+                )
                 indices = [self.feat_names_.index(feats)]
                 feats = [feats]
         return self._select_features(indices)
 
     def __repr__(self):
-        tmin = self.tmin if self.tmin is not None else float('nan')
-        tmax = self.tmax if self.tmax is not None else float('nan')
+        tmin = self.tmin if self.tmin is not None else float("nan")
+        tmax = self.tmax if self.tmax is not None else float("nan")
         if self.fitted:
             obj = """TRFEstimator(
                 alpha=%s,
@@ -1242,8 +1491,17 @@ class TRFEstimator(BaseEstimator):
                 n_lags=%d,
                 features : %s
             )
-            """%(self.alpha, self.fit_intercept, self.srate, tmin, tmax,
-                self.n_feats_, self.n_chans_, len(self.lags), str(self.feat_names_))
+            """ % (
+                self.alpha,
+                self.fit_intercept,
+                self.srate,
+                tmin,
+                tmax,
+                self.n_feats_,
+                self.n_chans_,
+                len(self.lags),
+                str(self.feat_names_),
+            )
             return obj
         else:
             obj = """TRFEstimator(
@@ -1255,14 +1513,27 @@ class TRFEstimator(BaseEstimator):
                 
                 Not fitted yet.
             )
-            """%(self.alpha, self.fit_intercept, self.srate, tmin, tmax,)
+            """ % (
+                self.alpha,
+                self.fit_intercept,
+                self.srate,
+                tmin,
+                tmax,
+            )
             return obj
 
     def __add__(self, other_trf):
         "Make available the '+' operator. Will simply add coefficients. Be mindful of dividing by the number of elements later if you want the true mean."
-        assert (other_trf.n_feats_ == self.n_feats_ and other_trf.n_chans_ == self.n_chans_), "Both TRF objects must have the same number of features and channels"
-        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha,
-                       block_order=self.block_order)
+        assert (
+            other_trf.n_feats_ == self.n_feats_ and other_trf.n_chans_ == self.n_chans_
+        ), "Both TRF objects must have the same number of features and channels"
+        trf = TRFEstimator(
+            tmin=self.tmin,
+            tmax=self.tmax,
+            srate=self.srate,
+            alpha=self.alpha,
+            block_order=self.block_order,
+        )
         trf.coef_ = np.sum([self.coef_, other_trf.coef_], 0)
         trf.intercept_ = np.sum([self.intercept_, other_trf.intercept_], 0)
         trf.feat_names_ = self.feat_names_
@@ -1273,7 +1544,7 @@ class TRFEstimator(BaseEstimator):
         trf.lags = self.lags
 
         return trf
-    
+
     def __truediv__(self, scalar):
         "Make available the '/' operator. Will simply divide coefficients by scalar (useful for averaging)."
         assert isinstance(scalar, (int, float)), "Can only divide by scalar"
@@ -1284,9 +1555,14 @@ class TRFEstimator(BaseEstimator):
         return trf
 
     def copy(self):
-        trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha,
-                           feature_alphas=self.feature_alphas,
-                           block_order=self.block_order)
+        trf = TRFEstimator(
+            tmin=self.tmin,
+            tmax=self.tmax,
+            srate=self.srate,
+            alpha=self.alpha,
+            feature_alphas=self.feature_alphas,
+            block_order=self.block_order,
+        )
         trf.coef_ = self.coef_
         trf.intercept_ = self.intercept_
         trf.feat_names_ = self.feat_names_
@@ -1296,7 +1572,7 @@ class TRFEstimator(BaseEstimator):
         trf.times = self.times
         trf.lags = self.lags
         return trf
-    
+
     def save(self, filename):
         """
         Save the current trf object to file.
@@ -1310,23 +1586,25 @@ class TRFEstimator(BaseEstimator):
         Returns
         -------
         None.
-        
+
         Raise
         -----
         AssertionError: if trf is empty (not fitted).
         """
         assert self.fitted, "Fit TRF before saving it."
-        trf = {'coef_': self.coef_,
-               'intercept_': self.intercept_,
-               'feat_names_': self.feat_names_,
-               'srate': self.srate,
-               'tmin': self.tmin,
-               'tmax': self.tmax,
-               'times': self.times,
-               'alpha': self.alpha,
-               'feature_alphas': self.feature_alphas}
+        trf = {
+            "coef_": self.coef_,
+            "intercept_": self.intercept_,
+            "feat_names_": self.feat_names_,
+            "srate": self.srate,
+            "tmin": self.tmin,
+            "tmax": self.tmax,
+            "times": self.times,
+            "alpha": self.alpha,
+            "feature_alphas": self.feature_alphas,
+        }
         np.savez(filename, **trf)
-        
+
     def load(filename):
         """
         Load and return a TRF instance from numpy archive file (created with trf.save)
@@ -1342,21 +1620,26 @@ class TRFEstimator(BaseEstimator):
         """
         npzdata = np.load(filename, allow_pickle=True)
         feature_alphas = None
-        if 'feature_alphas' in npzdata:
-            stored_feature_alphas = npzdata['feature_alphas']
-            if stored_feature_alphas.ndim != 0 or stored_feature_alphas.item() is not None:
+        if "feature_alphas" in npzdata:
+            stored_feature_alphas = npzdata["feature_alphas"]
+            if (
+                stored_feature_alphas.ndim != 0
+                or stored_feature_alphas.item() is not None
+            ):
                 feature_alphas = stored_feature_alphas
-        trf = TRFEstimator(tmin=npzdata['tmin'], tmax=npzdata['tmax'], srate=npzdata['srate'],
-                           alpha=npzdata['alpha'], feature_alphas=feature_alphas,
-                           block_order='lags')
+        trf = TRFEstimator(
+            tmin=npzdata["tmin"],
+            tmax=npzdata["tmax"],
+            srate=npzdata["srate"],
+            alpha=npzdata["alpha"],
+            feature_alphas=feature_alphas,
+            block_order="lags",
+        )
         trf.fill_lags()
-        trf.intercept_ = npzdata['intercept_']
-        trf.feat_names_ = npzdata['feat_names_']
-        trf.coef_ = npzdata['coef_']
+        trf.intercept_ = npzdata["intercept_"]
+        trf.feat_names_ = npzdata["feat_names_"]
+        trf.coef_ = npzdata["coef_"]
         trf.n_chans_ = trf.coef_.shape[-1]
         trf.n_feats_ = trf.coef_.shape[1]
         trf.fitted = True
         return trf
-        
-        
-

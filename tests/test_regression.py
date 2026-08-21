@@ -7,26 +7,40 @@ TRFEstimator and CCA_Estimator can recover them from simulated data.
 
 import numpy as np
 import pytest
+
 from pyeeg.simulate import (
     dummy_trf_kernel,
     simulate_pulse_inputs,
     simulate_smooth_input,
     simulate_trf_output,
-    simulate_ar,
-    simulate_var,
 )
 from pyeeg.utils import lag_matrix
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_trf_data(srate=100, dur=30.0, n_events=200, seed=42,
-                   kernel_type='gaussian', tmin=-0.2, tmax=0.5, tloc=0.1, sigma=0.1):
+
+def _make_trf_data(
+    srate=100,
+    dur=30.0,
+    n_events=200,
+    seed=42,
+    kernel_type="gaussian",
+    tmin=-0.2,
+    tmax=0.5,
+    tloc=0.1,
+    sigma=0.1,
+):
     """Build a full TRF dataset with known kernel."""
-    tker, ker = dummy_trf_kernel(tmin=tmin, tmax=tmax, srate=srate,
-                                 tloc=tloc, sigma=sigma, kernel_type=kernel_type)
+    tker, ker = dummy_trf_kernel(
+        tmin=tmin,
+        tmax=tmax,
+        srate=srate,
+        tloc=tloc,
+        sigma=sigma,
+        kernel_type=kernel_type,
+    )
     t, x = simulate_pulse_inputs(n_events=n_events, dur=dur, srate=srate, seed=seed)
     y = simulate_trf_output(tker, ker, x, srate=srate)
     return t, x, y, tker, ker
@@ -39,10 +53,16 @@ def _fit_trf_lagged(tker, ker, x, y, srate=100, alpha=1.0, quadratic_reg=None):
     computation (which is not needed for kernel recovery) is skipped.
     """
     from pyeeg.models import TRFEstimator
+
     lags = np.round(tker * srate).astype(int)
-    X = lag_matrix(x if x.ndim == 2 else x[:, None], lags, filling=0., drop_missing=False)
-    trf = TRFEstimator(times=tker, srate=srate, alpha=alpha, fit_intercept=False,
-                       quadratic_reg=quadratic_reg)
+    X = lag_matrix(x if x.ndim == 2 else x[:, None], lags, mode="full", fill_value=0.0)
+    trf = TRFEstimator(
+        times=tker,
+        srate=srate,
+        alpha=alpha,
+        fit_intercept=False,
+        quadratic_reg=quadratic_reg,
+    )
     trf.fit(X[:, ::-1], y if y.ndim == 2 else y[:, None], lagged=True, drop=False)
     return trf.coef_.squeeze()
 
@@ -65,6 +85,7 @@ def _make_cca_data(n=5000, n_feats=3, n_chans=4, noise=0.5, seed=42):
 # ===========================================================================
 # TRF tests
 # ===========================================================================
+
 
 class TestTRFEstimator:
     """Regression tests for TRFEstimator using simulated data."""
@@ -93,49 +114,67 @@ class TestTRFEstimator:
         alpha is left None so it defaults to the M-strength knob (scale 1)."""
         srate = 100
         t, x, y, tker, ker = _make_trf_data(srate=srate, seed=42)
-        coef = _fit_trf_lagged(tker, ker, x, y, srate=srate, alpha=None,
-                               quadratic_reg='smoothness')
+        coef = _fit_trf_lagged(
+            tker, ker, x, y, srate=srate, alpha=None, quadratic_reg="smoothness"
+        )
 
         corr = np.corrcoef(coef, ker)[0, 1]
-        assert corr > 0.95, f"Smoothness-regularised kernel correlation {corr:.3f} < 0.95"
+        assert corr > 0.95, (
+            f"Smoothness-regularised kernel correlation {corr:.3f} < 0.95"
+        )
 
     def test_trf_quadratic_regularization_scaled(self):
         """alpha scales M (the M-strength knob). The result must equal a direct
         solve of (X.T@X + alpha*M) beta = X.T@y."""
         from pyeeg.models import TRFEstimator
         from pyeeg.solvers import create_quadratic_regularizer
+
         srate = 100
         t, x, y, tker, ker = _make_trf_data(srate=srate, seed=42)
         Y = y[:, None]
 
-        trf = TRFEstimator(times=tker, srate=srate, fit_intercept=False,
-                           alpha=100.0, quadratic_reg='smoothness')
+        trf = TRFEstimator(
+            times=tker,
+            srate=srate,
+            fit_intercept=False,
+            alpha=100.0,
+            quadratic_reg="smoothness",
+        )
         trf.fill_lags()
-        X = lag_matrix(x[:, None], trf.lags, filling=0., drop_missing=False)
+        X = lag_matrix(x[:, None], trf.lags, mode="full", fill_value=0.0)
         trf.fit(X, Y, lagged=True, drop=False)
         coef = trf.coef_.squeeze()
 
         # reference: direct solve of (XtX + alpha*M) beta = XtY in the
         # estimator's own lag ordering
-        M = np.kron(np.eye(1), create_quadratic_regularizer('smoothness',
-                                                            len(trf.lags),
-                                                            alpha=100.0))
+        M = np.kron(
+            np.eye(1),
+            create_quadratic_regularizer("smoothness", len(trf.lags), alpha=100.0),
+        )
         ref = np.linalg.solve(X.T @ X + M, X.T @ Y).squeeze()
         # coef_ is stored lag-flipped relative to the solve
-        assert np.allclose(coef, ref[::-1]), "alpha-scaled M does not match direct solve"
+        assert np.allclose(coef, ref[::-1]), (
+            "alpha-scaled M does not match direct solve"
+        )
 
     def test_trf_quadratic_regularization_zero_alpha_is_ols(self):
         """alpha=0 with quadratic_reg set must reduce to plain least squares
         (M scaled to zero, regularization path taken, no stats computed)."""
         from pyeeg.models import TRFEstimator
+
         srate = 100
         t, x, y, tker, ker = _make_trf_data(srate=srate, seed=42)
         Y = y[:, None]
 
-        trf = TRFEstimator(times=tker, srate=srate, fit_intercept=False,
-                           alpha=0.0, quadratic_reg='smoothness')
+        trf = TRFEstimator(
+            times=tker,
+            srate=srate,
+            fit_intercept=False,
+            alpha=0.0,
+            quadratic_reg="smoothness",
+        )
         trf.fill_lags()
-        X = lag_matrix(x[:, None], trf.lags, filling=0., drop_missing=False)
+        X = lag_matrix(x[:, None], trf.lags, mode="full", fill_value=0.0)
         trf.fit(X, Y, lagged=True, drop=False)
         coef = trf.coef_.squeeze()
 
@@ -152,15 +191,25 @@ class TestTRFEstimator:
         that even sf-based p-values underflow to 0.0.
         """
         from pyeeg.models import TRFEstimator
+
         srate = 100
         t, x, y, tker, ker = _make_trf_data(srate=srate, seed=seed)
         rng = np.random.default_rng(seed)
         y = y + noise_frac * np.std(y) * rng.standard_normal(len(y))
-        Y = y[:, None] if n_chans == 1 else np.concatenate([y[:, None]] * n_chans, axis=1)
-        trf = TRFEstimator(times=tker, srate=srate, fit_intercept=fit_intercept,
-                           alpha=None, verbose=False)
+        Y = (
+            y[:, None]
+            if n_chans == 1
+            else np.concatenate([y[:, None]] * n_chans, axis=1)
+        )
+        trf = TRFEstimator(
+            times=tker,
+            srate=srate,
+            fit_intercept=fit_intercept,
+            alpha=None,
+            verbose=False,
+        )
         trf.fill_lags()
-        X = lag_matrix(x[:, None], trf.lags, filling=0., drop_missing=False)
+        X = lag_matrix(x[:, None], trf.lags, mode="full", fill_value=0.0)
         trf.fit(X, Y, lagged=True, drop=False)
         return trf, X, Y
 
@@ -173,8 +222,9 @@ class TestTRFEstimator:
         (issue #25: the unconditional [1:, :] strip crashed)."""
         trf, X, Y = self._fit_trf_stats(fit_intercept=False)
         # tvals_/pvals_ must match the flattened coef_ (n_coefs, n_chans)
-        assert trf.tvals_.shape == self._coef_flat(trf).shape, \
+        assert trf.tvals_.shape == self._coef_flat(trf).shape, (
             f"tvals_ {trf.tvals_.shape} != coef_ {self._coef_flat(trf).shape}"
+        )
         assert trf.pvals_.shape == self._coef_flat(trf).shape
         assert np.all(np.isfinite(trf.tvals_))
         assert np.all((trf.pvals_ > 0) & (trf.pvals_ <= 1))
@@ -204,8 +254,9 @@ class TestTRFEstimator:
         assert trf.tvals_.shape == self._coef_flat(trf).shape
         assert np.all(np.isfinite(trf.tvals_))
 
-    def _fit_trf_stats_multi(self, fit_intercept, block_order, n_feats=3, n_lags=4,
-                             n_chans=2, seed=7):
+    def _fit_trf_stats_multi(
+        self, fit_intercept, block_order, n_feats=3, n_lags=4, n_chans=2, seed=7
+    ):
         """Fit an unregularized multi-feature / multi-channel TRF (>=2 features,
         >=2 lags) for the given ``block_order`` and return trf, X, Y.
 
@@ -214,30 +265,39 @@ class TestTRFEstimator:
         consumes the columns.
         """
         from pyeeg.models import TRFEstimator
+
         srate = 100
         n = 600
         rng = np.random.default_rng(seed)
         x = rng.standard_normal((n, n_feats))
         tker = np.linspace(-0.2, 0.4, n_lags)
-        trf = TRFEstimator(times=tker, srate=srate, fit_intercept=fit_intercept,
-                           alpha=None, verbose=False, block_order=block_order)
+        trf = TRFEstimator(
+            times=tker,
+            srate=srate,
+            fit_intercept=fit_intercept,
+            alpha=None,
+            verbose=False,
+            block_order=block_order,
+        )
         trf.fill_lags()
-        X = lag_matrix(x, trf.lags, filling=0., drop_missing=False,
-                       block_order=block_order)
+        X = lag_matrix(
+            x, trf.lags, mode="full", fill_value=0.0, block_order=block_order
+        )
         weights = rng.standard_normal((X.shape[1], n_chans))
         Y = X @ weights
         Y = Y + 0.5 * np.std(Y, axis=0) * rng.standard_normal((n, n_chans))
         trf.fit(X, Y, lagged=True, drop=False)
         return trf, X, Y
 
-    @pytest.mark.parametrize('block_order', ['lags', 'features'])
+    @pytest.mark.parametrize("block_order", ["lags", "features"])
     def test_trf_stats_canonical_ordering(self, block_order):
         """tvals_/pvals_ must follow the same canonical flattened ordering as
         coef_ for multi-feature / multi-lag / multi-channel fits, in both block
         orders (issue #30). Verified by a direct covariance/SE reconstruction
         using the estimator's own solver design matrix."""
-        trf, X, Y = self._fit_trf_stats_multi(fit_intercept=False,
-                                              block_order=block_order)
+        trf, X, Y = self._fit_trf_stats_multi(
+            fit_intercept=False, block_order=block_order
+        )
         # canonical flattened coef_ ordering
         coef_flat = self._coef_flat(trf)
         assert trf.tvals_.shape == coef_flat.shape
@@ -251,16 +311,18 @@ class TestTRFEstimator:
         sigma = np.sum((Y - X @ trf._coef_to_beta(trf.coef_)) ** 2, axis=0) / dof
         se_solver = np.sqrt(np.diag(np.linalg.inv(X.T @ X))[:, None] * sigma)
         se_canonical = trf._beta_to_coef(se_solver[:, None]).reshape(-1, Y.shape[1])
-        assert np.allclose(trf.tvals_, coef_flat / se_canonical), \
+        assert np.allclose(trf.tvals_, coef_flat / se_canonical), (
             f"tvals_ not in canonical coef_ ordering for block_order={block_order}"
+        )
 
-    @pytest.mark.parametrize('block_order', ['lags', 'features'])
+    @pytest.mark.parametrize("block_order", ["lags", "features"])
     def test_trf_stats_canonical_ordering_with_intercept(self, block_order):
         """Same canonical-ordering guarantee with fit_intercept=True, exercising
         the intercept-row strip and the leading intercept column of the
         covariance matrix (issue #30)."""
-        trf, X, Y = self._fit_trf_stats_multi(fit_intercept=True,
-                                              block_order=block_order)
+        trf, X, Y = self._fit_trf_stats_multi(
+            fit_intercept=True, block_order=block_order
+        )
         coef_flat = self._coef_flat(trf)
         assert trf.tvals_.shape == coef_flat.shape
         assert trf.pvals_.shape == coef_flat.shape
@@ -269,20 +331,22 @@ class TestTRFEstimator:
 
         # reconstruct the design matrix exactly as fit() does (intercept first)
         X_design = np.hstack([np.ones((len(X), 1)), X])
-        betas_full = np.vstack([trf.intercept_[:, None].T,
-                                trf._coef_to_beta(trf.coef_)])
+        betas_full = np.vstack(
+            [trf.intercept_[:, None].T, trf._coef_to_beta(trf.coef_)]
+        )
         dof = len(Y) - X_design.shape[1]
         sigma = np.sum((Y - X_design @ betas_full) ** 2, axis=0) / dof
         # strip the leading intercept row/col of the covariance diagonal
-        se_solver = np.sqrt(np.diag(np.linalg.inv(X_design.T @ X_design))[:, None]
-                            * sigma)[1:]
+        se_solver = np.sqrt(
+            np.diag(np.linalg.inv(X_design.T @ X_design))[:, None] * sigma
+        )[1:]
         se_canonical = trf._beta_to_coef(se_solver[:, None]).reshape(-1, Y.shape[1])
         assert np.allclose(trf.tvals_, coef_flat / se_canonical)
 
     def test_trf_recovers_bipolar_kernel(self):
         """Bipolar (derivative-of-gaussian) kernel should also be recoverable."""
         srate = 100
-        t, x, y, tker, ker = _make_trf_data(srate=srate, kernel_type='bipolar', seed=7)
+        t, x, y, tker, ker = _make_trf_data(srate=srate, kernel_type="bipolar", seed=7)
         coef = _fit_trf_lagged(tker, ker, x, y, srate=srate, alpha=0.001)
 
         corr = np.corrcoef(coef, ker)[0, 1]
@@ -307,7 +371,7 @@ class TestTRFEstimator:
         t, x, y, tker, ker = _make_trf_data(srate=srate, n_events=300, seed=42)
 
         lags = np.round(tker * srate).astype(int)
-        X = lag_matrix(x[:, None], lags, filling=0., drop_missing=False)
+        X = lag_matrix(x[:, None], lags, mode="full", fill_value=0.0)
         trf = TRFEstimator(times=tker, srate=srate, alpha=1.0, fit_intercept=False)
         trf.fit(X[:, ::-1], y[:, None], lagged=True, drop=False)
         r2 = trf.score(X[:, ::-1], y[:, None])
@@ -323,8 +387,10 @@ class TestTRFEstimator:
         t, x, y, _, _ = _make_trf_data(srate=srate, seed=42)
 
         lags = np.round(tker * srate).astype(int)
-        X = lag_matrix(x[:, None], lags, filling=0., drop_missing=False)
-        trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=srate, alpha=1.0, fit_intercept=False)
+        X = lag_matrix(x[:, None], lags, mode="full", fill_value=0.0)
+        trf = TRFEstimator(
+            tmin=-0.2, tmax=0.5, srate=srate, alpha=1.0, fit_intercept=False
+        )
         trf.fit(X[:, ::-1], y[:, None], lagged=True, drop=False)
 
         assert trf.coef_ is not None
@@ -343,7 +409,7 @@ class TestTRFEstimator:
         y2d = np.column_stack([y1, y2])
 
         lags = np.round(tker * srate).astype(int)
-        X = lag_matrix(x[:, None], lags, filling=0., drop_missing=False)
+        X = lag_matrix(x[:, None], lags, mode="full", fill_value=0.0)
         trf = TRFEstimator(times=tker, srate=srate, alpha=1.0, fit_intercept=False)
         trf.fit(X[:, ::-1], y2d, lagged=True, drop=False)
 
@@ -359,13 +425,15 @@ class TestTRFEstimator:
         coef_low = _fit_trf_lagged(tker, ker, x, y, srate=srate, alpha=0.1)
         coef_high = _fit_trf_lagged(tker, ker, x, y, srate=srate, alpha=100.0)
 
-        assert np.linalg.norm(coef_high) < np.linalg.norm(coef_low), \
+        assert np.linalg.norm(coef_high) < np.linalg.norm(coef_low), (
             "Higher alpha should produce smaller coefficient norms"
+        )
 
 
 # ===========================================================================
 # CCA tests
 # ===========================================================================
+
 
 class TestCCAEstimator:
     """Regression tests for CCA_Estimator using simulated data."""
@@ -387,8 +455,9 @@ class TestCCAEstimator:
         Ax, Ay, R = cca_svd(x, y)
 
         for i in range(len(R) - 1):
-            assert R[i] >= R[i + 1] - 1e-10, \
-                f"Correlations not decreasing: R[{i}]={R[i]:.4f} < R[{i+1}]={R[i+1]:.4f}"
+            assert R[i] >= R[i + 1] - 1e-10, (
+                f"Correlations not decreasing: R[{i}]={R[i]:.4f} < R[{i + 1}]={R[i + 1]:.4f}"
+            )
 
     def test_cca_projections_orthonormal(self):
         """CCA projection matrices should yield orthonormal canonical variables."""
@@ -402,10 +471,18 @@ class TestCCAEstimator:
         Cx = np.corrcoef(px, rowvar=False)
         Cy = np.corrcoef(py, rowvar=False)
 
-        np.testing.assert_allclose(Cx, np.eye(Cx.shape[0]), atol=0.05,
-                                   err_msg="X canonical variables not approximately orthonormal")
-        np.testing.assert_allclose(Cy, np.eye(Cy.shape[0]), atol=0.05,
-                                   err_msg="Y canonical variables not approximately orthonormal")
+        np.testing.assert_allclose(
+            Cx,
+            np.eye(Cx.shape[0]),
+            atol=0.05,
+            err_msg="X canonical variables not approximately orthonormal",
+        )
+        np.testing.assert_allclose(
+            Cy,
+            np.eye(Cy.shape[0]),
+            atol=0.05,
+            err_msg="Y canonical variables not approximately orthonormal",
+        )
 
     def test_cca_zero_signal_recovery(self):
         """CCA with perfectly shared signal should find correlation ~1."""
@@ -415,10 +492,12 @@ class TestCCAEstimator:
         n = 2000
         shared = rng.standard_normal((n, 1))
         noise = 0.01
-        x = np.hstack([shared + noise * rng.standard_normal((n, 1)),
-                        rng.standard_normal((n, 2))])
-        y = np.hstack([shared + noise * rng.standard_normal((n, 1)),
-                        rng.standard_normal((n, 2))])
+        x = np.hstack(
+            [shared + noise * rng.standard_normal((n, 1)), rng.standard_normal((n, 2))]
+        )
+        y = np.hstack(
+            [shared + noise * rng.standard_normal((n, 1)), rng.standard_normal((n, 2))]
+        )
 
         Ax, Ay, R = cca_svd(x, y)
         assert R[0] > 0.99, f"Perfect signal correlation {R[0]:.4f} < 0.99"
@@ -431,5 +510,9 @@ class TestCCAEstimator:
         Ax, Ay, R_svd = cca_svd(x, y)
         A1, A2, A, B_coef, R_nt, _, _ = cca_nt(x, y, [1, 1], None)
 
-        np.testing.assert_allclose(R_svd, R_nt, atol=0.01,
-                                   err_msg="cca_svd and cca_nt disagree on correlations")
+        np.testing.assert_allclose(
+            R_svd,
+            R_nt,
+            atol=0.01,
+            err_msg="cca_svd and cca_nt disagree on correlations",
+        )

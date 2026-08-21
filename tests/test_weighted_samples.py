@@ -15,10 +15,10 @@ import pytest
 
 from pyeeg.utils import apply_sample_weights
 
-
 # ---------------------------------------------------------------------------
 # apply_sample_weights unit tests
 # ---------------------------------------------------------------------------
+
 
 class TestApplySampleWeights:
     def test_ones_weights_identity(self):
@@ -54,6 +54,7 @@ class TestApplySampleWeights:
 # TRFEstimator weighted fit tests
 # ---------------------------------------------------------------------------
 
+
 def _wls_reference(X, y, w, intercept=True):
     """Direct weighted least squares solve, returning (intercept, coefs).
 
@@ -75,8 +76,11 @@ class TestTRFWeightedFit:
     def test_ones_weights_match_unweighted(self):
         """weights=ones must reproduce the unweighted fit exactly."""
         from pyeeg.models import TRFEstimator
-        from pyeeg.simulate import (dummy_trf_kernel, simulate_pulse_inputs,
-                                    simulate_trf_output)
+        from pyeeg.simulate import (
+            dummy_trf_kernel,
+            simulate_pulse_inputs,
+            simulate_trf_output,
+        )
         from pyeeg.utils import lag_matrix
 
         srate = 100
@@ -84,16 +88,19 @@ class TestTRFWeightedFit:
         _, x = simulate_pulse_inputs(n_events=200, dur=30.0, srate=srate, seed=42)
         y = simulate_trf_output(tker, ker, x, srate=srate)
         lags = np.round(tker * srate).astype(int)
-        X = lag_matrix(x[:, None], lags, filling=0., drop_missing=False)
+        X = lag_matrix(x[:, None], lags, mode="full", fill_value=0.0)
 
-        trf0 = TRFEstimator(times=tker, srate=srate, alpha=1.0,
-                            fit_intercept=False, verbose=False)
+        trf0 = TRFEstimator(
+            times=tker, srate=srate, alpha=1.0, fit_intercept=False, verbose=False
+        )
         trf0.fit(X[:, ::-1], y[:, None], lagged=True, drop=False)
 
-        trf1 = TRFEstimator(times=tker, srate=srate, alpha=1.0,
-                            fit_intercept=False, verbose=False)
-        trf1.fit(X[:, ::-1], y[:, None], lagged=True, drop=False,
-                 weights=np.ones(len(y)))
+        trf1 = TRFEstimator(
+            times=tker, srate=srate, alpha=1.0, fit_intercept=False, verbose=False
+        )
+        trf1.fit(
+            X[:, ::-1], y[:, None], lagged=True, drop=False, weights=np.ones(len(y))
+        )
 
         np.testing.assert_allclose(trf0.coef_, trf1.coef_)
 
@@ -109,8 +116,9 @@ class TestTRFWeightedFit:
 
         ref_intercept, ref_coef = _wls_reference(X, y, w, intercept=True)
 
-        trf = TRFEstimator(times=[0.], srate=1.0, alpha=None,
-                           fit_intercept=True, verbose=False)
+        trf = TRFEstimator(
+            times=[0.0], srate=1.0, alpha=None, fit_intercept=True, verbose=False
+        )
         trf.fit(X, y[:, None], drop=False, weights=w)
 
         np.testing.assert_allclose(trf.coef_.squeeze(), ref_coef, atol=1e-8)
@@ -128,8 +136,9 @@ class TestTRFWeightedFit:
 
         _, ref_coef = _wls_reference(X, y, w, intercept=False)
 
-        trf = TRFEstimator(times=[0.], srate=1.0, alpha=None,
-                           fit_intercept=False, verbose=False)
+        trf = TRFEstimator(
+            times=[0.0], srate=1.0, alpha=None, fit_intercept=False, verbose=False
+        )
         trf.fit(X, y[:, None], drop=False, weights=w)
 
         np.testing.assert_allclose(trf.coef_.squeeze(), ref_coef, atol=1e-8)
@@ -151,16 +160,20 @@ class TestTRFWeightedFit:
         # is weighted like every other column (correct WLS semantics, consistent
         # with the single-array path and _wls_reference).
         swa, swb = np.sqrt(wa), np.sqrt(wb)
-        Xref = np.vstack([np.hstack([np.ones((120, 1)), Xa]) * swa[:, None],
-                          np.hstack([np.ones((80, 1)), Xb]) * swb[:, None]])
+        Xref = np.vstack(
+            [
+                np.hstack([np.ones((120, 1)), Xa]) * swa[:, None],
+                np.hstack([np.ones((80, 1)), Xb]) * swb[:, None],
+            ]
+        )
         yref = np.concatenate([ya * swa, yb * swb])
         beta = np.linalg.lstsq(Xref, yref, rcond=None)[0]
         ref_intercept, ref_coef = beta[0], beta[1:]
 
-        trf = TRFEstimator(times=[0.], srate=1.0, alpha=None,
-                           fit_intercept=True, verbose=False)
-        trf.fit([Xa, Xb], [ya[:, None], yb[:, None]], drop=False,
-                weights=[wa, wb])
+        trf = TRFEstimator(
+            times=[0.0], srate=1.0, alpha=None, fit_intercept=True, verbose=False
+        )
+        trf.fit([Xa, Xb], [ya[:, None], yb[:, None]], drop=False, weights=[wa, wb])
 
         np.testing.assert_allclose(trf.coef_.squeeze(), ref_coef, atol=1e-8)
         np.testing.assert_allclose(trf.intercept_, ref_intercept, atol=1e-8)
@@ -180,19 +193,32 @@ class TestTRFWeightedFit:
         ya = rng.standard_normal((n_a, 1))
         yb = rng.standard_normal((n_b, 1))
 
-        Xa = lag_matrix(xa, lags, filling=0., drop_missing=False)
-        Xb = lag_matrix(xb, lags, filling=0., drop_missing=False)
+        Xa = lag_matrix(xa, lags, mode="full", fill_value=0.0)
+        Xb = lag_matrix(xb, lags, mode="full", fill_value=0.0)
 
-        trf0 = TRFEstimator(times=lags.astype(float)[::-1] / srate,
-                            srate=srate, alpha=1.0,
-                            fit_intercept=True, verbose=False)
+        trf0 = TRFEstimator(
+            times=lags.astype(float)[::-1] / srate,
+            srate=srate,
+            alpha=1.0,
+            fit_intercept=True,
+            verbose=False,
+        )
         trf0.fit([Xa[:, ::-1], Xb[:, ::-1]], [ya, yb], lagged=True, drop=False)
 
-        trf1 = TRFEstimator(times=lags.astype(float)[::-1] / srate,
-                            srate=srate, alpha=1.0,
-                            fit_intercept=True, verbose=False)
-        trf1.fit([Xa[:, ::-1], Xb[:, ::-1]], [ya, yb], lagged=True, drop=False,
-                 weights=[np.ones(n_a), np.ones(n_b)])
+        trf1 = TRFEstimator(
+            times=lags.astype(float)[::-1] / srate,
+            srate=srate,
+            alpha=1.0,
+            fit_intercept=True,
+            verbose=False,
+        )
+        trf1.fit(
+            [Xa[:, ::-1], Xb[:, ::-1]],
+            [ya, yb],
+            lagged=True,
+            drop=False,
+            weights=[np.ones(n_a), np.ones(n_b)],
+        )
 
         np.testing.assert_allclose(trf0.coef_, trf1.coef_)
         np.testing.assert_allclose(trf0.intercept_, trf1.intercept_)
@@ -208,8 +234,9 @@ class TestTRFWeightedFit:
         w = np.ones(n)
         w[5] = -0.1
 
-        trf = TRFEstimator(times=[0.], srate=1.0, alpha=None,
-                           fit_intercept=False, verbose=False)
+        trf = TRFEstimator(
+            times=[0.0], srate=1.0, alpha=None, fit_intercept=False, verbose=False
+        )
         with pytest.raises(ValueError, match="non-negative"):
             trf.fit(X, y, drop=False, weights=w)
 
@@ -222,7 +249,7 @@ class TestTRFWeightedFit:
         """
         from pyeeg.models import TRFEstimator
         from pyeeg.solvers import create_quadratic_regularizer
-        from pyeeg.utils import lag_matrix, apply_sample_weights
+        from pyeeg.utils import apply_sample_weights, lag_matrix
 
         rng = np.random.default_rng(6)
         n = 300
@@ -231,16 +258,22 @@ class TestTRFWeightedFit:
         y = rng.standard_normal((n, 1))
         w = rng.uniform(0.1, 2.0, n)
 
-        trf = TRFEstimator(tmin=-0.02, tmax=0.02, srate=srate,
-                           alpha=10.0, quadratic_reg='smoothness',
-                           fit_intercept=False, verbose=False)
+        trf = TRFEstimator(
+            tmin=-0.02,
+            tmax=0.02,
+            srate=srate,
+            alpha=10.0,
+            quadratic_reg="smoothness",
+            fit_intercept=False,
+            verbose=False,
+        )
         trf.fill_lags()
         trf.fit(x, y, drop=False, weights=w)
 
         # reference: weighted X/y then solve (XtX + alpha*M) beta = XtY.
-        X = lag_matrix(x, trf.lags, filling=0., drop_missing=False)
+        X = lag_matrix(x, trf.lags, mode="full", fill_value=0.0)
         Xw, yw = apply_sample_weights(X, y, w)
-        M = create_quadratic_regularizer('smoothness', len(trf.lags), alpha=10.0)
+        M = create_quadratic_regularizer("smoothness", len(trf.lags), alpha=10.0)
         ref = np.linalg.solve(Xw.T @ Xw + M, Xw.T @ yw)
         # coef_ is stored lag-flipped relative to the solve order
         np.testing.assert_allclose(trf.coef_[:, 0, 0], ref[::-1, 0], atol=1e-6)
