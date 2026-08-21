@@ -128,7 +128,10 @@ class TRFEstimator(BaseEstimator):
     srate : float
         Sampling rate
     use_regularisation : bool
-        Whether ot not the Ridge regularisation is used to compute the TRF
+        Whether or not regularisation is used to compute the TRF
+    feature_alphas : 1d-array or None
+        Optional per-feature ridge strengths. Each value is repeated over all
+        lags, following ``block_order``.
     fit_intercept : bool
         Whether a column of ones should be added to the design matrix to fit an intercept
     fitted : bool
@@ -202,7 +205,8 @@ class TRFEstimator(BaseEstimator):
                  robust_solver='irls', robust_sigma=None,
                  robust_max_iter=20, robust_tol=1e-6,
                  robust_damping=1.0, robust_inner_solver='svd',
-                 robust_inner_tol=1e-8, robust_inner_max_iter=None):
+                 robust_inner_tol=1e-8, robust_inner_max_iter=None,
+                 feature_alphas=None):
         
         if block_order not in ('lags', 'features'):
             raise ValueError("block_order must be 'lags' or 'features'")
@@ -216,6 +220,17 @@ class TRFEstimator(BaseEstimator):
                                          robust_sigma <= 0 or
                                          not np.isfinite(robust_sigma)):
             raise ValueError("robust_sigma must be positive and finite")
+        if feature_alphas is not None:
+            feature_alphas = np.asarray(feature_alphas, dtype=float)
+            if feature_alphas.ndim != 1 or feature_alphas.size == 0:
+                raise ValueError("feature_alphas must be a non-empty 1-D array")
+            if np.any(~np.isfinite(feature_alphas)) or np.any(feature_alphas < 0):
+                raise ValueError("feature_alphas must contain finite non-negative values")
+            if quadratic_reg is not None:
+                raise ValueError("feature_alphas cannot be combined with quadratic_reg")
+            if alpha is not None and np.ndim(alpha) != 0:
+                raise ValueError("feature_alphas cannot be combined with an alpha path")
+        self.feature_alphas = feature_alphas
         if robust_max_iter < 1 or robust_tol <= 0 or not 0 < robust_damping <= 1:
             raise ValueError("Invalid robust iteration parameters")
         self.block_order = block_order
@@ -257,9 +272,13 @@ class TRFEstimator(BaseEstimator):
         # is requested (M counts as regularization even when alpha == 0, in which
         # case M is scaled to zero and the fit reduces to plain least squares)
         if np.ndim(self.alpha) == 0:
-            self.use_regularisation = self.alpha > 0. or self.quadratic_reg is not None
+            self.use_regularisation = (self.alpha > 0. or
+                                       self.quadratic_reg is not None or
+                                       self.feature_alphas is not None)
         else:
-            self.use_regularisation = np.any(np.asarray(self.alpha) > 0.) or self.quadratic_reg is not None
+            self.use_regularisation = (np.any(np.asarray(self.alpha) > 0.) or
+                                       self.quadratic_reg is not None or
+                                       self.feature_alphas is not None)
         self.fit_intercept = fit_intercept
         self.fitted = False
         self.lags = None
@@ -352,9 +371,26 @@ class TRFEstimator(BaseEstimator):
         Returns
         -------
         M : ndarray or None
-            Block-diagonal (per feature) quadratic regularization matrix, or
-            None when no quadratic regularization is requested.
+            Regularization matrix in solver column order, or None when no
+            quadratic regularization is requested. ``feature_alphas`` creates
+            a diagonal banded-ridge matrix; ``quadratic_reg`` creates the
+            configured smoothness/custom matrix.
         """
+        if self.feature_alphas is not None:
+            if self.n_feats_ is None or len(self.lags) == 0:
+                raise RuntimeError("feature_alphas requires a fitted lag configuration")
+            if len(self.feature_alphas) != self.n_feats_:
+                raise ValueError(
+                    "feature_alphas must have one value per input feature "
+                    f"({self.n_feats_} expected, got {len(self.feature_alphas)})")
+            if self.block_order == 'lags':
+                diagonal = np.tile(self.feature_alphas, len(self.lags))
+            else:
+                diagonal = np.repeat(self.feature_alphas, len(self.lags))
+            M = np.diag(diagonal)
+            if self.fit_intercept:
+                M = np.pad(M, ((1, 0), (1, 0)))
+            return M
         if self.quadratic_reg is None:
             return None
         if isinstance(self.quadratic_reg, str):
@@ -390,7 +426,8 @@ class TRFEstimator(BaseEstimator):
             if self.use_regularisation:
                 raise ValueError(
                     "robust_solver='least_squares' currently supports only "
-                    "unregularized fitting (alpha=0 and quadratic_reg=None).")
+                    "unregularized fitting (alpha=0, feature_alphas=None, "
+                    "and quadratic_reg=None).")
             betas, info = _robust_least_squares_regress(
                 X, y, scale=self.robust_sigma, verbose=self.verbose)
         else:
@@ -1144,7 +1181,10 @@ class TRFEstimator(BaseEstimator):
         return trf
     
     def _select_features(self, indices):
+        selected_feature_alphas = (self.feature_alphas[indices]
+                                   if self.feature_alphas is not None else None)
         trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha,
+                           feature_alphas=selected_feature_alphas,
                            block_order=self.block_order)
         trf.coef_ = self.coef_[:, indices]
         trf.feat_names_ = self.feat_names_[indices] if self.feat_names_ else None
@@ -1245,6 +1285,7 @@ class TRFEstimator(BaseEstimator):
 
     def copy(self):
         trf = TRFEstimator(tmin=self.tmin, tmax=self.tmax, srate=self.srate, alpha=self.alpha,
+                           feature_alphas=self.feature_alphas,
                            block_order=self.block_order)
         trf.coef_ = self.coef_
         trf.intercept_ = self.intercept_
@@ -1282,7 +1323,8 @@ class TRFEstimator(BaseEstimator):
                'tmin': self.tmin,
                'tmax': self.tmax,
                'times': self.times,
-                'alpha':self.alpha}
+               'alpha': self.alpha,
+               'feature_alphas': self.feature_alphas}
         np.savez(filename, **trf)
         
     def load(filename):
@@ -1299,8 +1341,14 @@ class TRFEstimator(BaseEstimator):
         TRFEstimator instance
         """
         npzdata = np.load(filename, allow_pickle=True)
+        feature_alphas = None
+        if 'feature_alphas' in npzdata:
+            stored_feature_alphas = npzdata['feature_alphas']
+            if stored_feature_alphas.ndim != 0 or stored_feature_alphas.item() is not None:
+                feature_alphas = stored_feature_alphas
         trf = TRFEstimator(tmin=npzdata['tmin'], tmax=npzdata['tmax'], srate=npzdata['srate'],
-                           alpha=npzdata['alpha'], block_order='lags')
+                           alpha=npzdata['alpha'], feature_alphas=feature_alphas,
+                           block_order='lags')
         trf.fill_lags()
         trf.intercept_ = npzdata['intercept_']
         trf.feat_names_ = npzdata['feat_names_']
