@@ -138,7 +138,7 @@ static PyObject* py_gammatone_c(PyObject* self, PyObject* args) {
     double cf;
 
     // Parse arguments
-    if (!PyArg_ParseTuple(args, "OiidO|OOO", &x_obj, &nsamples, &fs, &cf, &bm_obj, &env_obj, &instp_obj, &instf_obj)) {
+    if (!PyArg_ParseTuple(args, "OiidiO|OOO", &x_obj, &nsamples, &fs, &cf, &hrect, &bm_obj, &env_obj, &instp_obj, &instf_obj)) {
         return NULL;
     }
 

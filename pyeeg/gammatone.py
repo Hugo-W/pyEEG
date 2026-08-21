@@ -1,21 +1,25 @@
-import numpy as np
-import platform
-import os
 import logging
+import os
+import platform
+
+import numpy as np
 
 logging.basicConfig(level=logging.ERROR)
-LOGGER = logging.getLogger(__name__.split('.')[0])
-LOGGER.setLevel('INFO')
+LOGGER = logging.getLogger(__name__.split(".")[0])
+LOGGER.setLevel("INFO")
 
 try:
     # Attempt to import the compiled Python extension module
     from pyeeg.bin import gammatone_c
+
     LOGGER.info("Successfully loaded gammatone_c Python extension module.")
 except ImportError:
     # Fallback to loading prebuilt shared library using ctypes
     import ctypes
 
-    LOGGER.warning("Failed to load gammatone_c Python extension module. Falling back to prebuilt binary.")
+    LOGGER.warning(
+        "Failed to load gammatone_c Python extension module. Falling back to prebuilt binary."
+    )
 
     # Determine the shared library extension based on the operating system
     system = platform.system()
@@ -32,11 +36,17 @@ except ImportError:
 
     # Define the argument and return types
     gammatone_lib.gammatone_c.argtypes = [
-        ctypes.POINTER(ctypes.c_double), ctypes.c_int, ctypes.c_int,
-        ctypes.c_double, ctypes.c_int,
-        ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
-        ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double)
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_double,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.c_double),
     ]
+
 
 def gammatone_filter(x, fs, cf, hrect=0):
     """
@@ -71,9 +81,9 @@ def gammatone_filter(x, fs, cf, hrect=0):
     instp = np.zeros(nsamples, dtype=np.float64)
     instf = np.zeros(nsamples, dtype=np.float64)
 
-    if 'gammatone_c' in globals():
+    if "gammatone_c" in globals():
         # Use the Python extension module
-        gammatone_c.gammatone_c(x, fs, cf, hrect, bm, env, instp, instf)
+        gammatone_c.gammatone_c(x, nsamples, fs, cf, hrect, bm, env, instp, instf)
     else:
         # Use the fallback ctypes-based shared library
         x_ctypes = x.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -83,22 +93,30 @@ def gammatone_filter(x, fs, cf, hrect=0):
         instf_ctypes = instf.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
         gammatone_lib.gammatone_c(
-            x_ctypes, nsamples, fs, cf, hrect,
-            bm_ctypes, env_ctypes, instp_ctypes, instf_ctypes
+            x_ctypes,
+            nsamples,
+            fs,
+            cf,
+            hrect,
+            bm_ctypes,
+            env_ctypes,
+            instp_ctypes,
+            instf_ctypes,
         )
 
     return bm, env, instp, instf
 
+
 # Example usage
-if __name__ == '__main__':
+if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     fs = 16000
-    t = np.arange(0, 1, 1/fs)
+    t = np.arange(0, 1, 1 / fs)
     x = np.sin(2 * np.pi * 440 * t)
     cf = 440
     bm, env, instp, instf = gammatone_filter(x, fs, cf)
-    
+
     plt.figure()
     plt.subplot(4, 1, 1)
     plt.plot(t, x)  # Input signal
