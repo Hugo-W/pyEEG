@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pyEEG Dashboard - TRF Analysis</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <div class="logo">pyEEG</div>
+                <h1>TRF Analysis Dashboard</h1>
+                <p class="subtitle">Interactive Temporal Response Function Explorer</p>
+            </div>
+            <div>
+                <button class="btn-secondary" onclick="clearAllFiles()">Clear All</button>
+            </div>
+        </header>
+        
+        <div class="main-grid">
+            <!-- EEG/MEG Data (X) Upload -->
+            <div class="card">
+                <h2><span class="icon">🧠</span> EEG/MEG Data (X)</h2>
+                <div class="drop-zone" id="dropZoneX" 
+                     onclick="document.getElementById('fileInputX').click()"
+                     ondragover="event.preventDefault(); this.classList.add('drag-over');"
+                     ondragleave="this.classList.remove('drag-over');"
+                     ondrop="event.preventDefault(); this.classList.remove('drag-over'); handleDrop(event, 'X');">
+                    <div class="upload-icon">📁</div>
+                    <p>Drop .npz file here or click to browse</p>
+                    <p class="hint">Max size: ~30MB (300 sensors, 20min @ 50Hz)</p>
+                </div>
+                <input type="file" id="fileInputX" accept=".npz,.npy" 
+                       onchange="handleFileSelect(event, 'X')" style="display: none;">
+                <div class="file-info" id="fileInfoX">
+                    <h3>Uploaded File</h3>
+                    <div class="detail" id="xFilename"></div>
+                    <div class="detail" id="xShape"></div>
+                    <div class="detail" id="xSize"></div>
+                </div>
+                <div class="file-list" id="xFileList"></div>
+            </div>
+            
+            <!-- Features Data (Y) Upload -->
+            <div class="card">
+                <h2><span class="icon">📊</span> Features Data (Y)</h2>
+                <div class="drop-zone" id="dropZoneY" 
+                     onclick="document.getElementById('fileInputY').click()"
+                     ondragover="event.preventDefault(); this.classList.add('drag-over');"
+                     ondragleave="this.classList.remove('drag-over');"
+                     ondrop="event.preventDefault(); this.classList.remove('drag-over'); handleDrop(event, 'Y');">
+                    <div class="upload-icon">📁</div>
+                    <p>Drop .npz file here or click to browse</p>
+                    <p class="hint">Max size: ~30MB</p>
+                </div>
+                <input type="file" id="fileInputY" accept=".npz,.npy" 
+                       onchange="handleFileSelect(event, 'Y')" style="display: none;">
+                <div class="file-info" id="fileInfoY">
+                    <h3>Uploaded File</h3>
+                    <div class="detail" id="yFilename"></div>
+                    <div class="detail" id="yShape"></div>
+                    <div class="detail" id="ySize"></div>
+                </div>
+                <div class="file-list" id="yFileList"></div>
+            </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="controls">
+            <h2>🎛️ Analysis Controls</h2>
+            
+            <div class="control-group">
+                <label for="solver">Solver</label>
+                <select id="solver">
+                    {% for solver in solvers %}
+                    <option value="{{ solver }}">{{ solver }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="fs">Sampling Frequency (Hz)</label>
+                <input type="number" id="fs" placeholder="Enter sampling frequency (optional)" step="0.1">
+            </div>
+            
+            <div class="control-group">
+                <label>X-axis Units</label>
+                <div class="axis-toggle">
+                    <label>
+                        <input type="radio" name="xaxis" value="samples" checked> Samples
+                    </label>
+                    <label>
+                        <input type="radio" name="xaxis" value="seconds"> Seconds
+                    </label>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label for="regularization">Regularization: <span class="slider-value" id="regValue">1.0</span></label>
+                <div class="slider-container">
+                    <input type="range" id="regularization" min="0.01" max="10" step="0.01" value="1.0" 
+                           oninput="document.getElementById('regValue').textContent = this.value;">
+                </div>
+            </div>
+            
+            <div class="button-group">
+                <button class="btn-primary" onclick="computeTRF()">Compute TRF</button>
+                <button class="btn-secondary" onclick="loadFiles()">Refresh Files</button>
+                <button class="btn-danger" onclick="clearAllFiles()">Clear All</button>
+            </div>
+            
+            <div class="status" id="status"></div>
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Computing TRF...</p>
+            </div>
+        </div>
+        
+        <!-- Results -->
+        <div class="results">
+            <h2>📈 TRF Results</h2>
+            <div class="plot-container" id="plotContainer">
+                <p style="color: #999;">Upload data and compute TRF to see results</p>
+            </div>
+            <div class="file-info" id="resultInfo" style="display: none;">
+                <h3>Computation Details</h3>
+                <div class="detail" id="resultSolver"></div>
+                <div class="detail" id="resultRegularization"></div>
+                <div class="detail" id="resultFs"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
