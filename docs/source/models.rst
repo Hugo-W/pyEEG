@@ -35,6 +35,8 @@ Functions
     :template: function.rst
 
     _svd_regress
+    _robust_irls_regress
+    _robust_least_squares_regress
 
 .. currentmodule:: pyeeg.models
 

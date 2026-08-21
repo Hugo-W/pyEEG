@@ -25,7 +25,8 @@ from sklearn.base import BaseEstimator
 import matplotlib.pyplot as plt
 from .utils import lag_matrix, lag_span, lag_sparse, mem_check, design_lagmatrix
 from .vizu import get_spatial_colors, plot_interactive
-from .solvers import _svd_regress
+from .solvers import (_svd_regress, _robust_irls_regress,
+                      _robust_least_squares_regress)
 
 logging.basicConfig(level=logging.WARNING)
 LOGGER = logging.getLogger(__name__.split('.')[0])
@@ -197,11 +198,36 @@ class TRFEstimator(BaseEstimator):
 
     def __init__(self, times=(0.,), tmin=None, tmax=None, srate=1.,
                  alpha=None, fit_intercept=True, verbose=True,
-                 quadratic_reg=None, block_order='lags'):
+                 quadratic_reg=None, block_order='lags', loss='linear',
+                 robust_solver='irls', robust_sigma=None,
+                 robust_max_iter=20, robust_tol=1e-6,
+                 robust_damping=1.0, robust_inner_solver='svd',
+                 robust_inner_tol=1e-8, robust_inner_max_iter=None):
         
         if block_order not in ('lags', 'features'):
             raise ValueError("block_order must be 'lags' or 'features'")
+        if loss not in ('linear', 'none', 'cauchy'):
+            raise ValueError("loss must be 'linear', 'none', or 'cauchy'")
+        if robust_solver not in ('irls', 'least_squares'):
+            raise ValueError("robust_solver must be 'irls' or 'least_squares'")
+        if robust_inner_solver not in ('svd', 'cg'):
+            raise ValueError("robust_inner_solver must be 'svd' or 'cg'")
+        if robust_sigma is not None and (not np.isscalar(robust_sigma) or
+                                         robust_sigma <= 0 or
+                                         not np.isfinite(robust_sigma)):
+            raise ValueError("robust_sigma must be positive and finite")
+        if robust_max_iter < 1 or robust_tol <= 0 or not 0 < robust_damping <= 1:
+            raise ValueError("Invalid robust iteration parameters")
         self.block_order = block_order
+        self.loss = 'linear' if loss == 'none' else loss
+        self.robust_solver = robust_solver
+        self.robust_sigma = robust_sigma
+        self.robust_max_iter = robust_max_iter
+        self.robust_tol = robust_tol
+        self.robust_damping = robust_damping
+        self.robust_inner_solver = robust_inner_solver
+        self.robust_inner_tol = robust_inner_tol
+        self.robust_inner_max_iter = robust_inner_max_iter
         # if tmin and tmax:
         #     LOGGER.info("Will use lags spanning form tmin to tmax.\nTo use individual lags, use the `times` argument...")
         #     self.lags = lag_span(tmin, tmax, srate=srate)[::-1] #pylint: disable=invalid-unary-operand-type
@@ -248,6 +274,10 @@ class TRFEstimator(BaseEstimator):
         # The two following are only defined if simple least-square (no reg.) is used
         self.tvals_ = None
         self.pvals_ = None
+        self.robust_n_iter_ = None
+        self.robust_converged_ = None
+        self.robust_scale_ = None
+        self.robust_objective_ = None
 
     def fill_lags(self):
         """Fill the lags attributes.
@@ -354,6 +384,30 @@ class TRFEstimator(BaseEstimator):
         # Pre-built matrix: scale by alpha (alpha=0 -> M vanishes -> least squares)
         return np.asarray(self.quadratic_reg) * self.alpha
 
+    def _fit_robust(self, X, y, M):
+        """Fit the configured Cauchy-loss model and store convergence metadata."""
+        if self.robust_solver == 'least_squares':
+            if self.use_regularisation:
+                raise ValueError(
+                    "robust_solver='least_squares' currently supports only "
+                    "unregularized fitting (alpha=0 and quadratic_reg=None).")
+            betas, info = _robust_least_squares_regress(
+                X, y, scale=self.robust_sigma, verbose=self.verbose)
+        else:
+            betas, info = _robust_irls_regress(
+                X, y, alpha=self.alpha, M=M, loss='cauchy',
+                scale=self.robust_sigma, max_iter=self.robust_max_iter,
+                tol=self.robust_tol, damping=self.robust_damping,
+                inner_solver=self.robust_inner_solver,
+                inner_tol=self.robust_inner_tol,
+                inner_max_iter=self.robust_inner_max_iter,
+                verbose=self.verbose)
+        self.robust_n_iter_ = info['n_iter']
+        self.robust_converged_ = info['converged']
+        self.robust_scale_ = info['scale']
+        self.robust_objective_ = info.get('objective')
+        return betas
+
     def fit(self, X, y, lagged=False, drop=True, feat_names=(), rotations=(),
             weights=None):
         """Fit the TRF model.
@@ -379,7 +433,17 @@ class TRFEstimator(BaseEstimator):
             Sample weights for weighted least squares. If provided, each sample
             is scaled by ``sqrt(weights)`` (after dropping invalid samples and
             lagging, before the intercept is added). Must be non-negative and
-            of length ``n_samples`` (the full length, before dropping).
+            of length ``n_samples`` (the full length, before dropping). Sample
+            weights are not currently combined with robust fitting.
+
+        Notes
+        -----
+        Set ``loss='cauchy'`` in the constructor to fit the Cauchy loss
+        ``log(1 + (residual / robust_sigma)**2)``. The default ``loss='linear'``
+        preserves the ordinary least-squares and ridge paths. Robust fitting
+        uses IRLS by default; ``robust_solver='least_squares'`` selects SciPy's
+        nonlinear Cauchy solver for small, unregularized dense problems.
+        Classical t- and p-values are not computed for robust fits.
 
         Returns
         -------
@@ -425,8 +489,11 @@ class TRFEstimator(BaseEstimator):
         if not lagged:
             X = lag_matrix(X, lag_samples=self.lags, drop_missing=drop, filling=np.nan if drop else 0.,
                            block_order=self.block_order)
-        #else: # simply do the dropping assuming it hasn't been done when default values are supplied
-        #    X = X[self.valid_samples_, :]
+        elif len(X) == n_samples_all:
+            # Pre-lagged callers may provide the full sample axis. Align it
+            # with y when edge samples are dropped; already-trimmed inputs are
+            # left unchanged.
+            X = X[self.valid_samples_, :]
         '''
         if not lagged:
             if drop:
@@ -446,6 +513,10 @@ class TRFEstimator(BaseEstimator):
         if self.fit_intercept:
             X = np.hstack([np.ones((len(X), 1)), X])
 
+        robust = self.loss == 'cauchy'
+        if robust and weights is not None:
+            raise ValueError("weights cannot currently be combined with loss='cauchy'.")
+
         # Apply sample weights (weighted least squares) after the intercept is
         # added: every column of X (including the intercept) is row-scaled by
         # sqrt(weights), so the existing solvers solve the weighted problem
@@ -459,17 +530,13 @@ class TRFEstimator(BaseEstimator):
             X, y = apply_sample_weights(X, y, w)
             if self.verbose: LOGGER.info("Applied sample weights (weighted least squares)")
 
-        # Solving with svd or least square:
+        # Solving with robust IRLS/SciPy or the existing linear solvers.
         if self.verbose: LOGGER.info("Computing coefficients..")
-        
-        # Build quadratic regularization matrix M if specified
-        # (M replaces L2 regularization; alpha has no effect when M is active)
         M = self._build_quadratic_regularizer()
-        
-        # M replaces L2, so the quadratic-regularized path is taken whenever
-        # use_regularisation is set (alpha > 0 or M requested)
-        if self.use_regularisation or np.ndim(y) == 3:
-            # svd method:
+        if robust:
+            betas = self._fit_robust(X, y, M)
+            self.all_betas = betas[..., np.newaxis]
+        elif self.use_regularisation or np.ndim(y) == 3:
             betas = _svd_regress(X, y, self.alpha, M=M, verbose=self.verbose)
             self.all_betas = betas
             # Storing only the first as the main
@@ -502,7 +569,7 @@ class TRFEstimator(BaseEstimator):
         # This gives the change in y (in SDs) for a 1 SD change in X.
         # Skipped when sample weights are applied: X/y have been row-scaled by
         # sqrt(W) here, so their std no longer reflects the original data.
-        if not lagged and self.fitted and weights is None:
+        if not lagged and self.fitted and weights is None and not robust:
             try:
                 X_std = np.std(X[:, self.fit_intercept:], axis=0, keepdims=False)  # (n_lags*n_feats,)
                 y_std = np.std(y, axis=0, keepdims=True)  # (1, n_chans)
@@ -519,7 +586,7 @@ class TRFEstimator(BaseEstimator):
 
         # Get t-statistic and p-vals if regularization is ommited
         # (M counts as regularization: t-values computed from X.T@X would ignore it)
-        if not self.use_regularisation:
+        if not self.use_regularisation and not robust:
             if self.verbose: LOGGER.info("Computing statistics...")
             # Intercept column is present in X / cov_betas only when fit_intercept
             n_intercept = int(self.fit_intercept)
@@ -619,6 +686,9 @@ class TRFEstimator(BaseEstimator):
         # Build quadratic regularization matrix M if specified
         # (M replaces L2 regularization; alpha has no effect when M is active)
         M = self._build_quadratic_regularizer()
+        robust = self.loss == 'cauchy'
+        if robust and weights is not None:
+            raise ValueError("weights cannot currently be combined with loss='cauchy'.")
 
         if weights is not None:
             from pyeeg.utils import apply_sample_weights
@@ -638,7 +708,10 @@ class TRFEstimator(BaseEstimator):
                     X_list_new.append(xw)
                     y_list_new.append(yw)
                 X_list, y_list = X_list_new, y_list_new
-            betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=self.verbose)
+            if robust:
+                betas = self._fit_robust(X_list, y_list, M)
+            else:
+                betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=self.verbose)
         else:
             filling = np.nan if drop else 0.
             X_list = []
@@ -659,11 +732,18 @@ class TRFEstimator(BaseEstimator):
                     xx, yc = apply_sample_weights(xx, yc, wv)
                 X_list.append(xx)
                 y_list.append(yc)
-            betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=self.verbose)
-        # Storing all alpha's betas
-        self.all_betas = betas
-        # Storing only the first as the main
-        betas = betas[..., 0]
+            if robust:
+                betas = self._fit_robust(X_list, y_list, M)
+            else:
+                betas = _svd_regress(X_list, y_list, self.alpha, M=M, verbose=self.verbose)
+        # Preserve the existing alpha-path shape for linear fits. Robust
+        # fitting has one coefficient solution per output channel.
+        if robust:
+            self.all_betas = betas[..., np.newaxis]
+        else:
+            self.all_betas = betas
+            # Storing only the first as the main
+            betas = betas[..., 0]
         
         if self.fit_intercept:
             self.intercept_ = betas[0, :]

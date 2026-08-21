@@ -26,6 +26,8 @@ branch. It replaces the former `TODO.md`, `NEXT_STEPS.md`,
 - Fixed quadratic regularization and the TRF statistics paths, including
   intercept handling, rank-deficient designs, p-value tail computation, and
   `TRFEstimator.__repr__` when time bounds are unspecified.
+- Added weighted and robust Cauchy-loss TRF estimation, including IRLS and a
+  SciPy nonlinear least-squares reference path.
 
 ## Current verification
 
@@ -82,7 +84,8 @@ Keep the existing public module paths while moving implementation details.
 
 - Issue #18: add banded ridge regularization, including feature-block ordering,
   per-feature alpha values, solver support, coefficient reshaping, and tests.
-- Issue #17: add weighted samples for TRF estimation.
+- Issue #17: weighted and robust TRF estimation is implemented on this branch;
+  close the upstream issue after review and release verification.
 - Issue #14: design statistically appropriate permutation, bootstrap, and
   cross-subject inference for continuous naturalistic data.
 - Issue #12: decide whether a solver-pattern abstraction reduces complexity
