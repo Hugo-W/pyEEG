@@ -1,11 +1,10 @@
 # Common development tasks for the natMEEG project.
 #
-# Override PYTHON, PIP, or PYTEST when using a virtual environment, for example:
-#   make PYTHON=.venv/bin/python test
+# Override PYTHON, PIP, or PYTEST when needed.
 
-PYTHON ?= python3
-PIP ?= $(PYTHON) -m pip
-PYTEST ?= $(PYTHON) -m pytest
+PYTHON ?= uv run python
+PIP ?= uv pip
+PYTEST ?= uv run pytest
 
 .PHONY: all install install-docs build test test-coverage clean doc docs docpdf
 
@@ -20,7 +19,7 @@ install-docs:
 build:
 	# Keep the in-tree build directory from shadowing the `build` frontend.
 	rm -rf build
-	$(PYTHON) -m build
+	uv build
 
 test:
 	$(PYTEST) tests
