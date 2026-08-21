@@ -180,11 +180,13 @@ class TestTRFEstimator:
         assert np.all((trf.pvals_ > 0) & (trf.pvals_ <= 1))
 
         # closed-form cross-check: se = sqrt(diag(inv(XᵀX)) * SSE/dof).
-        # tvals_ are stored in solve order, i.e. the lag-flip of coef_
+        # tvals_ are stored in the same canonical ordering as coef_ (issue #30),
+        # so map the solver-order SE to canonical order via _beta_to_coef.
         dof = len(Y) - X.shape[1]
         sigma = np.sum((Y - trf.predict(X)) ** 2, axis=0) / dof
         se_manual = np.sqrt(np.diag(np.linalg.inv(X.T @ X))[:, None] * sigma)
-        t_manual = self._coef_flat(trf)[::-1] / se_manual
+        se_canonical = trf._beta_to_coef(se_manual[:, None]).reshape(-1, Y.shape[1])
+        t_manual = self._coef_flat(trf) / se_canonical
         assert np.allclose(trf.tvals_, t_manual)
 
     def test_trf_stats_with_intercept(self):
@@ -201,6 +203,81 @@ class TestTRFEstimator:
         trf, X, Y = self._fit_trf_stats(fit_intercept=False, n_chans=2)
         assert trf.tvals_.shape == self._coef_flat(trf).shape
         assert np.all(np.isfinite(trf.tvals_))
+
+    def _fit_trf_stats_multi(self, fit_intercept, block_order, n_feats=3, n_lags=4,
+                             n_chans=2, seed=7):
+        """Fit an unregularized multi-feature / multi-channel TRF (>=2 features,
+        >=2 lags) for the given ``block_order`` and return trf, X, Y.
+
+        ``X`` is built with ``lag_matrix(..., block_order=...)`` and passed as
+        already-lagged (``lagged=True``), matching how the estimator's solver
+        consumes the columns.
+        """
+        from pyeeg.models import TRFEstimator
+        srate = 100
+        n = 600
+        rng = np.random.default_rng(seed)
+        x = rng.standard_normal((n, n_feats))
+        tker = np.linspace(-0.2, 0.4, n_lags)
+        trf = TRFEstimator(times=tker, srate=srate, fit_intercept=fit_intercept,
+                           alpha=None, verbose=False, block_order=block_order)
+        trf.fill_lags()
+        X = lag_matrix(x, trf.lags, filling=0., drop_missing=False,
+                       block_order=block_order)
+        weights = rng.standard_normal((X.shape[1], n_chans))
+        Y = X @ weights
+        Y = Y + 0.5 * np.std(Y, axis=0) * rng.standard_normal((n, n_chans))
+        trf.fit(X, Y, lagged=True, drop=False)
+        return trf, X, Y
+
+    @pytest.mark.parametrize('block_order', ['lags', 'features'])
+    def test_trf_stats_canonical_ordering(self, block_order):
+        """tvals_/pvals_ must follow the same canonical flattened ordering as
+        coef_ for multi-feature / multi-lag / multi-channel fits, in both block
+        orders (issue #30). Verified by a direct covariance/SE reconstruction
+        using the estimator's own solver design matrix."""
+        trf, X, Y = self._fit_trf_stats_multi(fit_intercept=False,
+                                              block_order=block_order)
+        # canonical flattened coef_ ordering
+        coef_flat = self._coef_flat(trf)
+        assert trf.tvals_.shape == coef_flat.shape
+        assert trf.pvals_.shape == coef_flat.shape
+        assert np.all(np.isfinite(trf.tvals_))
+        assert np.all((trf.pvals_ > 0) & (trf.pvals_ <= 1))
+
+        # direct covariance/SE reconstruction: se = sqrt(diag(inv(XᵀX)) * SSE/dof)
+        # in solver order, then mapped to canonical order via _beta_to_coef.
+        dof = len(Y) - X.shape[1]
+        sigma = np.sum((Y - X @ trf._coef_to_beta(trf.coef_)) ** 2, axis=0) / dof
+        se_solver = np.sqrt(np.diag(np.linalg.inv(X.T @ X))[:, None] * sigma)
+        se_canonical = trf._beta_to_coef(se_solver[:, None]).reshape(-1, Y.shape[1])
+        assert np.allclose(trf.tvals_, coef_flat / se_canonical), \
+            f"tvals_ not in canonical coef_ ordering for block_order={block_order}"
+
+    @pytest.mark.parametrize('block_order', ['lags', 'features'])
+    def test_trf_stats_canonical_ordering_with_intercept(self, block_order):
+        """Same canonical-ordering guarantee with fit_intercept=True, exercising
+        the intercept-row strip and the leading intercept column of the
+        covariance matrix (issue #30)."""
+        trf, X, Y = self._fit_trf_stats_multi(fit_intercept=True,
+                                              block_order=block_order)
+        coef_flat = self._coef_flat(trf)
+        assert trf.tvals_.shape == coef_flat.shape
+        assert trf.pvals_.shape == coef_flat.shape
+        assert np.all(np.isfinite(trf.tvals_))
+        assert np.all((trf.pvals_ > 0) & (trf.pvals_ <= 1))
+
+        # reconstruct the design matrix exactly as fit() does (intercept first)
+        X_design = np.hstack([np.ones((len(X), 1)), X])
+        betas_full = np.vstack([trf.intercept_[:, None].T,
+                                trf._coef_to_beta(trf.coef_)])
+        dof = len(Y) - X_design.shape[1]
+        sigma = np.sum((Y - X_design @ betas_full) ** 2, axis=0) / dof
+        # strip the leading intercept row/col of the covariance diagonal
+        se_solver = np.sqrt(np.diag(np.linalg.inv(X_design.T @ X_design))[:, None]
+                            * sigma)[1:]
+        se_canonical = trf._beta_to_coef(se_solver[:, None]).reshape(-1, Y.shape[1])
+        assert np.allclose(trf.tvals_, coef_flat / se_canonical)
 
     def test_trf_recovers_bipolar_kernel(self):
         """Bipolar (derivative-of-gaussian) kernel should also be recoverable."""

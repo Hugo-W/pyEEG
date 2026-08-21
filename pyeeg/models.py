@@ -136,6 +136,10 @@ class TRFEstimator(BaseEstimator):
         Intercepts
     coef_ : ndarray (nlags, nfeats, nchans)
         Actual TRF coefficients
+    tvals_ : ndarray (nlags * nfeats, nchans)
+        t-statistics in the flattened canonical ordering of ``coef_``.
+    pvals_ : ndarray (nlags * nfeats, nchans)
+        Two-sided p-values in the flattened canonical ordering of ``coef_``.
     n_feats_ : int
         Number of word level features in TRF
     n_chans_: int
@@ -539,7 +543,13 @@ class TRFEstimator(BaseEstimator):
             C = np.einsum('ij,k', cov_betas_inv, sigma)
             # Actual stats (strip the intercept entry of the diagonal iff present)
             se = np.sqrt(C.diagonal(axis1=0, axis2=1).swapaxes(0, 1)[n_intercept:, :])
-            self.tvals_ = betas / se
+            # tvals_/pvals_ are stored in the same canonical flattened ordering
+            # as coef_ (issue #30): map the solver-order betas/se through
+            # _beta_to_coef (after intercept removal) so each coefficient
+            # aligns 1:1 with coef_. The solver-order SE computation is
+            # preserved; only the public ordering of the outputs changes.
+            tvals = self._beta_to_coef(betas / se)
+            self.tvals_ = tvals.reshape(-1, tvals.shape[-1])
             # Use the survival function (sf = 1 - cdf) instead of "1 - cdf"
             # to avoid catastrophic cancellation: for large |t| the cdf
             # saturates to 1.0 in float64 and "1 - 1.0" underflows to 0.0,
