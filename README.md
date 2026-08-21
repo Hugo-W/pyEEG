@@ -14,7 +14,7 @@ You can find the [documentation here](https://hugo-w.github.io/pyEEG/).
 
 > ⚠️**Note**:
 >
-> - This code repository is actively maintained as part of the natMEEG project. The library provides tools for computing TRFs (Temporal Response Functions) with the `TRFEstimator` class in `pyeeg/models.py`, which implements memory-efficient and accelerated computation for handling multiple epochs or multiple subjects.
+> - This code repository is actively maintained as part of the natMEEG project. The library provides tools for computing TRFs (Temporal Response Functions) with the `TRFEstimator` class in `pyeeg/models/`, which implements memory-efficient and accelerated computation for handling multiple epochs or multiple subjects.
 > - The library is suitable for both research and production use.
 > - The project was formerly known as `pyEEG` and has been rebranded to `natMEEG` to better reflect its focus on naturalistic M/EEG data analysis.
 
