@@ -1,27 +1,41 @@
-# Minimal makefile for Sphinx documentation
+# Build the Sphinx documentation locally.
 #
+# Common overrides:
+#   make SPHINXOPTS=-W html
+#   make BUILDDIR=/tmp/natmeeg-docs html
 
-# You can set these variables from the command line.
-SPHINXOPTS    =
-SPHINXBUILD   = sphinx-build
-SOURCEDIR     = source
-BUILDDIR      = build
+SPHINXBUILD ?= sphinx-build
+SOURCEDIR ?= source
+BUILDDIR ?= build
+SPHINXOPTS ?=
+O ?=
 
-# Put it first so that "make" without argument is like "make help".
+.PHONY: help clean html dirhtml singlehtml latex latexpdf linkcheck doctest
+
 help:
 	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
-.PHONY: help Makefile
-
-clean: SHELL:=/bin/bash
 clean:
-	@ echo Removing files in generated/ and build directories...	
-	rm -f source/generated/*
-	rm -rf source/_build
-	rm -rf build
+	rm -f "$(SOURCEDIR)/generated/"*
+	rm -rf "$(SOURCEDIR)/_build" "$(BUILDDIR)"
 
-# Catch-all target: route all unknown targets to Sphinx using the new
-# "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
-%: Makefile
-	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
-	@cp -r "$(BUILDDIR)"/html/* ../../pyEEG-docs/docs/
+html:
+	@$(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+dirhtml:
+	@$(SPHINXBUILD) -M dirhtml "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+singlehtml:
+	@$(SPHINXBUILD) -M singlehtml "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+latex:
+	@$(SPHINXBUILD) -M latex "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+latexpdf:
+	@$(SPHINXBUILD) -M latexpdf "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+linkcheck:
+	@$(SPHINXBUILD) -M linkcheck "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+doctest:
+	@$(SPHINXBUILD) -M doctest "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
