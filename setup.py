@@ -52,7 +52,7 @@ setup(
     ext_modules=[gammatone_module, ratemap_module],
     entry_points={
         'console_scripts': [
-            'pyeeg-dashboard=pyeeg.dashboard.server:main',
+            'trf-explore=pyeeg.dashboard.server:main',
         ],
     },
 )
