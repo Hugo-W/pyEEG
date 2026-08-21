@@ -28,6 +28,9 @@ branch. It replaces the former `TODO.md`, `NEXT_STEPS.md`,
   `TRFEstimator.__repr__` when time bounds are unspecified.
 - Added weighted and robust Cauchy-loss TRF estimation, including IRLS and a
   SciPy nonlinear least-squares reference path.
+- Split the monolithic `pyeeg/models.py` into a `pyeeg.models` subpackage
+  (`pyeeg/models/trf.py`, `pyeeg/models/var.py`) while preserving all public
+  import paths.
 
 ## Current verification
 
@@ -41,8 +44,6 @@ The full test suite currently has collection blockers:
 
 - `pyeeg/features/llm_features.py` requires optional Torch when collected
   directly.
-- `pyeeg/models/.__init__.py` is an invalidly named module and is collected
-  by pytest. The models subpackage still needs a proper `__init__.py`.
 - `tests/test_connectivity.py::test_plm` is still a placeholder.
 - `tests/test_gammatone.py` is script/doctest-style and needs assertions; its
   C-extension behavior remains insufficiently covered.
@@ -51,8 +52,6 @@ The full test suite currently has collection blockers:
 
 ### 1. Repair package and test collection
 
-- Resolve the malformed models package initialization and add focused tests for
-  the supported import paths.
 - Make optional feature dependencies safe for normal test collection, or
   explicitly exclude optional modules from collection.
 - Replace the connectivity placeholder with deterministic metric tests.
@@ -73,7 +72,7 @@ Issue #15 is implemented in broad form, but the integration still needs:
 
 Issue #13 remains open. Candidate boundaries are:
 
-- shared regression and validation helpers from `pyeeg/models.py`;
+- shared regression and validation helpers from `pyeeg/models/`;
 - lag and design-matrix utilities from `pyeeg/utils.py`;
 - data conversion and aligned-feature handling from `pyeeg/io.py`;
 - connectivity algorithms and their shared numerical helpers.
