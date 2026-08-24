@@ -9,12 +9,33 @@ jobs:
       python-versions: '["3.10", "3.12", "3.13"]'  # Pass as a JSON array
       os-matrix: '["ubuntu-latest", "windows-latest", "macos-latest"]'  # Pass as a JSON array
 
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install build dependencies
+      run: python -m pip install --upgrade pip build
+    - name: Build sdist
+      run: python -m build --sdist --outdir dist/
+    - name: Upload sdist artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-sdist
+        path: dist/
+
   publish-to-pypi:
     name: >-
       Publish Python 🐍 distribution 📦 to PyPI
     if: startsWith(github.ref, 'refs/tags/')  # only publish to PyPI on tag pushes
     needs:
     - build
+    - build-sdist
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -57,6 +78,7 @@ jobs:
       and upload them to GitHub Release
     needs:
     - publish-to-pypi
+    - build-sdist
     runs-on: ubuntu-latest
 
     permissions:
