@@ -1,10 +1,9 @@
 # natMEEG - Naturalistic M/EEG data analysis
 
 [![PyPI version](https://badge.fury.io/py/natMEEG.svg)](https://badge.fury.io/py/natMEEG)
-[![DOI (v1.6.10)](https://zenodo.org/badge/DOI/10.5281/zenodo.17084930.svg)](https://doi.org/10.5281/zenodo.17084930)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22081524.svg)](https://doi.org/10.5281/zenodo.22081524)
 
-> Latest released version: v1.6.10 (2025-04-15). The current branch is under
-> development toward the next release.
+> Latest released version: v1.7.1 (2026-08-24).
 
 _Formerly named `pyEEG`_
 
@@ -170,6 +169,6 @@ This project is licensed under the terms of the GPL-3.0 license. See the [LICENS
 
 ## Citation
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17084930.svg)](https://doi.org/10.5281/zenodo.17084930)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22081524.svg)](https://doi.org/10.5281/zenodo.22081524)
 
 > Weissbart, H. Natmeeg - M/EEG Data Analysis in Naturalistic Context. 1.6.10, Zenodo, 9 Sept. 2025, <https://doi.org/10.5281/zenodo.17084930>.
