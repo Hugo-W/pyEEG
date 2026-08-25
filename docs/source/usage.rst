@@ -12,8 +12,17 @@ So to import the package, you can do:
     from pyeeg import io, models
     # etc
 
-A simple TRF example
---------------------
+A quick TRF example
+-------------------
+
+For a complete, runnable introduction—with simulated envelope and word-level
+features, figures, cross-validation, banded ridge, smoothness regularisation,
+and solver timings—see :doc:`tutorials` and the
+:doc:`examples/TRF_simulation_tutorial` notebook.
+
+The compact example below shows the essential API. A feature matrix has one
+row per sample and one column per stimulus feature; the EEG response has one
+row per sample and one column per channel.
 
 .. code-block:: python
 
