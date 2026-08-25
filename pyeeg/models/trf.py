@@ -17,6 +17,9 @@ from sklearn.model_selection import KFold
 from tqdm.auto import tqdm
 
 from ..solvers import (
+    IRLSSolver,
+    ScipyRobustSolver,
+    SVDSolver,
     Solver,
     _robust_irls_regress,
     _robust_least_squares_regress,
@@ -413,6 +416,35 @@ class TRFEstimator(BaseEstimator):
         self.robust_objective_ = info.get("objective")
         return betas
 
+    def _validate_solver_compatibility(self, robust):
+        """Validate that the injected solver is compatible with the estimator
+        configuration. Called from :meth:`fit` and :meth:`_fitlists` before
+        dispatching to ``self.solver``.
+
+        - Warns when ``loss='cauchy'`` is set but a non-robust solver is
+          injected (the robust intent is silently ignored).
+        - Raises when a non-SVD solver is used with a multi-alpha array
+          (only SVDSolver can produce one solution per alpha).
+        """
+        if self.solver is None:
+            return
+        if robust and not isinstance(self.solver, (IRLSSolver, ScipyRobustSolver)):
+            import warnings
+
+            warnings.warn(
+                f"loss='{self.loss}' is ignored when solver="
+                f"{type(self.solver).__name__} is provided. Use IRLSSolver "
+                f"or ScipyRobustSolver for robust fitting.",
+                stacklevel=3,
+            )
+        if np.ndim(self.alpha) > 0 and len(np.atleast_1d(self.alpha)) > 1:
+            if not isinstance(self.solver, SVDSolver):
+                raise ValueError(
+                    f"{type(self.solver).__name__} cannot handle multi-alpha "
+                    f"(array) fits. Use SVDSolver, or loop over alphas "
+                    f"manually and fit once per alpha."
+                )
+
     def fit(
         self, X, y, lagged=False, drop=True, feat_names=(), rotations=(), weights=None
     ):
@@ -568,6 +600,7 @@ class TRFEstimator(BaseEstimator):
             LOGGER.info("Computing coefficients..")
         M = self._build_quadratic_regularizer()
         if self.solver is not None:
+            self._validate_solver_compatibility(robust)
             result = self.solver.solve(X, y, alpha=self.alpha, M=M)
             betas = result.betas
             if result.info is not None:
@@ -750,6 +783,8 @@ class TRFEstimator(BaseEstimator):
         robust = self.loss == "cauchy"
         if robust and weights is not None:
             raise ValueError("weights cannot currently be combined with loss='cauchy'.")
+        if self.solver is not None:
+            self._validate_solver_compatibility(robust)
 
         if weights is not None:
             from pyeeg.utils import apply_sample_weights

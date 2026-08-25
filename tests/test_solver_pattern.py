@@ -293,3 +293,53 @@ def test_trf_solver_none_is_default():
 
     trf = TRFEstimator(tmin=-0.1, tmax=0.1, srate=100, alpha=1.0, verbose=False)
     assert trf.solver is None
+
+
+def test_trf_warns_robust_loss_with_non_robust_solver():
+    """TRFEstimator warns when loss='cauchy' is used with a non-robust solver."""
+    from pyeeg.models.trf import TRFEstimator
+
+    trf = TRFEstimator(
+        tmin=0.0, tmax=0.01, srate=100,
+        loss="cauchy", verbose=False, solver=SVDSolver(),
+    )
+    with pytest.warns(UserWarning, match="loss='cauchy' is ignored"):
+        trf.fit(np.random.randn(50, 1), np.random.randn(50, 1), lagged=False, drop=False)
+
+
+def test_trf_no_warning_robust_loss_with_robust_solver():
+    """TRFEstimator does not warn when loss='cauchy' is used with IRLSSolver."""
+    from pyeeg.models.trf import TRFEstimator
+
+    trf = TRFEstimator(
+        tmin=0.0, tmax=0.01, srate=100,
+        loss="cauchy", verbose=False, solver=IRLSSolver(max_iter=5),
+    )
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        trf.fit(np.random.randn(50, 1), np.random.randn(50, 1), lagged=False, drop=False)
+
+
+def test_trf_rejects_multi_alpha_non_svd_solver():
+    """TRFEstimator raises when a non-SVD solver is used with multi-alpha array."""
+    from pyeeg.models.trf import TRFEstimator
+
+    trf = TRFEstimator(
+        tmin=0.0, tmax=0.01, srate=100,
+        alpha=[0.1, 1.0, 10.0], verbose=False, solver=LSTSQSolver(),
+    )
+    with pytest.raises(ValueError, match="cannot handle multi-alpha"):
+        trf.fit(np.random.randn(50, 1), np.random.randn(50, 1), lagged=False, drop=False)
+
+
+def test_trf_multi_alpha_svd_solver_ok():
+    """TRFEstimator allows multi-alpha with SVDSolver (the supported path)."""
+    from pyeeg.models.trf import TRFEstimator
+
+    trf = TRFEstimator(
+        tmin=0.0, tmax=0.01, srate=100,
+        alpha=[0.1, 1.0, 10.0], verbose=False, solver=SVDSolver(),
+    )
+    trf.fit(np.random.randn(50, 1), np.random.randn(50, 1), lagged=False, drop=False)
+    assert trf.all_betas.shape[-1] == 3
