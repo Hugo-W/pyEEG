@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/natMEEG.svg)](https://badge.fury.io/py/natMEEG)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22081524.svg)](https://doi.org/10.5281/zenodo.22081524)
 
-> Latest released version: v1.7.1 (2026-08-24).
+> Latest released version: v2.0.0 (2026-08-24).
 
 _Formerly named `pyEEG`_
 
@@ -104,6 +104,26 @@ print(trf.score(X, y)) # Normally you would use a separate test set for scoring
 trf.plot() # plot the TRF
 ```
 
+### Choosing a Solver
+
+The `TRFEstimator` auto-selects an appropriate solver by default (SVD-based ridge
+for regularized fits, ordinary least squares otherwise). For advanced use cases,
+any `Solver` subclass can be injected via the `solver=` parameter:
+
+```python
+from pyeeg.solvers import SVDSolver, ConjugateGradientSolver, IRLSSolver
+
+# Fast iterative solver (same results as SVD, often 10-50x faster)
+trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=fs, alpha=100.0,
+                   solver=ConjugateGradientSolver())
+
+# Robust fitting with Cauchy loss (downweights outliers)
+trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=fs, alpha=100.0,
+                   solver=IRLSSolver(max_iter=50))
+```
+
+See `scripts/examples/solver_showcase.py` for a full comparison of all solvers.
+
 ### Examples
 
 See files in [`examples/`](docs/source/examples/).
@@ -171,4 +191,4 @@ This project is licensed under the terms of the GPL-3.0 license. See the [LICENS
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22081524.svg)](https://doi.org/10.5281/zenodo.22081524)
 
-> Weissbart, H. Natmeeg - M/EEG Data Analysis in Naturalistic Context. 1.6.10, Zenodo, 9 Sept. 2025, <https://doi.org/10.5281/zenodo.17084930>.
+> Weissbart, H. Natmeeg - M/EEG Data Analysis in Naturalistic Context. 1.7.1, Zenodo, 24 Aug. 2026, <https://doi.org/10.5281/zenodo.22081524>.
