@@ -50,4 +50,9 @@ ratemap_module = Extension(
 setup(
     cmdclass={"build_ext": CustomBuildExt},
     ext_modules=[gammatone_module, ratemap_module],
+    entry_points={
+        'console_scripts': [
+            'trf-explore=pyeeg.dashboard.server:main',
+        ],
+    },
 )

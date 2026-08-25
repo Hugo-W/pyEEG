@@ -39,6 +39,9 @@ Documentation = "https://hugo-w.github.io/pyEEG/"
 Repository = "https://github.com/Hugo-W/pyEEG"
 Issues = "https://github.com/Hugo-W/pyEEG/issues"
 
+[project.scripts]
+trf-explore = "pyeeg.dashboard.server:main"
+
 # C Extensions
 # Setup hook does not work for now.
 # Still using a minmal setup.py to build the C extensions.
@@ -64,6 +67,11 @@ package-dir = {"pyeeg" = "pyeeg"}
 mne = ["mne"]
 docs = ["sphinx", "sphinx-rtd-theme", "nbsphinx", "ipykernel"]
 full = ["mne", "sphinx", "sphinx-rtd-theme", "nbsphinx"]
+exploratory-trf = [
+    "flask>=2.0.0",
+    "werkzeug>=2.0.0",
+    "gunicorn>=20.0.0"
+]
 
 [tool.setuptools.package-data]
 pyeeg = ["examples/*.ipynb", "pyeeg/bin/*dll", "pyeeg/bin/*so", "pyeeg/bin/*dylib"]
