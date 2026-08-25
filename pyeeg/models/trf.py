@@ -16,7 +16,15 @@ from sklearn.base import BaseEstimator
 from sklearn.model_selection import KFold
 from tqdm.auto import tqdm
 
-from ..solvers import _robust_irls_regress, _robust_least_squares_regress, _svd_regress
+from ..solvers import (
+    IRLSSolver,
+    ScipyRobustSolver,
+    SVDSolver,
+    Solver,
+    _robust_irls_regress,
+    _robust_least_squares_regress,
+    _svd_regress,
+)
 from ..utils import design_lagmatrix, lag_matrix, lag_span, lag_sparse, mem_check
 from ..vizu import get_spatial_colors, plot_interactive
 
@@ -67,6 +75,11 @@ class TRFEstimator(BaseEstimator):
         Number of EEG channels in TRF
     feat_names_ : list
         Names of each word level features
+    solver : Solver or None
+        Optional :class:`pyeeg.solvers.Solver` instance for dependency injection.
+        When ``None`` (default), the estimator auto-selects the solver based on
+        ``loss``, ``alpha``, and ``quadratic_reg``. When a solver instance is
+        provided, it is used directly via ``solver.solve(X, y, alpha, M)``.
 
     Notes
     -----
@@ -140,6 +153,7 @@ class TRFEstimator(BaseEstimator):
         robust_inner_tol=1e-8,
         robust_inner_max_iter=None,
         feature_alphas=None,
+        solver=None,
     ):
 
         if block_order not in ("lags", "features"):
@@ -169,6 +183,9 @@ class TRFEstimator(BaseEstimator):
             if alpha is not None and np.ndim(alpha) != 0:
                 raise ValueError("feature_alphas cannot be combined with an alpha path")
         self.feature_alphas = feature_alphas
+        if solver is not None and not isinstance(solver, Solver):
+            raise ValueError("solver must be a Solver instance or None")
+        self.solver = solver
         if robust_max_iter < 1 or robust_tol <= 0 or not 0 < robust_damping <= 1:
             raise ValueError("Invalid robust iteration parameters")
         self.block_order = block_order
@@ -399,6 +416,35 @@ class TRFEstimator(BaseEstimator):
         self.robust_objective_ = info.get("objective")
         return betas
 
+    def _validate_solver_compatibility(self, robust):
+        """Validate that the injected solver is compatible with the estimator
+        configuration. Called from :meth:`fit` and :meth:`_fitlists` before
+        dispatching to ``self.solver``.
+
+        - Warns when ``loss='cauchy'`` is set but a non-robust solver is
+          injected (the robust intent is silently ignored).
+        - Raises when a non-SVD solver is used with a multi-alpha array
+          (only SVDSolver can produce one solution per alpha).
+        """
+        if self.solver is None:
+            return
+        if robust and not isinstance(self.solver, (IRLSSolver, ScipyRobustSolver)):
+            import warnings
+
+            warnings.warn(
+                f"loss='{self.loss}' is ignored when solver="
+                f"{type(self.solver).__name__} is provided. Use IRLSSolver "
+                f"or ScipyRobustSolver for robust fitting.",
+                stacklevel=3,
+            )
+        if np.ndim(self.alpha) > 0 and len(np.atleast_1d(self.alpha)) > 1:
+            if not isinstance(self.solver, SVDSolver):
+                raise ValueError(
+                    f"{type(self.solver).__name__} cannot handle multi-alpha "
+                    f"(array) fits. Use SVDSolver, or loop over alphas "
+                    f"manually and fit once per alpha."
+                )
+
     def fit(
         self, X, y, lagged=False, drop=True, feat_names=(), rotations=(), weights=None
     ):
@@ -553,7 +599,22 @@ class TRFEstimator(BaseEstimator):
         if self.verbose:
             LOGGER.info("Computing coefficients..")
         M = self._build_quadratic_regularizer()
-        if robust:
+        if self.solver is not None:
+            self._validate_solver_compatibility(robust)
+            result = self.solver.solve(X, y, alpha=self.alpha, M=M)
+            betas = result.betas
+            if result.info is not None:
+                self.robust_n_iter_ = result.info.get("n_iter")
+                self.robust_converged_ = result.info.get("converged")
+                self.robust_scale_ = result.info.get("scale")
+                self.robust_objective_ = result.info.get("objective")
+            # Handle multi-alpha output shape
+            if betas.ndim == 3:
+                self.all_betas = betas
+                betas = betas[..., 0]
+            else:
+                self.all_betas = betas[..., np.newaxis]
+        elif robust:
             betas = self._fit_robust(X, y, M)
             self.all_betas = betas[..., np.newaxis]
         elif self.use_regularisation or np.ndim(y) == 3:
@@ -722,6 +783,8 @@ class TRFEstimator(BaseEstimator):
         robust = self.loss == "cauchy"
         if robust and weights is not None:
             raise ValueError("weights cannot currently be combined with loss='cauchy'.")
+        if self.solver is not None:
+            self._validate_solver_compatibility(robust)
 
         if weights is not None:
             from pyeeg.utils import apply_sample_weights
@@ -746,7 +809,10 @@ class TRFEstimator(BaseEstimator):
                     X_list_new.append(xw)
                     y_list_new.append(yw)
                 X_list, y_list = X_list_new, y_list_new
-            if robust:
+            if self.solver is not None:
+                result = self.solver.solve(X_list, y_list, alpha=self.alpha, M=M)
+                betas = result.betas
+            elif robust:
                 betas = self._fit_robust(X_list, y_list, M)
             else:
                 betas = _svd_regress(
@@ -777,7 +843,10 @@ class TRFEstimator(BaseEstimator):
                     xx, yc = apply_sample_weights(xx, yc, wv)
                 X_list.append(xx)
                 y_list.append(yc)
-            if robust:
+            if self.solver is not None:
+                result = self.solver.solve(X_list, y_list, alpha=self.alpha, M=M)
+                betas = result.betas
+            elif robust:
                 betas = self._fit_robust(X_list, y_list, M)
             else:
                 betas = _svd_regress(
@@ -785,7 +854,18 @@ class TRFEstimator(BaseEstimator):
                 )
         # Preserve the existing alpha-path shape for linear fits. Robust
         # fitting has one coefficient solution per output channel.
-        if robust:
+        if self.solver is not None:
+            if result.info is not None:
+                self.robust_n_iter_ = result.info.get("n_iter")
+                self.robust_converged_ = result.info.get("converged")
+                self.robust_scale_ = result.info.get("scale")
+                self.robust_objective_ = result.info.get("objective")
+            if betas.ndim == 3:
+                self.all_betas = betas
+                betas = betas[..., 0]
+            else:
+                self.all_betas = betas[..., np.newaxis]
+        elif robust:
             self.all_betas = betas[..., np.newaxis]
         else:
             self.all_betas = betas
@@ -1013,7 +1093,16 @@ class TRFEstimator(BaseEstimator):
             for kfold, (train, test) in enumerate(kf.split(X)):
                 if verbose:
                     print("Training/Evaluating fold %d/%d" % (kfold + 1, n_splits))
-                betas = _svd_regress(X[train, :], y[train, :], self.alpha)
+                if self.solver is not None:
+                    betas = self.solver.solve(X[train, :], y[train, :], alpha=self.alpha).betas
+                    if betas.ndim == 2:
+                        betas = betas[..., np.newaxis]
+                    if betas.shape[-1] == 1 and len(self.alpha) > 1:
+                        # Non-SVD solvers ignore alpha: broadcast the single
+                        # solution across the alpha axis so xfit can score it.
+                        betas = np.repeat(betas, len(self.alpha), axis=-1)
+                else:
+                    betas = _svd_regress(X[train, :], y[train, :], self.alpha)
                 yhat = np.einsum("ij,jkl->ikl", X[test, :], betas)
                 for lamb in range(len(self.alpha)):
                     scores[kfold, 0, lamb, :] = np.diag(
@@ -1025,7 +1114,16 @@ class TRFEstimator(BaseEstimator):
             for kfold, (train, test) in enumerate(kf.split(X)):
                 if verbose:
                     print("Training/Evaluating fold %d/%d" % (kfold + 1, n_splits))
-                betas = _svd_regress(X[train, :], y[:, train, :], self.alpha)
+                if self.solver is not None:
+                    betas = self.solver.solve(X[train, :], y[:, train, :], alpha=self.alpha).betas
+                    if betas.ndim == 2:
+                        betas = betas[..., np.newaxis]
+                    if betas.shape[-1] == 1 and len(self.alpha) > 1:
+                        # Non-SVD solvers ignore alpha: broadcast the single
+                        # solution across the alpha axis so xfit can score it.
+                        betas = np.repeat(betas, len(self.alpha), axis=-1)
+                else:
+                    betas = _svd_regress(X[train, :], y[:, train, :], self.alpha)
                 yhat = np.einsum("ij,jkl->ikl", X[test, :], betas)
                 for ksubj, yy in enumerate(y[:, test, :]):
                     for lamb in range(len(self.alpha)):
