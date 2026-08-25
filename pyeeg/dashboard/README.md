@@ -1,68 +1,88 @@
-# pyEEG Dashboard
+# natmeeg TRF Explorer
 
-A web-based dashboard for interactive TRF (Temporal Response Function) analysis.
+The dashboard is a local web application for interactively fitting and
+inspecting Temporal Response Functions (TRFs) with `pyeeg.TRFEstimator`.
+It is intended for exploratory analysis, not as a production deployment.
 
-## Overview
+## Install
 
-This dashboard provides a simple and elegant interface for:
-- Uploading EEG/MEG data (X) and feature data (Y) as numpy arrays (.npz format)
-- Visualizing TRF results
-- Selecting solvers
-- Adjusting regularization parameters via sliders
-- Specifying sampling frequency (Fs) for proper time axis scaling
-
-## Requirements
-
-- Python 3.10+
-- Flask (web framework)
-- NumPy (for data handling)
-- Optional dependencies: see `pyproject.toml` under `[project.optional-dependencies.exploratory-trf]`
-
-## Installation
-
-Install the dashboard with optional dependencies:
+This project is managed with `uv`. Install the dashboard dependencies from the
+repository root:
 
 ```bash
-pip install -e ".[exploratory-trf]"
+uv sync --extra exploratory-trf
 ```
 
-## Usage
+The extra installs Flask, Werkzeug, and Gunicorn. NumPy, SciPy, and
+scikit-learn are core project dependencies.
 
-Start the dashboard server:
+## Run
+
+From the repository root (or this package's worktree):
 
 ```bash
-python -m pyeeg.dashboard.server
+uv run trf-explore
 ```
 
-Or use the entry point:
+The equivalent module invocation is:
 
 ```bash
-pyeeg-dashboard
+uv run --extra exploratory-trf python -m pyeeg.dashboard.server
 ```
 
-The dashboard will be available at `http://localhost:5000` by default.
+Open <http://localhost:5000>. The server accepts the following options:
 
-## File Constraints
+```bash
+uv run trf-explore --help
+uv run trf-explore --host 127.0.0.1 --port 5000 --debug
+```
 
-- Maximum file size: ~30MB
-- Expected format: numpy arrays saved as .npz files
-- Typical dimensions: 300 sensors, 20 minutes at 50Hz (float32)
+The `trf-explore` console script is declared in `pyproject.toml` and points to
+`pyeeg.dashboard.server:main`.
 
-## Features
+## Workflow
 
-- **Data Upload**: Drag and drop areas for X (EEG/MEG) and Y (features) data
-- **TRF Visualization**: Interactive display of temporal response functions
-- **Solver Selection**: Choose from available TRF solvers
-- **Regularization Control**: Slider to adjust regularization parameters
-- **Sampling Frequency**: Input field for Fs to enable time axis in seconds
+1. Upload a predictor array (**X**) and a response array (**Y**).
+2. Select the regularisation type, solver, sampling frequency, alpha, and lag
+   window.
+3. Select **Compute TRF**.
+4. Inspect the channel-wise coefficient traces in the central plot.
 
-## Architecture
+Supported regularisation types are **None**, **Ridge**, and **Smoothness**.
+Supported solver choices are **Default**, **Robust**, and **CG**. Alpha is
+controlled on a base-10 logarithmic scale from `0.0001` to `10000`.
 
-The dashboard consists of:
-- Frontend: HTML/CSS/JavaScript for the web interface
-- Backend: Flask server handling data processing and TRF computation
-- Data Flow: Client uploads -> Server processing -> Results to client
+The plot displays one line per response channel. The previous fit remains as a
+faded grey overlay when a new fit is computed, while the newest fit is shown in
+green. A vertical line marks zero seconds when the selected lag window crosses
+zero.
 
-## Future Enhancements
+## Input format
 
-See TODO.md for planned features and improvements.
+Uploads must be `.npy` or `.npz` files no larger than 30 MB. The first array in
+an NPZ archive is used. Arrays are converted to floating-point values before
+fitting.
+
+- **X** is expected as `(n_samples, n_features)`; a one-dimensional X is
+  reshaped to `(n_samples, 1)`.
+- **Y** is expected as `(n_samples, n_channels)`; a one-dimensional Y is
+  reshaped to `(n_samples, 1)`.
+- A two-dimensional Y supplied as `(n_channels, n_samples)` is transposed when
+  its first dimension is smaller than its second.
+
+X and Y must have the same number of samples after normalization. Uploaded files
+are stored in a temporary server-side session directory and are cleared with
+**Reset session**.
+
+## Development checks
+
+Run the test suite and formatting-independent repository checks with:
+
+```bash
+uv run --with pytest pytest tests
+uv run python -m compileall -q pyeeg/dashboard
+git diff --check
+```
+
+The dashboard currently has no browser automation suite; manual verification in
+a browser is still recommended after frontend changes.

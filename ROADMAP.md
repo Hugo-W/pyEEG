@@ -31,13 +31,16 @@ branch. It replaces the former `TODO.md`, `NEXT_STEPS.md`,
 - Split the monolithic `pyeeg/models.py` into a `pyeeg.models` subpackage
   (`pyeeg/models/trf.py`, `pyeeg/models/var.py`) while preserving all public
   import paths.
+- Added the exploratory `pyeeg.dashboard` TRF Explorer with a `uv` console
+  entry point, NumPy upload validation, real TRF fitting, regularisation and
+  solver controls, responsive UI, and channel-wise result overlays.
 
 ## Current verification
 
-Focused regression and solver tests pass:
+Focused regression and solver tests pass. The current full suite passes:
 
 ```text
-22 passed
+155 passed
 ```
 
 The full test suite currently has collection blockers:
@@ -79,7 +82,14 @@ Issue #13 remains open. Candidate boundaries are:
 
 Keep the existing public module paths while moving implementation details.
 
-### 4. Add planned modeling features
+### 4. Maintain the TRF Explorer
+
+The dashboard's feature-level roadmap is maintained in
+[`pyeeg/dashboard/TODO.md`](pyeeg/dashboard/TODO.md). Near-term work includes
+endpoint/browser tests, progress handling for long fits, result export, and
+feature/channel selection.
+
+### 5. Add planned modeling features
 
 - Issue #18: add banded ridge regularization, including feature-block ordering,
   per-feature alpha values, solver support, coefficient reshaping, and tests.

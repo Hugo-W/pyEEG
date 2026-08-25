@@ -1,45 +1,32 @@
-# Dashboard Development TODO
+# TRF Explorer roadmap
 
-## High Priority
+The dashboard has a working first release: uploads, validation, model fitting,
+regularisation and solver controls, responsive styling, channel-wise plotting,
+and previous-fit overlays are implemented.
 
-- [ ] Implement file upload handlers for .npz files
-- [ ] Add client-side file size validation (~30MB limit)
-- [ ] Create TRF computation endpoint
-- [ ] Implement solver selection dropdown
-- [ ] Add regularization slider with real-time updates
-- [ ] Create TRF visualization component
-- [ ] Add Fs input field and time/samples axis toggle
+## Next priorities
 
-## Medium Priority
+- [ ] Add browser-level tests for upload, validation, fitting, and plotting.
+- [ ] Add a small dashboard-specific Python test module for endpoint behavior
+      and 1-D/channel-first input normalization.
+- [ ] Add progress reporting or a background job for long-running fits.
+- [ ] Add cancellation and a clear error state for failed computations.
+- [ ] Add export of coefficients and fit metadata as downloadable `.npz`/JSON.
+- [ ] Add selectable feature and channel traces rather than always plotting the
+      first feature across all channels.
+- [ ] Add optional train/test scoring and cross-validation controls.
+- [ ] Consider a persistent upload/session backend for deployments that need it.
 
-- [ ] Add data validation (shape compatibility, etc.)
-- [ ] Implement progress indicators for computations
-- [ ] Add error handling and user feedback
-- [ ] Create responsive layout for different screen sizes
-- [ ] Add support for multiple file uploads
-- [ ] Implement caching for repeated computations
+## Design and accessibility
 
-## Low Priority
+- [ ] Replace inline event handlers with a small modular frontend structure.
+- [ ] Add keyboard and screen-reader tests for upload zones and controls.
+- [ ] Add a no-network visual fallback for the hosted font imports.
+- [ ] Add dark theme support if it remains useful for long analysis sessions.
 
-- [ ] Add theme customization options
-- [ ] Implement export functionality for results
-- [ ] Add support for different file formats
-- [ ] Create comprehensive documentation
-- [ ] Add unit tests for dashboard components
-- [ ] Implement user authentication (if needed)
+## Deliberately out of scope for now
 
-## Technical Debt
-
-- [ ] Refactor frontend JavaScript into modular components
-- [ ] Add TypeScript support for better type safety
-- [ ] Implement proper state management
-- [ ] Add build system for frontend assets
-- [ ] Optimize data transfer between client and server
-
-## Future Features
-
-- [ ] Real-time collaboration support
-- [ ] Advanced visualization options (3D plots, etc.)
-- [ ] Integration with other pyEEG functionality
-- [ ] Support for GPU-accelerated computations
-- [ ] Mobile-friendly interface
+- Authentication and multi-user collaboration.
+- GPU-specific fitting.
+- 3-D visualisation.
+- Additional file formats beyond NumPy arrays.
