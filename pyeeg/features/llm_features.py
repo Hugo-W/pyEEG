@@ -16,7 +16,9 @@ Based on NNLM/lm_featurize by Hugo Weissbart
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
-import logging
+
+from .._logging import LOGGER
+
 try:
     import torch
     from torch.nn import functional as F
@@ -24,8 +26,6 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
     raise ImportError("torch is not installed. Instal torch to use this module (all optional deps installable via natmeeg[features])")
-
-logger = logging.getLogger(__name__)
 
 
 # Special tokens used in BPE tokenization
@@ -68,7 +68,7 @@ class LLMFeatureExtractor:
         try:
             from transformers import AutoTokenizer, GPT2LMHeadModel, AutoModel
         except ImportError:
-            logger.error("transformers library not installed")
+            LOGGER.error("transformers library not installed")
             raise
         
         self._tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
@@ -81,7 +81,7 @@ class LLMFeatureExtractor:
         if self.config.device == "cuda" and torch.cuda.is_available():
             self._model = self._model.cuda()
         
-        logger.info(f"Loaded model: {self.config.model_name}")
+        LOGGER.info(f"Loaded model: {self.config.model_name}")
     
     def get_surprisal(self, logits: torch.Tensor, input_ids: torch.Tensor, 
                     return_shape: str = None) -> torch.Tensor:
@@ -152,7 +152,7 @@ class LLMFeatureExtractor:
         try:
             from nltk.tokenize import word_tokenize
         except ImportError:
-            logger.error("NLTK not installed")
+            LOGGER.error("NLTK not installed")
             raise
         
         tokens_clean = word_tokenize(''.join(tokens).replace(sep, ' ').replace(newline, '\n'), language=lang)

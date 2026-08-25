@@ -2,13 +2,12 @@ import numpy as np
 from scipy.sparse.linalg import spilu
 from scipy.sparse import csc_matrix
 from functools import reduce
-from tqdm import tqdm
-import logging
+from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Union, List, Optional
 
-LOGGER = logging.getLogger(__name__)
+from ._logging import LOGGER
 
 
 def create_laplacian_matrix(n_lags: int, alpha: float = 1.0) -> np.ndarray:
@@ -119,9 +118,9 @@ def svd_solver(A, b, lambda_=0., M=None, truncated_svd=False, verbose=False):
         n_components = np.sum(np.cumsum(s) / np.sum(s) < lambda_) + 1
 
         if verbose: 
-            print(f'Keeping {n_components} components (out of {len(s)})')
-            print(f'Variance explained: {s[:n_components].sum() / s.sum()}')
-            print(f"Singular values: {s[:n_components]}")
+            LOGGER.info(f'Keeping {n_components} components (out of {len(s)})')
+            LOGGER.info(f'Variance explained: {s[:n_components].sum() / s.sum()}')
+            LOGGER.info(f"Singular values: {s[:n_components]}")
         U = U[:, :n_components]
         s = s[:n_components]
         Vt = Vt[:n_components, :]
@@ -226,13 +225,13 @@ def conjugate_gradient(A, b, x0=None, tol=1e-10, max_iter=None, lambda_=0., prec
         rs_new = np.dot(r, z)
 
         if np.sqrt(rs_new) < tol:
-            if verbose: print(f'Converged in {i+1} iterations')
+            if verbose: LOGGER.info(f'Converged in {i+1} iterations')
             return x
 
         p = z + (rs_new / rs_old) * p
         rs_old = rs_new
 
-    if verbose: print(f'Did not converge; reached max iterations ({max_iter})')
+    if verbose: LOGGER.info(f'Did not converge; reached max iterations ({max_iter})')
 
     return x
 
@@ -436,16 +435,11 @@ class SVDSolver(Solver):
 
             [U, s, V] = np.linalg.svd(XtX, full_matrices=False) # here V = U.T
             XtY = np.zeros((XtX.shape[0], y[0].shape[1]), dtype=y[0].dtype)
-            count = 1
+            segments = zip(X, y)
             if self.verbose:
-                pbar = tqdm(total=len(X), leave=False, desc='Covariance accumulation')
-            for xx, yy in zip(X, y):
-                if self.verbose:
-                    LOGGER.info("Accumulating segment %d/%d", count, len(X))
-                    pbar.update()
+                segments = tqdm(segments, total=len(X), leave=False, desc='Covariance accumulation')
+            for xx, yy in segments:
                 XtY += xx.T @ yy
-                count += 1
-            if self.verbose: pbar.close()
             # XtY /= len(x) # NO: IT SHOULD BE A SUM
 
             #betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
@@ -542,16 +536,11 @@ class LSTSQSolver(Solver):
             assert all([xtr.shape[0] == ytr.shape[0] for xtr, ytr in zip(X, y)]), "Inconsistent trial lengths!"
             XtX = reduce(lambda x, y: x + y, [xx.T @ xx for xx in X])
             XtY = np.zeros((XtX.shape[0], y[0].shape[1]), dtype=y[0].dtype)
-            count = 1
+            segments = zip(X, y)
             if self.verbose:
-                pbar = tqdm(total=len(X), leave=False, desc='Covariance accumulation')
-            for xx, yy in zip(X, y):
-                if self.verbose:
-                    LOGGER.info("Accumulating segment %d/%d", count, len(X))
-                    pbar.update()
+                segments = tqdm(segments, total=len(X), leave=False, desc='Covariance accumulation')
+            for xx, yy in segments:
                 XtY += xx.T @ yy
-                count += 1
-            if self.verbose: pbar.close()
 
             betas = np.linalg.lstsq(XtX, XtY)[0]
         elif np.ndim(y) == 3:

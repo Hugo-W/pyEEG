@@ -19,9 +19,7 @@ from sklearn.cross_decomposition import CCA
 from pyeeg.preprocess import apply_filterbank, create_filterbank
 from pyeeg.utils import find_knee_point, is_pos_def, lag_matrix, lag_span, lag_sparse
 from pyeeg.vizu import topomap, topoplot_array
-
-logging.basicConfig(level=logging.DEBUG)
-LOGGER = logging.getLogger(__name__)
+from pyeeg._logging import LOGGER
 
 
 def cca_nt(x, y, threshs, knee_point):

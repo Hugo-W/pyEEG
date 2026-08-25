@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import shutil
 import tempfile
@@ -12,7 +11,7 @@ import numpy as np
 from flask import Flask, jsonify, render_template, request
 from werkzeug.utils import secure_filename
 
-logger = logging.getLogger(__name__)
+from .._logging import LOGGER
 ALLOWED_EXTENSIONS = {"npz", "npy"}
 MAX_FILE_SIZE = 30 * 1024 * 1024
 SOLVERS = ["default", "robust", "CG"]
@@ -104,7 +103,7 @@ def create_app(upload_folder: str | os.PathLike[str] | None = None) -> Flask:
                         try:
                             files.append(_file_metadata(path, file_type))
                         except (ValueError, OSError, EOFError):
-                            logger.warning("Skipping unreadable upload %s", path)
+                            LOGGER.warning("Skipping unreadable upload %s", path)
         return jsonify(files=files)
 
     @app.route("/compute_trf", methods=["POST"])
@@ -147,7 +146,7 @@ def create_app(upload_folder: str | os.PathLike[str] | None = None) -> Flask:
         except (ValueError, TypeError, FloatingPointError, MemoryError) as exc:
             return jsonify(error=str(exc)), 400
         except Exception:
-            logger.exception("TRF computation failed")
+            LOGGER.exception("TRF computation failed")
             return jsonify(error="TRF computation failed. Check the server log for details."), 500
 
     @app.route("/clear_uploads", methods=["POST"])

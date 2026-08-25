@@ -13,14 +13,13 @@ Based on parseMetrics.py by Hugo Weissbart
 """
 
 import os
-import logging
 import tempfile
 import shutil
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import numpy as np
 
-logger = logging.getLogger(__name__)
+from .._logging import LOGGER
 
 try:
     from nltk.tree import Tree
@@ -64,7 +63,7 @@ class SyntacticFeatureExtractor:
         if not NLTK_AVAILABLE:
             raise ImportError("NLTK required for Stanford parsing")
         
-        logger.info("Loading Stanford Parser...")
+        LOGGER.info("Loading Stanford Parser...")
         
         if path_to_jar is None:
             path_to_jar = self.config.parser_path
@@ -85,7 +84,7 @@ class SyntacticFeatureExtractor:
             raise IOError("STANFORD_MODELS not set")
         
         parser = StanfordParser(model_path="edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz")
-        logger.info("Stanford Parser loaded")
+        LOGGER.info("Stanford Parser loaded")
         
         parse = parser.raw_parse_sents(sentences)
         trees = []
@@ -193,7 +192,7 @@ class SyntacticFeatureExtractor:
         
         trees = self.parse_text(text)
         if not trees:
-            logger.warning("No parse trees generated")
+            LOGGER.warning("No parse trees generated")
             return {}
         
         all_features = {}

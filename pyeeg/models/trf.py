@@ -7,8 +7,6 @@ between stimulus and (EEG) response, supporting forward and backward
 modelling, regularised and robust fitting, and multi-epoch aggregation.
 """
 
-import logging
-
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
@@ -27,9 +25,7 @@ from ..solvers import (
 )
 from ..utils import design_lagmatrix, lag_matrix, lag_span, lag_sparse, mem_check
 from ..vizu import get_spatial_colors, plot_interactive
-
-logging.basicConfig(level=logging.WARNING)
-LOGGER = logging.getLogger(__name__.split(".")[0])
+from .._logging import LOGGER
 
 
 class TRFEstimator(BaseEstimator):
@@ -140,7 +136,7 @@ class TRFEstimator(BaseEstimator):
         srate=1.0,
         alpha=None,
         fit_intercept=True,
-        verbose=True,
+        verbose=False,
         quadratic_reg=None,
         block_order="lags",
         loss="linear",
@@ -957,13 +953,11 @@ class TRFEstimator(BaseEstimator):
         )
         # For several story-parts
         if isinstance(X, list) and len(X) == len(y):
+            iterator = zip(X, y)
+            if self.verbose:
+                iterator = tqdm(iterator, total=len(X), desc="Scoring each segment ")
             scores = np.mean(
-                [
-                    self.multialpha_score(x, yy)
-                    for x, yy in tqdm(
-                        zip(X, y), total=len(X), desc="Scoring each segment "
-                    )
-                ],
+                [self.multialpha_score(x, yy) for x, yy in iterator],
                 0,
             )
             return scores
@@ -1092,7 +1086,7 @@ class TRFEstimator(BaseEstimator):
             scores = np.zeros((n_splits, 1, len(self.alpha), self.n_chans_))
             for kfold, (train, test) in enumerate(kf.split(X)):
                 if verbose:
-                    print("Training/Evaluating fold %d/%d" % (kfold + 1, n_splits))
+                    LOGGER.info("Training/Evaluating fold %d/%d" % (kfold + 1, n_splits))
                 if self.solver is not None:
                     betas = self.solver.solve(X[train, :], y[train, :], alpha=self.alpha).betas
                     if betas.ndim == 2:
@@ -1113,7 +1107,7 @@ class TRFEstimator(BaseEstimator):
             scores = np.zeros((n_splits, y.shape[0], len(self.alpha), self.n_chans_))
             for kfold, (train, test) in enumerate(kf.split(X)):
                 if verbose:
-                    print("Training/Evaluating fold %d/%d" % (kfold + 1, n_splits))
+                    LOGGER.info("Training/Evaluating fold %d/%d" % (kfold + 1, n_splits))
                 if self.solver is not None:
                     betas = self.solver.solve(X[train, :], y[:, train, :], alpha=self.alpha).betas
                     if betas.ndim == 2:

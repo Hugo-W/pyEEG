@@ -28,8 +28,15 @@ See README.md for more details and examples.
 2019-2026, Hugo Weissbart <hugo.weissbart@donders.ru.nl>
 """
 
+import logging
+logging.basicConfig(
+    level=logging.WARNING,
+    format="%(name)s - %(levelname)s - %(message)s",
+)
+
 # This enables access to all submodules from the top-level
 # pyeeg module
+from ._logging import set_log_level, get_logger
 from . import connectivity, io, models, preprocess, vizu, utils, simulate, features
 from .models import TRFEstimator
 from .cca import CCA_Estimator
@@ -55,6 +62,13 @@ __all__ = [
     'MultichanWienerFilter',
     'Whitener',
     'mCCA',
+    'LLMFeatureExtractor',
+    'SyntacticFeatureExtractor',
+    'TextGridParser',
+    'FeatureReducer',
+    # Logging
+    'set_log_level',
+    'get_logger',
     # Submodules
     'connectivity',
     'io',

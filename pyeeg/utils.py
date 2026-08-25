@@ -27,9 +27,7 @@ from pyeeg.ratemap import make_rate_map as ratemap
 from pyeeg.ratemap import hz_to_erb_rate, erb_rate_to_hz, generate_cfs
 from pyeeg.gammatone import gammatone_filter
 from pyeeg._decorators import deprecated_warning
-
-logging.basicConfig(level=logging.ERROR)
-LOGGER = logging.getLogger(__name__.split('.')[0])
+from pyeeg._logging import LOGGER, set_log_level  # noqa: F401  (re-export)
 
 def decorate_check_mne(func):
     """Decorator to check if MNE-Python is installed and import it if so.
@@ -52,12 +50,6 @@ def decorate_check_mne(func):
         except ImportError:
             raise ImportError(f"MNE-Python is not installed. Please install it to use this function ({func.__name__}).")
     return wrapper
-
-def set_log_level(lvl):
-    "Sets the log level globally across the PyEEG library."
-    if isinstance(lvl, str): lvl = lvl.upper()
-    logging.getLogger(__name__.split('.')[0]).setLevel(lvl)
-
 
 def poisson_onsets(rate, dur, seed=None):
     """Generate Poisson onsets.

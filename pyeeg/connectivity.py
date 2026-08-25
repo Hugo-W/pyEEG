@@ -34,6 +34,7 @@ from scipy.signal import hilbert, csd
 from scipy.fftpack import fft, fftfreq
 from itertools import combinations
 
+from ._logging import LOGGER
 from .utils import design_lagmatrix
 from .models import fit_ar, fit_var
 
@@ -65,7 +66,7 @@ def granger_causality(X, nlags=1, time_axis=0, verbose=False):
     n, k = X.shape # n: number of observations, k: number of channels
     channel_pairs = list(combinations(range(k), k-1))[::-1]
     if verbose:
-        print(f"Fitting AR({nlags}) model for each {k} channels and one VAR({nlags}) model with {k} channels")
+        LOGGER.info(f"Fitting AR({nlags}) model for each {k} channels and one VAR({nlags}) model with {k} channels")
     # Fit AR to every single time series
     beta_single = fit_ar(X, nlags=nlags, time_axis=0)
     # Fit VAR to the multivariate time series
@@ -75,7 +76,7 @@ def granger_causality(X, nlags=1, time_axis=0, verbose=False):
     # TODO: if necessary, rewrite the function to avoid this
     Xlagged = design_lagmatrix(X, nlags=nlags, time_axis=0)
     # Compute the residuals
-    if verbose: print("Computing residuals")
+    if verbose: LOGGER.info("Computing residuals")
     residuals_single = []
     for c in range(k):
         residuals_single.append(X[nlags:, c] - Xlagged[..., c] @ beta_single[c])

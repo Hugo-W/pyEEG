@@ -15,7 +15,6 @@ Another important part are classes to handle continuous stimuli aligned with EEG
 These *aligned features* then serve as an input to most of the decoding functions.
 """
 # Standard library for Python >= 3.3
-import logging
 import shutil
 import psutil
 # Installed library
@@ -27,11 +26,8 @@ from scipy.io.wavfile import read as wavread
 #import os
 #os.environ['HDF5_DISABLE_VERSION_CHECK'] = '1'
 # PyEEG:
+from ._logging import LOGGER
 from .utils import signal_envelope, decorate_check_mne
-
-logging.basicConfig(level=logging.ERROR)
-LOGGER = logging.getLogger(__name__.split('.')[0])
-LOGGER.setLevel('INFO')
 
 # MNE:
 try:
