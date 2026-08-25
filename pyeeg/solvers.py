@@ -291,10 +291,21 @@ def _robust_scale(residuals):
 def _solve_weighted_normal_equations(x_segments, y_segments, weights, beta,
                                      alpha=0., M=None, inner_solver='svd',
                                      tol=1e-8, max_iter=None):
-    """Solve one weighted least-squares subproblem for all output channels."""
+    """Solve one weighted least-squares subproblem for all output channels.
+
+    Assembles per-channel weighted normal equations and solves them in a
+    single batched call to ``np.linalg.solve`` (or CG per channel when
+    ``inner_solver='cg'``), avoiding the Python-level per-channel loop
+    overhead of separate factorizations.
+    """
     n_features = x_segments[0].shape[1]
     n_chans = y_segments[0].shape[1]
-    betas = np.empty((n_features, n_chans), dtype=float)
+
+    # Stack per-channel systems: (n_chans, n_features, n_features) and
+    # (n_chans, n_features).  This replaces the per-channel Python loop
+    # with a single batched solve.
+    systems = np.empty((n_chans, n_features, n_features), dtype=float)
+    rhs = np.empty((n_chans, n_features), dtype=float)
 
     for channel in range(n_chans):
         xtx = np.zeros((n_features, n_features), dtype=float)
@@ -306,23 +317,25 @@ def _solve_weighted_normal_equations(x_segments, y_segments, weights, beta,
             xty += xx.T @ (ww_channel * yy[:, channel])
 
         if M is not None:
-            system = xtx + M
-            ridge = 0.
+            systems[channel] = xtx + M
+        elif alpha:
+            systems[channel] = xtx + alpha * np.eye(n_features)
         else:
-            system = xtx
-            ridge = alpha
+            systems[channel] = xtx
+        rhs[channel] = xty
 
-        if inner_solver == 'cg':
-            # CG operates on the assembled normal equations. The weighted
-            # design is still never materialized, which keeps this path useful
-            # for segmented inputs.
+    if inner_solver == 'cg':
+        # CG is a vector algorithm — still need per-channel calls, but
+        # the system assembly above is already batched.
+        betas = np.empty((n_features, n_chans), dtype=float)
+        ridge = 0. if M is not None else alpha
+        for channel in range(n_chans):
             betas[:, channel] = conjugate_gradient(
-                system, xty, x0=beta[:, channel], tol=tol,
-                max_iter=max_iter, lambda_=ridge)
-        else:
-            if ridge:
-                system = system + ridge * np.eye(n_features)
-            betas[:, channel] = np.linalg.lstsq(system, xty, rcond=None)[0]
+                systems[channel], rhs[channel], x0=beta[:, channel], tol=tol,
+                max_iter=max_iter, lambda_=0.)  # ridge already in system
+    else:
+        # Single batched solve across all channels
+        betas = np.linalg.solve(systems, rhs[..., None])[..., 0].T
     return betas
 
 
@@ -641,13 +654,16 @@ class ConjugateGradientSolver(Solver):
             X = np.asarray(X)
             y = np.asarray(y)
             if y.ndim == 3:
-                XtX = X.T @ X
-                n_features = XtX.shape[0]
+                # 3-D y: (n_epochs, n_samples, n_chans) — accumulate normal
+                # equations across epochs (both XtX and XtY), matching the
+                # semantics of _svd_regress (which averages) and LSTSQSolver.
+                n_features = X.shape[1]
                 n_chans = y.shape[2]
+                XtX = np.zeros((n_features, n_features), dtype=float)
                 XtY = np.zeros((n_features, n_chans), dtype=float)
                 for yy in y:
+                    XtX += X.T @ X
                     XtY += X.T @ yy
-                XtY /= len(y)  # average across epochs, matching _svd_regress semantics
             else:
                 XtX = X.T @ X
                 XtY = X.T @ y
