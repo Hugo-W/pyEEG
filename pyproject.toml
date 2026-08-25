@@ -39,6 +39,9 @@ Documentation = "https://hugo-w.github.io/pyEEG/"
 Repository = "https://github.com/Hugo-W/pyEEG"
 Issues = "https://github.com/Hugo-W/pyEEG/issues"
 
+[project.scripts]
+trf-explore = "pyeeg.dashboard.server:main"
+
 # C Extensions
 # Setup hook does not work for now.
 # Still using a minmal setup.py to build the C extensions.

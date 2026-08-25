@@ -1,234 +1,165 @@
-"""
-Flask application for the pyEEG dashboard.
-"""
+"""Flask application for interactive TRF exploration."""
 
-import os
-import tempfile
-import numpy as np
-from flask import Flask, render_template, request, jsonify, send_from_directory
-from werkzeug.utils import secure_filename
+from __future__ import annotations
+
 import logging
+import os
+import shutil
+import tempfile
+from pathlib import Path
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+import numpy as np
+from flask import Flask, jsonify, render_template, request
+from werkzeug.utils import secure_filename
+
 logger = logging.getLogger(__name__)
-
-# Allowed file extensions
-ALLOWED_EXTENSIONS = {'npz', 'npy'}
-
-# Maximum file size (30MB)
+ALLOWED_EXTENSIONS = {"npz", "npy"}
 MAX_FILE_SIZE = 30 * 1024 * 1024
-
-# Supported solvers (to be populated from pyEEG solvers)
-SOLVERS = ['ridge', 'lasso', 'elasticnet']
-
-def allowed_file(filename):
-    """Check if the file has an allowed extension."""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+SOLVERS = ["default", "robust", "CG"]
+REGULARIZATION_TYPES = ["none", "ridge", "smoothness"]
 
 
-def create_app():
-    """Create and configure the Flask application."""
-    app = Flask(__name__, 
-                template_folder=os.path.join(os.path.dirname(__file__), 'templates'),
-                static_folder=os.path.join(os.path.dirname(__file__), 'static'))
-    
-    # Configure upload folder
-    app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp(prefix='pyeeg_dashboard_')
-    app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
-    
-    # Ensure upload folder exists
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    
-    logger.info(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
-    
-    @app.route('/')
+def allowed_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _load_array(path: Path) -> np.ndarray:
+    loaded = np.load(path, allow_pickle=False)
+    try:
+        if isinstance(loaded, np.lib.npyio.NpzFile):
+            if not loaded.files:
+                raise ValueError("The NPZ archive does not contain an array")
+            return np.asarray(loaded[loaded.files[0]])
+        return np.asarray(loaded)
+    finally:
+        if isinstance(loaded, np.lib.npyio.NpzFile):
+            loaded.close()
+
+
+def _normalise_array(array: np.ndarray, file_type: str) -> np.ndarray:
+    """Normalise common single-channel and channel-first array layouts."""
+    array = np.asarray(array)
+    if array.ndim == 1:
+        return array[:, None]
+    if array.ndim != 2:
+        raise ValueError(f"{file_type} must be a 1-D or 2-D array.")
+    # A channel-first response convention is recognisable when channels are
+    # fewer than samples. X is intentionally left in its documented layout.
+    if file_type == "Y" and array.shape[0] < array.shape[1]:
+        return array.T
+    return array
+
+
+def _file_metadata(path: Path, file_type: str) -> dict:
+    array = _normalise_array(_load_array(path), file_type)
+    return {"filename": path.name, "type": file_type, "shape": list(array.shape),
+            "dtype": str(array.dtype), "size": path.stat().st_size}
+
+
+def create_app(upload_folder: str | os.PathLike[str] | None = None) -> Flask:
+    """Create the dashboard application."""
+    app = Flask(__name__, template_folder="templates", static_folder="static")
+    folder = Path(upload_folder) if upload_folder else Path(tempfile.mkdtemp(prefix="pyeeg_dashboard_"))
+    app.config.update(UPLOAD_FOLDER=folder, MAX_CONTENT_LENGTH=MAX_FILE_SIZE)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    @app.errorhandler(413)
+    def request_too_large(_error):
+        return jsonify(error="File is too large. The maximum size is 30 MB."), 413
+
+    @app.route("/")
     def index():
-        """Render the main dashboard page."""
-        return render_template('index.html', solvers=SOLVERS)
-    
-    @app.route('/upload', methods=['POST'])
+        return render_template("index.html", solvers=SOLVERS, regularization_types=REGULARIZATION_TYPES)
+
+    @app.route("/upload", methods=["POST"])
     def upload_file():
-        """Handle file uploads for X (EEG/MEG) and Y (features)."""
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file part'}), 400
-        
-        file = request.files['file']
-        file_type = request.form.get('type')  # 'X' or 'Y'
-        
-        if file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
-        
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            
-            # Create type-specific subdirectory
-            type_dir = os.path.join(app.config['UPLOAD_FOLDER'], file_type)
-            os.makedirs(type_dir, exist_ok=True)
-            
-            filepath = os.path.join(type_dir, filename)
-            file.save(filepath)
-            
-            # Load and validate the file
-            try:
-                data = np.load(filepath)
-                if isinstance(data, np.lib.npyio.NpzFile):
-                    # Handle .npz files with multiple arrays
-                    keys = list(data.keys())
-                    if len(keys) == 1:
-                        array_data = data[keys[0]]
-                    else:
-                        # For multiple arrays, use the first one
-                        array_data = data[keys[0]]
-                        logger.warning(f"NPZ file has multiple arrays, using first: {keys[0]}")
-                else:
-                    # Handle .npy files
-                    array_data = data
-                
-                # Check file size constraint
-                file_size = os.path.getsize(filepath)
-                if file_size > MAX_FILE_SIZE:
-                    os.remove(filepath)
-                    return jsonify({'error': f'File too large ({file_size} bytes). Max is {MAX_FILE_SIZE} bytes'}), 400
-                
-                # Store file info
-                file_info = {
-                    'filename': filename,
-                    'type': file_type,
-                    'shape': array_data.shape,
-                    'dtype': str(array_data.dtype),
-                    'size': file_size,
-                    'filepath': filepath
-                }
-                
-                logger.info(f"Uploaded {file_type} file: {filename}, shape: {array_data.shape}")
-                return jsonify({'success': True, 'file_info': file_info})
-                
-            except Exception as e:
-                logger.error(f"Error loading file: {e}")
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                return jsonify({'error': f'Invalid numpy file: {str(e)}'}), 400
-        else:
-            return jsonify({'error': 'File type not allowed'}), 400
-    
-    @app.route('/compute_trf', methods=['POST'])
-    def compute_trf():
-        """Compute TRF from uploaded X and Y data."""
+        file, file_type = request.files.get("file"), request.form.get("type", "").upper()
+        if file is None or not file.filename:
+            return jsonify(error="Choose a file to upload."), 400
+        if file_type not in {"X", "Y"}:
+            return jsonify(error="File type must be X or Y."), 400
+        if not allowed_file(file.filename):
+            return jsonify(error="Only .npy and .npz files are supported."), 400
+        filename = secure_filename(file.filename)
+        if not filename:
+            return jsonify(error="The filename is not valid."), 400
+        target_dir, path = folder / file_type, folder / file_type / filename
+        target_dir.mkdir(exist_ok=True)
+        file.save(path)
         try:
-            data = request.get_json()
-            
-            # Get parameters
-            x_file = data.get('x_file')
-            y_file = data.get('y_file')
-            solver = data.get('solver', 'ridge')
-            regularization = data.get('regularization', 1.0)
-            fs = data.get('fs', None)
-            
-            if not x_file or not y_file:
-                return jsonify({'error': 'Both X and Y files are required'}), 400
-            
-            # Load data
-            x_path = os.path.join(app.config['UPLOAD_FOLDER'], 'X', x_file)
-            y_path = os.path.join(app.config['UPLOAD_FOLDER'], 'Y', y_file)
-            
-            if not os.path.exists(x_path) or not os.path.exists(y_path):
-                return jsonify({'error': 'File not found on server'}), 404
-            
-            x_data = np.load(x_path)
-            y_data = np.load(y_path)
-            
-            # Handle .npz files
-            if isinstance(x_data, np.lib.npyio.NpzFile):
-                x_array = x_data[x_data.files[0]] if len(x_data.files) > 0 else None
-            else:
-                x_array = x_data
-                
-            if isinstance(y_data, np.lib.npyio.NpzFile):
-                y_array = y_data[y_data.files[0]] if len(y_data.files) > 0 else None
-            else:
-                y_array = y_data
-            
-            if x_array is None or y_array is None:
-                return jsonify({'error': 'Could not load data arrays'}), 400
-            
-            # Simple TRF computation (placeholder - to be replaced with actual pyEEG solvers)
-            # For now, return mock results
-            trf_result = {
-                'trf': np.random.randn(100).tolist(),  # Mock TRF
-                'time': np.linspace(0, 1, 100).tolist() if fs else list(range(100)),
-                'x_shape': x_array.shape,
-                'y_shape': y_array.shape,
-                'solver': solver,
-                'regularization': regularization,
-                'fs': fs
-            }
-            
-            return jsonify({'success': True, 'result': trf_result})
-            
-        except Exception as e:
-            logger.error(f"Error computing TRF: {e}")
-            return jsonify({'error': str(e)}), 500
-    
-    @app.route('/files/<path:filename>')
-    def uploaded_file(filename):
-        """Serve uploaded files."""
-        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-    
-    @app.route('/clear_uploads', methods=['POST'])
-    def clear_uploads():
-        """Clear all uploaded files."""
-        try:
-            import shutil
-            shutil.rmtree(app.config['UPLOAD_FOLDER'])
-            app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp(prefix='pyeeg_dashboard_')
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            return jsonify({'success': True})
-        except Exception as e:
-            logger.error(f"Error clearing uploads: {e}")
-            return jsonify({'error': str(e)}), 500
-    
-    @app.route('/list_files')
+            metadata = _file_metadata(path, file_type)
+        except (ValueError, OSError, EOFError) as exc:
+            path.unlink(missing_ok=True)
+            return jsonify(error=f"Could not read NumPy file: {exc}"), 400
+        return jsonify(success=True, file_info=metadata)
+
+    @app.route("/list_files")
     def list_files():
-        """List all uploaded files."""
         files = []
-        
-        for file_type in ['X', 'Y']:
-            type_dir = os.path.join(app.config['UPLOAD_FOLDER'], file_type)
-            if os.path.exists(type_dir):
-                for filename in os.listdir(type_dir):
-                    filepath = os.path.join(type_dir, filename)
-                    if os.path.isfile(filepath):
+        for file_type in ("X", "Y"):
+            directory = folder / file_type
+            if directory.exists():
+                for path in sorted(directory.iterdir()):
+                    if path.is_file():
                         try:
-                            data = np.load(filepath)
-                            if isinstance(data, np.lib.npyio.NpzFile):
-                                keys = list(data.keys())
-                                shape = data[keys[0]].shape if keys else None
-                            else:
-                                shape = data.shape
-                            
-                            files.append({
-                                'type': file_type,
-                                'filename': filename,
-                                'shape': str(shape) if shape else 'unknown',
-                                'size': os.path.getsize(filepath)
-                            })
-                        except:
-                            files.append({
-                                'type': file_type,
-                                'filename': filename,
-                                'shape': 'unknown',
-                                'size': os.path.getsize(filepath)
-                            })
-        
-        return jsonify({'files': files})
-    
+                            files.append(_file_metadata(path, file_type))
+                        except (ValueError, OSError, EOFError):
+                            logger.warning("Skipping unreadable upload %s", path)
+        return jsonify(files=files)
+
+    @app.route("/compute_trf", methods=["POST"])
+    def compute_trf():
+        payload = request.get_json(silent=True) or {}
+        x_name, y_name = payload.get("x_file"), payload.get("y_file")
+        if not x_name or not y_name:
+            return jsonify(error="Upload both predictor (X) and response (Y) data."), 400
+        x_path, y_path = folder / "X" / Path(x_name).name, folder / "Y" / Path(y_name).name
+        if not x_path.is_file() or not y_path.is_file():
+            return jsonify(error="One or both selected files are no longer available."), 404
+        try:
+            x_array = _normalise_array(_load_array(x_path), "X")
+            y_array = _normalise_array(_load_array(y_path), "Y")
+            if x_array.shape[0] != y_array.shape[0]:
+                raise ValueError(f"X and Y must have the same samples after normalisation ({x_array.shape[0]} vs {y_array.shape[0]}).")
+            fs = float(payload.get("fs") or 1.0)
+            tmin, tmax = float(payload.get("tmin", -0.2)), float(payload.get("tmax", 0.5))
+            alpha = float(payload.get("regularization", 1.0))
+            solver, reg_type = payload.get("solver", "default"), payload.get("regularization_type", "ridge")
+            if solver not in SOLVERS or reg_type not in REGULARIZATION_TYPES or fs <= 0 or tmin >= tmax or alpha < 0:
+                raise ValueError("Check solver, regularisation type, sampling frequency, lag range, and alpha.")
+            from pyeeg.models.trf import TRFEstimator
+            kwargs = {"tmin": tmin, "tmax": tmax, "srate": fs, "alpha": 0 if reg_type == "none" else alpha, "verbose": False}
+            if reg_type == "smoothness":
+                kwargs["quadratic_reg"] = "smoothness"
+            if solver in {"robust", "CG"}:
+                kwargs["loss"] = "cauchy"
+                kwargs["robust_inner_solver"] = "cg" if solver == "CG" else "svd"
+            import time
+            model = TRFEstimator(**kwargs)
+            started = time.perf_counter()
+            model.fit(x_array.astype(float), y_array.astype(float))
+            fit_seconds = time.perf_counter() - started
+            coef = np.asarray(model.coef_)  # n_lag × n_features × n_channels
+            return jsonify(success=True, result={"coef": coef[:, 0, :].tolist(), "time": model.times.tolist(),
+                "coef_shape": list(coef.shape), "x_shape": list(x_array.shape), "y_shape": list(y_array.shape),
+                "solver": solver, "regularization_type": reg_type, "regularization": alpha, "fs": fs,
+                "tmin": tmin, "tmax": tmax, "fit_seconds": fit_seconds})
+        except (ValueError, TypeError, FloatingPointError, MemoryError) as exc:
+            return jsonify(error=str(exc)), 400
+        except Exception:
+            logger.exception("TRF computation failed")
+            return jsonify(error="TRF computation failed. Check the server log for details."), 500
+
+    @app.route("/clear_uploads", methods=["POST"])
+    def clear_uploads():
+        for file_type in ("X", "Y"):
+            shutil.rmtree(folder / file_type, ignore_errors=True)
+        return jsonify(success=True)
+
     return app
 
 
-# Create a default app instance for convenience
 app = create_app()
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)

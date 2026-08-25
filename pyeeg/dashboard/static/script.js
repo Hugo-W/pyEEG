@@ -1,386 +1,53 @@
-// pyEEG Dashboard JavaScript
+const uploadedFiles = {X: [], Y: []};
+let previousResult = null;
+const maxSize = 30 * 1024 * 1024;
 
-// Global state
-const uploadedFiles = {
-    X: [],
-    Y: []
-};
-
-// Initialize
-document.addEventListener('DOMContentLoaded', function() {
-    loadFiles();
-    
-    // Update slider value display
-    const regSlider = document.getElementById('regularization');
-    if (regSlider) {
-        document.getElementById('regValue').textContent = regSlider.value;
-        regSlider.addEventListener('input', function() {
-            document.getElementById('regValue').textContent = this.value;
-        });
-    }
+document.addEventListener('DOMContentLoaded', () => {
+  ['X', 'Y'].forEach(type => {
+    const zone = document.getElementById(`dropZone${type}`), input = document.getElementById(`fileInput${type}`);
+    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') input.click(); });
+    zone.addEventListener('dragover', event => { event.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', event => { event.preventDefault(); zone.classList.remove('drag-over'); uploadFile(event.dataTransfer.files[0], type); });
+    input.addEventListener('change', event => uploadFile(event.target.files[0], type));
+  });
+  const slider = document.getElementById('regularization');
+  const updateAlpha = () => document.getElementById('regValue').value = (10 ** Number(slider.value)).toFixed(4);
+  slider.addEventListener('input', updateAlpha); updateAlpha();
+  loadFiles();
 });
 
-// File upload handlers
-function handleFileSelect(event, fileType) {
-    const file = event.target.files[0];
-    if (file) {
-        uploadFile(file, fileType);
-    }
+async function uploadFile(file, type) {
+  if (!file) return;
+  if (file.size > maxSize) return showStatus('That file is larger than 30 MB.', 'error');
+  if (!/\.(npy|npz)$/i.test(file.name)) return showStatus('Only .npy and .npz files are supported.', 'error');
+  const body = new FormData(); body.append('file', file); body.append('type', type);
+  showStatus(`Uploading ${file.name}…`);
+  try {
+    const response = await fetch('/upload', {method: 'POST', body}); const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Upload failed');
+    uploadedFiles[type] = [data.file_info]; updateFileList(type); showStatus(`${file.name} is ready.`);
+  } catch (error) { showStatus(error.message, 'error'); }
 }
-
-function handleDrop(event, fileType) {
-    event.preventDefault();
-    const file = event.dataTransfer.files[0];
-    if (file) {
-        uploadFile(file, fileType);
-    }
+function updateFileList(type) {
+  const list = document.getElementById(`${type.toLowerCase()}FileList`); list.innerHTML = '';
+  uploadedFiles[type].forEach(file => { const item = document.createElement('div'); item.className = 'file-item'; item.innerHTML = `<span><strong>${escapeHtml(file.filename)}</strong> · ${file.shape.join(' × ')}</span><span class="remove" title="Remove">×</span>`; item.querySelector('.remove').onclick = () => { uploadedFiles[type] = []; updateFileList(type); }; list.appendChild(item); });
 }
-
-function uploadFile(file, fileType) {
-    // Validate file size
-    const maxSize = 30 * 1024 * 1024; // 30MB
-    if (file.size > maxSize) {
-        showStatus(`File too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Max is 30MB`, 'error');
-        return;
-    }
-    
-    // Validate file extension
-    const validExtensions = ['.npz', '.npy'];
-    const fileName = file.name.toLowerCase();
-    const isValid = validExtensions.some(ext => fileName.endsWith(ext));
-    
-    if (!isValid) {
-        showStatus('Only .npz and .npy files are allowed', 'error');
-        return;
-    }
-    
-    // Show loading state
-    showStatus(`Uploading ${file.name}...`, 'success');
-    
-    // Create form data
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('type', fileType);
-    
-    // Upload file
-    fetch('/upload', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            const fileInfo = data.file_info;
-            uploadedFiles[fileType].push(fileInfo);
-            updateFileInfo(fileType, fileInfo);
-            updateFileList(fileType);
-            showStatus(`Successfully uploaded ${file.name}`, 'success');
-        } else {
-            showStatus(data.error || 'Upload failed', 'error');
-        }
-    })
-    .catch(error => {
-        showStatus(`Upload error: ${error.message}`, 'error');
-    });
+async function loadFiles() { try { const data = await (await fetch('/list_files')).json(); uploadedFiles.X = data.files.filter(f => f.type === 'X'); uploadedFiles.Y = data.files.filter(f => f.type === 'Y'); updateFileList('X'); updateFileList('Y'); } catch (_) {} }
+async function clearAllFiles() { await fetch('/clear_uploads', {method: 'POST'}); uploadedFiles.X = []; uploadedFiles.Y = []; updateFileList('X'); updateFileList('Y'); document.getElementById('resultInfo').hidden = true; document.getElementById('plotContainer').innerHTML = '<div class="empty-state"><span>⌁</span><strong>Your TRF will appear here</strong><p>Upload both arrays and run the model to reveal its temporal profile.</p></div>'; showStatus('Session reset.'); }
+async function computeTRF() {
+  if (!uploadedFiles.X.length || !uploadedFiles.Y.length) return showStatus('Upload both predictor and response arrays first.', 'error');
+  const button = document.getElementById('computeButton'); button.disabled = true; button.textContent = 'Computing…'; showStatus('Fitting model…');
+  const payload = {x_file: uploadedFiles.X[0].filename, y_file: uploadedFiles.Y[0].filename, solver: document.getElementById('solver').value, regularization: 10 ** Number(document.getElementById('regularization').value), regularization_type: document.getElementById('regularizationType').value, fs: Number(document.getElementById('fs').value), tmin: Number(document.getElementById('tmin').value), tmax: Number(document.getElementById('tmax').value)};
+  try { const response = await fetch('/compute_trf', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); const data = await response.json(); if (!response.ok) throw new Error(data.error); displayResults(data.result); showStatus('TRF computed successfully.'); } catch (error) { showStatus(error.message || 'Computation failed.', 'error'); } finally { button.disabled = false; button.innerHTML = 'Compute TRF <span>→</span>'; }
 }
-
-function updateFileInfo(fileType, fileInfo) {
-    const infoDiv = document.getElementById(`fileInfo${fileType}`);
-    const filenameDiv = document.getElementById(`${fileType.toLowerCase()}Filename`);
-    const shapeDiv = document.getElementById(`${fileType.toLowerCase()}Shape`);
-    const sizeDiv = document.getElementById(`${fileType.toLowerCase()}Size`);
-    
-    if (filenameDiv && shapeDiv && sizeDiv) {
-        filenameDiv.textContent = `File: ${fileInfo.filename}`;
-        shapeDiv.textContent = `Shape: ${fileInfo.shape}`;
-        sizeDiv.textContent = `Size: ${(fileInfo.size / 1024 / 1024).toFixed(2)} MB`;
-        infoDiv.classList.add('active');
-    }
-}
-
-function updateFileList(fileType) {
-    const fileListDiv = document.getElementById(`${fileType.toLowerCase()}FileList`);
-    if (fileListDiv) {
-        fileListDiv.innerHTML = '';
-        
-        uploadedFiles[fileType].forEach((file, index) => {
-            const fileItem = document.createElement('div');
-            fileItem.className = 'file-item';
-            fileItem.innerHTML = `
-                <div class="info">
-                    <strong>${file.filename}</strong> - ${file.shape}
-                </div>
-                <span class="remove" onclick="removeFile('${fileType}', ${index})">✕</span>
-            `;
-            fileListDiv.appendChild(fileItem);
-        });
-    }
-}
-
-function removeFile(fileType, index) {
-    uploadedFiles[fileType].splice(index, 1);
-    updateFileList(fileType);
-    
-    if (uploadedFiles[fileType].length === 0) {
-        const infoDiv = document.getElementById(`fileInfo${fileType}`);
-        if (infoDiv) {
-            infoDiv.classList.remove('active');
-        }
-    }
-    
-    // Notify server to delete file
-    fetch('/clear_uploads', {
-        method: 'POST'
-    }).catch(() => {});
-}
-
-function loadFiles() {
-    fetch('/list_files')
-    .then(response => response.json())
-    .then(data => {
-        uploadedFiles.X = [];
-        uploadedFiles.Y = [];
-        data.files.forEach(file => {
-            uploadedFiles[file.type].push(file);
-        });
-        
-        // Update UI
-        if (uploadedFiles.X.length > 0) {
-            const lastX = uploadedFiles.X[uploadedFiles.X.length - 1];
-            updateFileInfo('X', lastX);
-        }
-        if (uploadedFiles.Y.length > 0) {
-            const lastY = uploadedFiles.Y[uploadedFiles.Y.length - 1];
-            updateFileInfo('Y', lastY);
-        }
-        
-        updateFileList('X');
-        updateFileList('Y');
-    })
-    .catch(error => {
-        console.error('Error loading files:', error);
-    });
-}
-
-function clearAllFiles() {
-    fetch('/clear_uploads', {
-        method: 'POST'
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            uploadedFiles.X = [];
-            uploadedFiles.Y = [];
-            const xInfoDiv = document.getElementById('fileInfoX');
-            const yInfoDiv = document.getElementById('fileInfoY');
-            const xFileList = document.getElementById('xFileList');
-            const yFileList = document.getElementById('yFileList');
-            
-            if (xInfoDiv) xInfoDiv.classList.remove('active');
-            if (yInfoDiv) yInfoDiv.classList.remove('active');
-            if (xFileList) xFileList.innerHTML = '';
-            if (yFileList) yFileList.innerHTML = '';
-            
-            const plotContainer = document.getElementById('plotContainer');
-            if (plotContainer) {
-                plotContainer.innerHTML = '<p style="color: #999;">Upload data and compute TRF to see results</p>';
-            }
-            
-            const resultInfo = document.getElementById('resultInfo');
-            if (resultInfo) {
-                resultInfo.style.display = 'none';
-            }
-            
-            showStatus('All files cleared', 'success');
-        } else {
-            showStatus(data.error || 'Failed to clear files', 'error');
-        }
-    })
-    .catch(error => {
-        showStatus(`Error clearing files: ${error.message}`, 'error');
-    });
-}
-
-// TRF computation
-function computeTRF() {
-    const xFile = uploadedFiles.X.length > 0 ? uploadedFiles.X[0].filename : null;
-    const yFile = uploadedFiles.Y.length > 0 ? uploadedFiles.Y[0].filename : null;
-    
-    if (!xFile || !yFile) {
-        showStatus('Please upload both X and Y data files', 'error');
-        return;
-    }
-    
-    // Show loading
-    const loadingDiv = document.getElementById('loading');
-    const statusDiv = document.getElementById('status');
-    if (loadingDiv) loadingDiv.classList.add('active');
-    if (statusDiv) statusDiv.style.display = 'none';
-    
-    // Get parameters
-    const solver = document.getElementById('solver').value;
-    const regularization = parseFloat(document.getElementById('regularization').value);
-    const fs = document.getElementById('fs').value ? parseFloat(document.getElementById('fs').value) : null;
-    const xaxis = document.querySelector('input[name="xaxis"]:checked').value;
-    
-    // Send computation request
-    fetch('/compute_trf', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            x_file: xFile,
-            y_file: yFile,
-            solver: solver,
-            regularization: regularization,
-            fs: fs,
-            xaxis: xaxis
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (loadingDiv) loadingDiv.classList.remove('active');
-        
-        if (data.success) {
-            const result = data.result;
-            displayResults(result);
-            showStatus('TRF computation successful!', 'success');
-        } else {
-            showStatus(data.error || 'TRF computation failed', 'error');
-        }
-    })
-    .catch(error => {
-        if (loadingDiv) loadingDiv.classList.remove('active');
-        showStatus(`Computation error: ${error.message}`, 'error');
-    });
-}
-
 function displayResults(result) {
-    // Update result info
-    const resultSolver = document.getElementById('resultSolver');
-    const resultRegularization = document.getElementById('resultRegularization');
-    const resultFs = document.getElementById('resultFs');
-    const resultInfo = document.getElementById('resultInfo');
-    
-    if (resultSolver && resultRegularization && resultFs && resultInfo) {
-        resultSolver.textContent = `Solver: ${result.solver}`;
-        resultRegularization.textContent = `Regularization: ${result.regularization}`;
-        resultFs.textContent = `Fs: ${result.fs ? result.fs + ' Hz' : 'Not specified (samples)'}`;
-        resultInfo.style.display = 'block';
-    }
-    
-    // Create plot
-    const plotContainer = document.getElementById('plotContainer');
-    if (plotContainer) {
-        const canvas = document.createElement('canvas');
-        canvas.id = 'trfPlot';
-        canvas.width = 800;
-        canvas.height = 400;
-        
-        plotContainer.innerHTML = '';
-        plotContainer.appendChild(canvas);
-        
-        // Simple line plot using canvas
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
-        const padding = 50;
-        
-        // Clear canvas
-        ctx.fillStyle = '#f8f9fa';
-        ctx.fillRect(0, 0, width, height);
-        
-        // Draw axes
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 2;
-        
-        // X axis
-        ctx.beginPath();
-        ctx.moveTo(padding, height - padding);
-        ctx.lineTo(width - padding, height - padding);
-        ctx.stroke();
-        
-        // Y axis
-        ctx.beginPath();
-        ctx.moveTo(padding, padding);
-        ctx.lineTo(padding, height - padding);
-        ctx.stroke();
-        
-        // Draw grid
-        ctx.strokeStyle = '#e9ecef';
-        ctx.lineWidth = 1;
-        
-        // Horizontal grid lines
-        for (let i = 1; i < 5; i++) {
-            const y = height - padding - (i * (height - 2 * padding) / 5);
-            ctx.beginPath();
-            ctx.moveTo(padding, y);
-            ctx.lineTo(width - padding, y);
-            ctx.stroke();
-        }
-        
-        // Draw TRF line
-        const trf = result.trf;
-        const time = result.time;
-        const plotWidth = width - 2 * padding;
-        const plotHeight = height - 2 * padding;
-        
-        ctx.strokeStyle = '#667eea';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        
-        for (let i = 0; i < trf.length; i++) {
-            const x = padding + (i / (trf.length - 1)) * plotWidth;
-            const y = padding + plotHeight - ((trf[i] - Math.min(...trf)) / (Math.max(...trf) - Math.min(...trf))) * plotHeight;
-            
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        }
-        ctx.stroke();
-        
-        // Draw labels
-        ctx.fillStyle = '#333';
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'center';
-        
-        // X axis label
-        const xaxisType = document.querySelector('input[name="xaxis"]:checked').value;
-        ctx.fillText(xaxisType === 'seconds' ? 'Time (s)' : 'Samples', width / 2, height - 20);
-        
-        // Y axis label
-        ctx.save();
-        ctx.translate(20, height / 2);
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText('TRF Amplitude', 0, 0);
-        ctx.restore();
-        
-        // Title
-        ctx.font = '16px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Temporal Response Function', width / 2, 30);
-    }
+  const oldResult = previousResult; previousResult = result;
+  document.getElementById('resultInfo').hidden = false; document.getElementById('resultSolver').textContent = `solver: ${result.solver}`; document.getElementById('resultRegularization').textContent = `α: ${result.regularization}`; document.getElementById('resultFs').textContent = `fs: ${result.fs} Hz`; document.getElementById('resultShape').textContent = `coef: ${result.coef_shape.join(' × ')}`; const fitTime = document.createElement('span'); fitTime.textContent = `fit: ${result.fit_seconds.toFixed(3)} s`; document.getElementById('resultInfo').appendChild(fitTime);
+  const canvas = document.createElement('canvas'); canvas.width = 1000; canvas.height = 400; document.getElementById('plotContainer').replaceChildren(canvas); const ctx = canvas.getContext('2d'), pad = 52, values = result.coef, oldValues = oldResult?.coef, all = values.flat().concat(oldValues?.flat() || []), min = Math.min(...all), max = Math.max(...all), span = max - min || 1, width = canvas.width - pad * 2, height = canvas.height - pad * 2;
+  ctx.clearRect(0,0,canvas.width,canvas.height); ctx.strokeStyle='#dce5df'; ctx.lineWidth=1; ctx.globalAlpha=1; for(let i=0;i<5;i++){const y=pad+i*height/4;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(canvas.width-pad,y);ctx.stroke()} if(result.fs && result.tmin < 0 && result.tmax > 0){const zeroX=pad+(-result.tmin)/(result.tmax-result.tmin)*width;ctx.strokeStyle='#ed7d62';ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(zeroX,pad);ctx.lineTo(zeroX,pad+height);ctx.stroke();ctx.setLineDash([])} for(let i=0;i<5;i++){const y=pad+i*height/4;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(canvas.width-pad,y);ctx.stroke()} const draw = (data, color, opacity) => { ctx.strokeStyle=color; ctx.globalAlpha=opacity; ctx.lineWidth=opacity > .3 ? 2.1 : 1.1; data[0].forEach((_, channel) => { ctx.beginPath(); data.forEach((row, i) => { const x=pad+i*width/(data.length-1||1), y=pad+height-(row[channel]-min)*height/span; i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); }); ctx.stroke(); }); }; if (oldValues) draw(oldValues, '#71817b', .22); draw(values, '#1f6d59', .58); ctx.globalAlpha=1; ctx.fillStyle='#71817b';ctx.font='12px DM Mono';ctx.fillText(String(result.tmin)+' s',pad,canvas.height-18);ctx.textAlign='right';ctx.fillText(String(result.tmax)+' s',canvas.width-pad,canvas.height-18);
 }
-
-function showStatus(message, type) {
-    const statusDiv = document.getElementById('status');
-    if (statusDiv) {
-        statusDiv.textContent = message;
-        statusDiv.className = `status ${type}`;
-    }
-}
-
-// Export functions for potential module usage
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        handleFileSelect,
-        handleDrop,
-        uploadFile,
-        computeTRF,
-        clearAllFiles,
-        loadFiles
-    };
-}
+function showStatus(message, type='') { const status = document.getElementById('status'); status.textContent = message; status.className = `status ${type}`; }
+function escapeHtml(value) { const div = document.createElement('div'); div.textContent = value; return div.innerHTML; }
+if (typeof module !== 'undefined') module.exports = {uploadFile, computeTRF, clearAllFiles, loadFiles};
