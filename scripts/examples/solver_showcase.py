@@ -20,7 +20,11 @@ Solvers compared:
   - SVDSolver + smoothness M  (SVD with quadratic smoothness regularizer)
   - ConjugateGradientSolver  (CG on normal equations with L2)
   - IRLSSolver (Cauchy)       (robust Cauchy-loss IRLS with L2)
-  - ScipyRobustSolver        (SciPy nonlinear Cauchy, no regularization)
+
+Note: ScipyRobustSolver is intentionally omitted — it is a reference
+validator (unregularized SciPy nonlinear least-squares) and operates on
+the full sample matrix rather than compressed normal equations, making
+it ~100x slower than IRLS with no accuracy benefit.
 
 Run with:
     uv run python scripts/examples/solver_showcase.py
@@ -36,7 +40,6 @@ from pyeeg.solvers import (
     ConjugateGradientSolver,
     IRLSSolver,
     LSTSQSolver,
-    ScipyRobustSolver,
     SVDSolver,
 )
 from pyeeg.simulate import dummy_trf_kernel, simulate_smooth_input, simulate_trf_output
@@ -102,8 +105,6 @@ solvers = [
      {"alpha": ALPHA}),
     ("IRLS Cauchy (a=100)", IRLSSolver(max_iter=50, tol=1e-8),
      {"alpha": ALPHA}),
-    ("Scipy Cauchy (OLS)", ScipyRobustSolver(),
-     {"alpha": 0.0, "loss": "cauchy"}),
 ]
 
 # ---------------------------------------------------------------------------
@@ -159,6 +160,10 @@ if n_solvers == 1:
 
 t_lags = np.arange(TMIN, TMAX, 1 / SRATE)
 
+# Use a fixed y-range based on the ground-truth kernel so every panel
+# shows the ground truth at the same scale regardless of solver quality.
+kernel_ylim = (-kernel.max() * 0.2, kernel.max() * 1.3)
+
 for col, (label, trf, elapsed, corr, recovered, y_pred) in enumerate(results):
     # Top row: recovered kernel vs ground truth
     ax = axes[0, col]
@@ -166,6 +171,7 @@ for col, (label, trf, elapsed, corr, recovered, y_pred) in enumerate(results):
     ax.plot(t_lags, recovered, "r-", lw=1.5, label="Recovered")
     ax.set_title(label, fontsize=10)
     ax.set_xlabel("Lag (s)")
+    ax.set_ylim(kernel_ylim)
     if col == 0:
         ax.set_ylabel("TRF amplitude")
         ax.legend(fontsize=8, loc="upper left")
@@ -187,7 +193,6 @@ for col, (label, trf, elapsed, corr, recovered, y_pred) in enumerate(results):
     if col == 0:
         ax.set_ylabel("Residual")
         ax.legend(fontsize=8)
-    ax.set_ylim(-5, 5)
 
 fig.suptitle("Solver Showcase: TRF Recovery with Outliers on Smooth Stimulus",
              fontsize=13, y=1.01)
