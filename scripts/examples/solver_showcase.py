@@ -43,7 +43,6 @@ from pyeeg.solvers import (
     SVDSolver,
 )
 from pyeeg.simulate import dummy_trf_kernel, simulate_smooth_input, simulate_trf_output
-from pyeeg.utils import lag_matrix
 
 # ---------------------------------------------------------------------------
 # Simulation parameters
@@ -134,90 +133,91 @@ for label, solver, extra_kwargs in solvers:
     recovered = trf.coef_[:, 0, 0]  # (n_lags, n_feats=1, n_chans=1)
     corr = np.corrcoef(recovered, kernel)[0, 1]
 
-    # Compute predictions on the valid samples for residual plot
-    X_lag = lag_matrix(X, lags=trf.lags, mode="valid", fill_value=0.0,
-                       block_order="lags")
-    if trf.fit_intercept:
-        X_lag = np.hstack([np.ones((len(X_lag), 1)), X_lag])
-    betas_flat = trf._coef_to_beta(trf.coef_)
-    if trf.fit_intercept:
-        betas_flat = np.vstack([trf.intercept_[None, :], betas_flat])
-    y_pred = X_lag @ betas_flat
-
-    results.append((label, trf, elapsed, corr, recovered, y_pred))
+    results.append((label, trf, elapsed, corr, recovered))
     print(f"{label:<25} {elapsed:>10.1f} {corr:>8.3f}")
 
 print()
 
 # ---------------------------------------------------------------------------
-# Plot: kernel recovery + residuals
+# Plot styling
+# ---------------------------------------------------------------------------
+plt.rcParams.update({
+    "font.size": 10,
+    "axes.labelsize": 10,
+    "axes.titlesize": 12,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+    "legend.fontsize": 8,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+})
+
+# Okabe-Ito / Wong palette — perceptually uniform, print-friendly
+SOLVER_COLORS = {
+    "LSTSQ (OLS)": "#4E79A7",
+    "SVD (ridge a=100)": "#F28E2B",
+    "SVD + smoothness M": "#E15759",
+    "CG (ridge a=100)": "#76B7B2",
+    "IRLS Cauchy (a=100)": "#59A14F",
+}
+
+# ---------------------------------------------------------------------------
+# Figure 1: Kernel recovery (single row of 5 panels)
 # ---------------------------------------------------------------------------
 n_solvers = len(results)
-fig, axes = plt.subplots(2, n_solvers, figsize=(3.5 * n_solvers, 7),
-                         sharex="col", sharey="row")
+fig1, axes = plt.subplots(1, n_solvers, figsize=(16, 3.5), sharey=True)
 if n_solvers == 1:
-    axes = axes.reshape(2, 1)
+    axes = [axes]
 
 t_lags = np.arange(TMIN, TMAX, 1 / SRATE)
-
-# Use a fixed y-range based on the ground-truth kernel so every panel
-# shows the ground truth at the same scale regardless of solver quality.
 kernel_ylim = (-kernel.max() * 0.2, kernel.max() * 1.3)
 
-for col, (label, trf, elapsed, corr, recovered, y_pred) in enumerate(results):
-    # Top row: recovered kernel vs ground truth
-    ax = axes[0, col]
-    ax.plot(t_lags, kernel, "k--", lw=2, label="Ground truth")
-    ax.plot(t_lags, recovered, "r-", lw=1.5, label="Recovered")
-    ax.set_title(label, fontsize=10)
+for ax, (label, trf, elapsed, corr, recovered) in zip(axes, results):
+    ax.plot(t_lags, kernel, "k--", lw=2,
+            label="Ground truth" if ax is axes[0] else "")
+    ax.plot(t_lags, recovered, color=SOLVER_COLORS[label], lw=2)
+
+    ax.set_title(label, fontweight="bold", fontsize=10, pad=10)
     ax.set_xlabel("Lag (s)")
     ax.set_ylim(kernel_ylim)
-    if col == 0:
-        ax.set_ylabel("TRF amplitude")
-        ax.legend(fontsize=8, loc="upper left")
-    ax.text(0.95, 0.95, f"r = {corr:.3f}\n{elapsed:.0f} ms",
-            transform=ax.transAxes, va="top", ha="right", fontsize=9,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="wheat", alpha=0.7))
+    ax.grid(True, alpha=0.3)
 
-    # Bottom row: residuals highlighting outliers
-    ax = axes[1, col]
-    valid_idx = np.where(trf.valid_samples_)[0]
-    residual = y[valid_idx] - y_pred[:, 0]
-    ax.plot(residual, lw=0.3, color="steelblue", alpha=0.7)
+    ax.text(0.02, 0.98, f"r = {corr:.3f}\nt = {elapsed:.0f} ms",
+            transform=ax.transAxes, va="top", ha="left", fontsize=9,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
-    # Mark outliers that fall within valid samples
-    outlier_mask = np.isin(valid_idx, outlier_idx)
-    ax.scatter(np.where(outlier_mask)[0], residual[outlier_mask],
-               color="red", s=10, zorder=5, label="Outlier")
-    ax.set_xlabel("Valid sample")
-    if col == 0:
-        ax.set_ylabel("Residual")
-        ax.legend(fontsize=8)
+axes[0].set_ylabel("TRF amplitude")
+axes[0].legend(loc="upper left", fontsize=8, framealpha=0.8)
 
-fig.suptitle("Solver Showcase: TRF Recovery with Outliers on Smooth Stimulus",
-             fontsize=13, y=1.01)
-fig.tight_layout()
+fig1.suptitle("TRF Kernel Recovery by Solver", fontweight="bold", y=1.02, fontsize=14)
+fig1.tight_layout()
 
 # ---------------------------------------------------------------------------
-# Summary bar chart
+# Figure 2: Speed vs Accuracy (side-by-side horizontal bars)
 # ---------------------------------------------------------------------------
-fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.5))
+
 labels = [r[0] for r in results]
 times = [r[2] for r in results]
 corrs = [r[3] for r in results]
-colors = plt.cm.Set2(np.linspace(0, 1, len(labels)))
+colors = [SOLVER_COLORS[l] for l in labels]
 
 ax1.barh(labels, times, color=colors)
-ax1.set_xlabel("Fit time (ms)")
-ax1.set_title("Speed comparison (log scale)")
 ax1.set_xscale("log")
+ax1.set_xlabel("Fit time (ms, log scale)")
+ax1.set_title("Speed", fontweight="bold")
+ax1.grid(True, alpha=0.3, axis="x")
+ax1.invert_yaxis()
 
 ax2.barh(labels, corrs, color=colors)
 ax2.set_xlabel("Correlation with ground truth")
 ax2.set_xlim(0, 1)
-ax2.set_title("Accuracy comparison")
+ax2.set_title("Accuracy", fontweight="bold")
+ax2.grid(True, alpha=0.3, axis="x")
+ax2.invert_yaxis()
 
-fig2.suptitle("Solver Pattern: Speed vs Accuracy", fontsize=13)
+fig2.suptitle("Solver Performance: Speed vs Accuracy",
+              fontweight="bold", y=1.02, fontsize=14)
 fig2.tight_layout()
 
 plt.show()
