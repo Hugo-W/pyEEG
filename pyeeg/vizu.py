@@ -11,11 +11,11 @@ from matplotlib.patches import PathPatch
 import numpy as np
 from scipy import signal
 from scipy.stats import ttest_rel
-from .io import logging
+import logging
+from ._logging import LOGGER
 from .utils import decorate_check_mne
 
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
-LOGGER = logging.getLogger(__name__.split('.')[0])
 try:
     import mne
 except ImportError:

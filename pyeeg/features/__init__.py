@@ -13,13 +13,14 @@ Main Classes:
 - FeaturePipeline: Compose multiple feature extractors
 """
 
+from .._logging import LOGGER
+
 try:
     from .llm_features import LLMFeatureExtractor
 except ImportError:
-    from warnings import warn
-    warn("Missing torch module, will not be able to create LLMFeatureExtractor. Instal torch to use this module (all optional deps installable via natmeeg[features])")
-    
-    warn("Using a dummy value for LLMFeatureExtractor as torch is unavailable")
+    LOGGER.info("Missing torch module, will not be able to create LLMFeatureExtractor. Install torch to use this module (optional deps: pip install natmeeg[features])")
+
+    LOGGER.info("Using a dummy value for LLMFeatureExtractor as torch is unavailable")
     LLMFeatureExtractor = None
 from .syntactic_features import SyntacticFeatureExtractor
 from .alignment import AlignmentHandler, TextGridParser

@@ -8,9 +8,8 @@ feature sets using PCA, ICA, and other techniques.
 import numpy as np
 from typing import Optional, Tuple
 from dataclasses import dataclass
-import logging
 
-logger = logging.getLogger(__name__)
+from .._logging import LOGGER
 
 
 @dataclass

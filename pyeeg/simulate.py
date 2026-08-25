@@ -29,6 +29,7 @@ Simulate MEEG-like signals with different connectivity patterns or methods.
     - **10/11/2023**: Initial commit (AR and VAR simulations)
 """
 import numpy as np
+from ._logging import LOGGER
 from .utils import sigmoid, scisig, poisson_onsets_fixed_N
 
 
@@ -85,8 +86,8 @@ def simulate_var(order, coef, nobs=500, ndim=2, seed=42, verbose=False):
     data = np.zeros((nobs+order, ndim))
 
     if verbose:
-        print(f"Simulating VAR({order}) model with {ndim} dimensions and {nobs} observations")
-        print(f"Data shape: {data.shape}")
+        LOGGER.info(f"Simulating VAR({order}) model with {ndim} dimensions and {nobs} observations")
+        LOGGER.info(f"Data shape: {data.shape}")
 
     data[:, :] = rng.standard_normal(size=data.shape) # initialize with noise
     for t in range(order, nobs+order):
@@ -117,8 +118,8 @@ def simulate_var_from_cov(cov, nobs=500, ndim=2, seed=42, verbose=False):
     data = np.zeros((nobs+order, ndim))
 
     if verbose:
-        print(f"Simulating VAR({order}) model with {ndim} dimensions and {nobs} observations")
-        print(f"Data shape: {data.shape}")
+        LOGGER.info(f"Simulating VAR({order}) model with {ndim} dimensions and {nobs} observations")
+        LOGGER.info(f"Data shape: {data.shape}")
 
     data[:, :] = rng.standard_normal(size=data.shape) # initialize with noise
     for t in range(order, nobs+order):

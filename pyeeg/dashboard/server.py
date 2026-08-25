@@ -7,13 +7,13 @@ This module provides the main entry point for starting the pyEEG dashboard serve
 import argparse
 import logging
 from .app import create_app
+from .._logging import LOGGER
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
 
 
 def main():
@@ -55,11 +55,11 @@ def main():
     # Create app
     app = create_app()
     
-    logger.info(f"Starting pyEEG Dashboard Server")
-    logger.info(f"Host: {args.host}")
-    logger.info(f"Port: {args.port}")
-    logger.info(f"Debug mode: {args.debug}")
-    logger.info(f"Log level: {args.log_level}")
+    LOGGER.info(f"Starting pyEEG Dashboard Server")
+    LOGGER.info(f"Host: {args.host}")
+    LOGGER.info(f"Port: {args.port}")
+    LOGGER.info(f"Debug mode: {args.debug}")
+    LOGGER.info(f"Log level: {args.log_level}")
     
     # Run server
     app.run(

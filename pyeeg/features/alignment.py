@@ -8,10 +8,9 @@ using TextGrid files or forced alignment with external tools.
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
-import logging
 import re
 
-logger = logging.getLogger(__name__)
+from .._logging import LOGGER
 
 
 @dataclass
@@ -115,7 +114,7 @@ class AlignmentHandler:
         word_intervals = textgrid.get_word_intervals()
         
         if not word_intervals:
-            logger.error("No word intervals found in TextGrid")
+            LOGGER.error("No word intervals found in TextGrid")
             return np.array([]), []
         
         all_feature_names = set()
@@ -124,7 +123,7 @@ class AlignmentHandler:
         all_feature_names = sorted(all_feature_names)
         
         if not all_feature_names:
-            logger.warning("No features to align")
+            LOGGER.warning("No features to align")
             return np.array([]), []
         
         if signal_length is None:

@@ -8,7 +8,8 @@ and aligning their outputs with neural signals.
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
-import logging
+
+from .._logging import LOGGER
 
 try:
     from .llm_features import LLMFeatureExtractor, LLMFeatureConfig
@@ -17,8 +18,6 @@ except ImportError:
     LLMEXTRACTOR_AVAILABLE = False
 from .syntactic_features import SyntacticFeatureExtractor, ParserConfig
 from .alignment import AlignmentHandler, TextGrid
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -120,7 +119,7 @@ class FeaturePipeline:
             return result, metadata
         
         if textgrid is None:
-            logger.warning("No TextGrid provided and no alignment handler configured")
+            LOGGER.warning("No TextGrid provided and no alignment handler configured")
             textgrid = TextGrid()
         
         result = {}

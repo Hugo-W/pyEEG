@@ -1,12 +1,9 @@
-import logging
 import os
 import platform
 
 import numpy as np
 
-logging.basicConfig(level=logging.ERROR)
-LOGGER = logging.getLogger(__name__.split(".")[0])
-LOGGER.setLevel("INFO")
+from ._logging import LOGGER
 
 try:
     # Attempt to import the compiled Python extension module
