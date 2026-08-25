@@ -99,6 +99,104 @@ def test_svd_solver_segmented():
     np.testing.assert_allclose(result.betas, betas_free)
 
 
+def test_svd_solver_truncated_basic():
+    """SVDSolver(truncated=True) returns SolverResult with correct betas."""
+    np.random.seed(42)
+    X = np.random.randn(100, 10)
+    true_betas = np.random.randn(10, 2)
+    y = X @ true_betas + 0.1 * np.random.randn(100, 2)
+    solver = SVDSolver(truncated=True)
+    result = solver.solve(X, y, alpha=0.95)
+    assert isinstance(result, SolverResult)
+    assert result.betas.shape == (10, 2, 1)
+
+
+def test_svd_solver_truncated_alpha_1_matches_ols():
+    """Truncated SVD with alpha=1.0 keeps all components → matches OLS."""
+    np.random.seed(42)
+    X = np.random.randn(80, 6)
+    y = np.random.randn(80, 2)
+    solver = SVDSolver(truncated=True)
+    result = solver.solve(X, y, alpha=1.0)
+    ols = np.linalg.lstsq(X, y, rcond=None)[0]
+    np.testing.assert_allclose(result.betas[..., 0], ols, atol=1e-8)
+
+
+def test_svd_solver_truncated_multi_alpha():
+    """Truncated SVD supports multi-alpha (different truncation levels)."""
+    np.random.seed(42)
+    X = np.random.randn(100, 10)
+    y = np.random.randn(100, 2)
+    solver = SVDSolver(truncated=True)
+    result = solver.solve(X, y, alpha=[0.5, 0.9, 0.99])
+    assert result.betas.shape == (10, 2, 3)
+    # Higher alpha → keep more components → closer to OLS
+    ols = np.linalg.lstsq(X, y, rcond=None)[0]
+    err_low = np.mean((result.betas[..., 0] - ols) ** 2)
+    err_high = np.mean((result.betas[..., 2] - ols) ** 2)
+    assert err_low >= err_high  # more truncation → more bias
+
+
+def test_svd_solver_truncated_rejects_M():
+    """Truncated SVD raises when M is provided."""
+    np.random.seed(42)
+    X = np.random.randn(50, 5)
+    y = np.random.randn(50, 2)
+    solver = SVDSolver(truncated=True)
+    with pytest.raises(ValueError, match="incompatible with quadratic"):
+        solver.solve(X, y, alpha=0.9, M=np.eye(5))
+
+
+def test_svd_solver_truncated_rejects_bad_alpha():
+    """Truncated SVD raises when alpha is outside (0, 1]."""
+    np.random.seed(42)
+    X = np.random.randn(50, 5)
+    y = np.random.randn(50, 2)
+    solver = SVDSolver(truncated=True)
+    with pytest.raises(ValueError, match="alpha must be in"):
+        solver.solve(X, y, alpha=1.5)
+    with pytest.raises(ValueError, match="alpha must be in"):
+        solver.solve(X, y, alpha=0.0)
+
+
+def test_svd_solver_truncated_segmented():
+    """Truncated SVD works with segmented (list-of-arrays) inputs."""
+    np.random.seed(42)
+    X1 = np.random.randn(60, 5)
+    X2 = np.random.randn(40, 5)
+    y1 = np.random.randn(60, 2)
+    y2 = np.random.randn(40, 2)
+    solver = SVDSolver(truncated=True)
+    result = solver.solve([X1, X2], [y1, y2], alpha=0.95)
+    assert result.betas.shape == (5, 2, 1)
+
+
+def test_svd_solver_truncated_more_components_better_recovery():
+    """Higher variance fraction → better kernel recovery on ill-conditioned data."""
+    from pyeeg.simulate import dummy_trf_kernel, simulate_smooth_input, simulate_trf_output
+    from pyeeg.models.trf import TRFEstimator
+
+    t_kernel, kernel = dummy_trf_kernel(tmin=-0.2, tmax=0.5, srate=100, tloc=0.15, sigma=0.08)
+    _, X = simulate_smooth_input(dur=30.0, srate=100, fmax=8, seed=42)
+    y = simulate_trf_output(t_kernel, kernel, X, srate=100)
+
+    # Low variance fraction: aggressive truncation
+    trf_low = TRFEstimator(tmin=-0.2, tmax=0.5, srate=100, alpha=0.5,
+                          verbose=False, solver=SVDSolver(truncated=True))
+    trf_low.fit(X[:, None], y[:, None], lagged=False, drop=True)
+
+    # High variance fraction: keep almost all components
+    trf_high = TRFEstimator(tmin=-0.2, tmax=0.5, srate=100, alpha=0.99,
+                           verbose=False, solver=SVDSolver(truncated=True))
+    trf_high.fit(X[:, None], y[:, None], lagged=False, drop=True)
+
+    corr_low = np.corrcoef(trf_low.coef_[:, 0, 0], kernel)[0, 1]
+    corr_high = np.corrcoef(trf_high.coef_[:, 0, 0], kernel)[0, 1]
+    # Both should recover the kernel; higher alpha → better recovery
+    assert corr_low > 0.3
+    assert corr_high > corr_low
+
+
 # ---------------------------------------------------------------------------
 # LSTSQSolver
 # ---------------------------------------------------------------------------

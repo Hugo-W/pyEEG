@@ -370,6 +370,17 @@ class SVDSolver(Solver):
 
     Parameters
     ----------
+    truncated : bool, optional
+        If True, alpha is reinterpreted as the fraction of total variance to
+        keep (between 0 and 1).  Instead of Tikhonov regularization (which
+        shrinks all components), truncated SVD keeps the top-k components
+        explaining ``alpha`` of the variance and discards the rest entirely.
+        Incompatible with ``M`` (quadratic regularizer).
+    verbose : bool, optional
+        Whether to print progress information.
+
+    Notes
+    -----
     x : ndarray (nsamples, nfeats) or list of such
         If a list of such is given (with possibly different nsamples), covariance matrices
         will be computed by accumulating them for each trials. The number of samples must then be the same
@@ -406,8 +417,9 @@ class SVDSolver(Solver):
     A warning is shown in the case where nfeats > nsamples, if so the user
     should rather use partial regression.
     """
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, truncated=False):
         self.verbose = verbose
+        self.truncated = truncated
 
     def solve(self, X, y, alpha=0.0, M=None):
         # cast alpha in ndarray
@@ -416,14 +428,24 @@ class SVDSolver(Solver):
         else:
             alpha = np.asarray(alpha)
 
-        if not isinstance(X, list) and np.ndim(X) == 2:
-            if X.shape[0] < X.shape[1]:
-                LOGGER.warning("Less samples than features! The linear problem is not stable in that form. Consider using partial regression instead.")
-
-        try:
-            assert np.all(alpha >= 0), "Alpha must be positive"
-        except AssertionError:
-            raise ValueError
+        if self.truncated:
+            if M is not None:
+                raise ValueError(
+                    "Truncated SVD is incompatible with quadratic regularizer M."
+                )
+            if not np.all((alpha > 0) & (alpha <= 1)):
+                raise ValueError(
+                    "For truncated SVD, alpha must be in (0, 1] "
+                    "(fraction of variance to keep)."
+                )
+        else:
+            if not isinstance(X, list) and np.ndim(X) == 2:
+                if X.shape[0] < X.shape[1]:
+                    LOGGER.warning("Less samples than features! The linear problem is not stable in that form. Consider using partial regression instead.")
+            try:
+                assert np.all(alpha >= 0), "Alpha must be positive"
+            except AssertionError:
+                raise ValueError
 
         if (len(X) == len(y)) and np.ndim(X[0])==2: # will accumulate covariances
             assert all([xtr.shape[0] == ytr.shape[0] for xtr, ytr in zip(X, y)]), "Inconsistent trial lengths!"
@@ -445,7 +467,21 @@ class SVDSolver(Solver):
             #betas = U @ np.diag(1/(s + alpha)) @ U.T @ XtY
 
             eigvals_scaled = np.zeros((*V.shape, np.size(alpha)))
-            if M is not None:
+            if self.truncated:
+                # Truncated SVD: keep top components explaining alpha fraction
+                # of total variance.  SVD here is of XtX, so variance = s.
+                cum_var = np.cumsum(s) / np.sum(s)
+                for a_idx, a_val in enumerate(alpha):
+                    k = np.searchsorted(cum_var, a_val) + 1
+                    k = min(k, len(s))
+                    if self.verbose:
+                        LOGGER.info(
+                            "Truncated SVD: keeping %d/%d components "
+                            "(alpha=%.3f, variance=%.4f)",
+                            k, len(s), a_val, cum_var[k - 1],
+                        )
+                    eigvals_scaled[:k, :k, a_idx] = np.diag(1.0 / s[:k])
+            elif M is not None:
                 # M replaces the L2 (alpha) regularization: alpha does not enter the solve
                 eigvals_scaled[range(len(V)), range(len(V)), :] = np.repeat((1. / s)[:, None], np.size(alpha), axis=1)
             else:
@@ -482,7 +518,22 @@ class SVDSolver(Solver):
             # each slice being a diagonal matrix of s/(s**2+lambda) (L2 path) or
             # 1/s (M path, where alpha does not enter the solve)
             eigvals_scaled = np.zeros((*V.shape, np.size(alpha)))
-            if M is not None:
+            if self.truncated:
+                # Truncated SVD: keep top components explaining alpha fraction
+                # of total variance.  SVD here is of X, so variance = s**2.
+                cum_var = np.cumsum(s ** 2) / np.sum(s ** 2)
+                for a_idx, a_val in enumerate(alpha):
+                    k = np.searchsorted(cum_var, a_val) + 1
+                    k = min(k, len(s))
+                    if self.verbose:
+                        LOGGER.info(
+                            "Truncated SVD: keeping %d/%d components "
+                            "(alpha=%.3f, variance=%.4f)",
+                            k, len(s), a_val, cum_var[k - 1],
+                        )
+                    # 1/s for kept components, 0 for discarded
+                    eigvals_scaled[:k, :k, a_idx] = np.diag(1.0 / s[:k])
+            elif M is not None:
                 eigvals_scaled[range(len(V)), range(len(V)), :] = np.repeat((1. / s)[:, None], np.size(alpha), axis=1)
             else:
                 eigvals_scaled[range(len(V)), range(len(V)), :] = np.repeat(s[:, None], np.size(alpha), axis=1) / \
