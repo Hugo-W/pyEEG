@@ -9,6 +9,7 @@ modelling, regularised and robust fitting, and multi-epoch aggregation.
 
 import matplotlib.pyplot as plt
 import numpy as np
+import weakref
 from scipy import stats
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import KFold
@@ -150,6 +151,8 @@ class TRFEstimator(BaseEstimator):
         robust_inner_max_iter=None,
         feature_alphas=None,
         solver=None,
+        cache_lagged=False,
+        max_cache_size=1_000_000_000,
     ):
 
         if block_order not in ("lags", "features"):
@@ -252,6 +255,23 @@ class TRFEstimator(BaseEstimator):
         self.robust_converged_ = None
         self.robust_scale_ = None
         self.robust_objective_ = None
+        # Lagged-X cache: stores a single entry (cache_key, lagged_X) to avoid
+        # recomputing lag_matrix when fit() is called repeatedly with the same
+        # X (e.g. different solvers, alpha sweeps).  The cache sits *before*
+        # intercept/weight application so downstream operations never mutate it.
+        # Invalidation is the user's responsibility: if X is modified in place
+        # between calls, call clear_cache() or pass cache_lagged=False.
+        self.cache_lagged = cache_lagged
+        self.max_cache_size = max_cache_size
+        self._lagged_cache = None  # (key, lagged_X, weakref(X))
+
+    def clear_cache(self):
+        """Clear the lagged-X cache (if any).
+
+        Call this after modifying ``X`` in place between :meth:`fit` calls,
+        or to reclaim memory.
+        """
+        self._lagged_cache = None
 
     def fill_lags(self):
         """Fill the lags attributes.
@@ -442,7 +462,8 @@ class TRFEstimator(BaseEstimator):
                 )
 
     def fit(
-        self, X, y, lagged=False, drop=True, feat_names=(), rotations=(), weights=None
+        self, X, y, lagged=False, drop=True, feat_names=(), rotations=(),
+        weights=None, cache_lagged=None,
     ):
         """Fit the TRF model.
 
@@ -469,6 +490,18 @@ class TRFEstimator(BaseEstimator):
             lagging, before the intercept is added). Must be non-negative and
             of length ``n_samples`` (the full length, before dropping). Sample
             weights are not currently combined with robust fitting.
+        cache_lagged : bool, optional
+            Override the instance-level ``cache_lagged`` for this call. When
+            ``True`` (and ``X`` is not already lagged), the lagged design matrix
+            is cached and reused on subsequent calls whose ``X`` has the same
+            buffer, shape, dtype, and for which ``lags``, ``drop``, and
+            ``block_order`` are identical. When ``None`` (default), the
+            instance-level setting is used. The cache sits *before*
+            intercept/weight application, so it is never mutated by downstream
+            operations; in-place changes to ``X`` are **not** detected — call
+            :meth:`clear_cache` or pass ``cache_lagged=False`` when ``X``
+            changes. Only the single-array ``fit`` path is cached (not
+            ``_fitlists``).
 
         Notes
         -----
@@ -540,14 +573,85 @@ class TRFEstimator(BaseEstimator):
         if self.verbose:
             LOGGER.info("Lagging matrix...")
         y = y[self.valid_samples_, :] if y.ndim == 2 else y[:, self.valid_samples_, :]
+
+        # Resolve caching for this call (None → instance default).
+        use_cache = self.cache_lagged if cache_lagged is None else cache_lagged
+
         if not lagged:
-            X = lag_matrix(
-                X,
-                lags=self.lags,
-                mode="valid" if drop else "full",
-                fill_value=np.nan if drop else 0.0,
-                block_order=self.block_order,
-            )
+            if use_cache:
+                # Build a cache key from the underlying buffer address, shape,
+                # strides, dtype, writability, and the lag parameters.  The
+                # buffer pointer (from __array_interface__) changes if X is
+                # replaced by a different array or a different base.  Strides
+                # distinguish strided views (e.g. transposes, column-reversals)
+                # that share the same buffer and shape but differ in data
+                # layout.  In-place data changes keep the same pointer — that
+                # is the documented invalidation gap (call clear_cache()).
+                try:
+                    buf_ptr = X.__array_interface__["data"]
+                    writable = X.flags["WRITEABLE"]
+                except AttributeError:
+                    buf_ptr, writable = id(X), False
+                cache_key = (
+                    buf_ptr,
+                    X.shape,
+                    X.strides,
+                    X.dtype.str,
+                    writable,
+                    tuple(self.lags),
+                    drop,
+                    self.block_order,
+                )
+                # Check cache hit: key match AND the original X is still alive
+                # (weakref guard prevents stale hits when a freed buffer is
+                # reused by a new array at the same address).
+                hit = False
+                if self._lagged_cache is not None:
+                    stored_key, stored_X, x_ref = self._lagged_cache
+                    if stored_key == cache_key and x_ref() is not None:
+                        hit = True
+                if hit:
+                    X = stored_X
+                    if self.verbose:
+                        LOGGER.info(
+                            "Reusing cached lagged matrix (%.1f MB)",
+                            X.nbytes / (1024 ** 2),
+                        )
+                else:
+                    # Pre-compute the expected lagged matrix size to avoid
+                    # paying the lag_matrix cost when it would exceed
+                    # max_cache_size.
+                    n_lags = len(self.lags)
+                    if drop:
+                        n_valid = n_samples_all - abs(max(self.lags)) - abs(min(self.lags))
+                    else:
+                        n_valid = n_samples_all
+                    est_bytes = n_valid * X.shape[1] * n_lags * X.dtype.itemsize
+                    will_cache = est_bytes <= self.max_cache_size
+                    X = lag_matrix(
+                        X,
+                        lags=self.lags,
+                        mode="valid" if drop else "full",
+                        fill_value=np.nan if drop else 0.0,
+                        block_order=self.block_order,
+                    )
+                    if will_cache and X.nbytes <= self.max_cache_size:
+                        self._lagged_cache = (cache_key, X, weakref.ref(X))
+                    elif self.verbose:
+                        LOGGER.warning(
+                            "Lagged matrix (%.1f MB) exceeds max_cache_size "
+                            "(%.1f MB); not caching.",
+                            X.nbytes / (1024 ** 2),
+                            self.max_cache_size / (1024 ** 2),
+                        )
+            else:
+                X = lag_matrix(
+                    X,
+                    lags=self.lags,
+                    mode="valid" if drop else "full",
+                    fill_value=np.nan if drop else 0.0,
+                    block_order=self.block_order,
+                )
         elif len(X) == n_samples_all:
             # Pre-lagged callers may provide the full sample axis. Align it
             # with y when edge samples are dropped; already-trimmed inputs are
