@@ -1,7 +1,22 @@
 """
-Created on Thu Jan 24 15:09:24 2019
+Canonical Correlation Analysis (CCA) utilities.
 
-@author: Karen
+This module implements CCA between a stimulus/feature matrix ``x`` and a
+response/EEG matrix ``y``, with support for regularisation, time-lagged
+(lagged/TRF-style) designs, filterbank preprocessing, and multiple fitting
+backends.
+
+Public API
+----------
+- :func:`cca_nt`: eigendecomposition-based CCA ("NT" style), with optional
+  per-dimension variance thresholds and knee-point selection.
+- :func:`cca_svd`: SVD-based CCA with regularisation options (see
+  :func:`reg_eigen`).
+- :func:`reg_eigen`: regularised PCA used as a building block by
+  :func:`cca_svd`.
+- :class:`CCA_Estimator`: scikit-learn-compatible estimator for lagged /
+  regularised CCA, exposing ``fit``, ``transform``, and plotting helpers for
+  the resulting temporal and spatial filters.
 """
 
 import logging
@@ -23,9 +38,62 @@ from pyeeg._logging import LOGGER
 
 
 def cca_nt(x, y, threshs, knee_point):
-    # A, B: transform matrices
-    # R: r scores
-    # can normalise the data
+    """CCA by eigendecomposition ("NT" style).
+
+    Computes canonical components between ``x`` and ``y`` by building the
+    cross-covariance matrix of the concatenated data, whitening (sphering)
+    each block with its own PCA, and then eigendecomposing the whitened
+    covariance matrix. The number of components kept per block is controlled
+    by variance-explained thresholds (and optionally a knee point).
+
+    Parameters
+    ----------
+    x : ndarray (nsamples x ndims_x)
+        Multivariate data (e.g. time-lagged features). Assumed zero-mean
+        column-wise.
+    y : ndarray (nsamples x ndims_y) or list of ndarray (all with the same
+        number of samples)
+        Multivariate data (e.g. EEG). If a list, the covariance matrices of
+        all elements are summed, implementing a generic (concatenated) CCA.
+    threshs : sequence of 2 floats
+        Variance-explained thresholds used to whiten ``x`` (``threshs[0]``)
+        and ``y`` (``threshs[1]``). Each block keeps only the principal
+        components whose cumulative explained variance does not exceed the
+        corresponding threshold.
+    knee_point : bool or None
+        If not None, a knee point (elbow) detection is applied on the
+        eigenvalue curves before thresholding (see
+        :func:`pyeeg.utils.find_knee_point`).
+
+    Returns
+    -------
+    A1 : ndarray (ndims_x x nPC_x)
+        Whitening (sphering) matrix for ``x``.
+    A2 : ndarray (ndims_y x nPC_y)
+        Whitening (sphering) matrix for ``y``.
+    A : ndarray (nPC_x x N)
+        Canonical coefficients for ``x`` (N = number of canonical
+        components retained). Projections of ``x`` are given by ``x @ A``.
+    B : ndarray (nPC_y x N)
+        Canonical coefficients for ``y``. Projections of ``y`` are given by
+        ``y @ B``.
+    R : ndarray (N,)
+        Canonical correlation values between the projections of ``x`` and
+        ``y``.
+    eigvals_x : ndarray (nPC_x,)
+        Retained eigenvalues of the ``x`` covariance matrix (sorted
+        decreasing).
+    eigvals_y : ndarray (nPC_y,)
+        Retained eigenvalues of the ``y`` covariance matrix (sorted
+        decreasing).
+
+    Notes
+    -----
+    - ``x`` and ``y`` are assumed to be zero-mean column-wise; no
+      normalisation is applied here.
+    - Negative eigenvalues (degenerate directions) are discarded before
+      thresholding.
+    """
     m = x.shape[1]
     # Build covariance matrix: C=[x,y]'*[x,y]
 
@@ -116,7 +184,7 @@ def cca_svd(x, y, opt={}):
     Returns
     -------
     Ax, Ay : ndarrays (ndims_x x nCC and ndims_y x nCC)
-        Coefficients such that (y @ Ay).T @ (x @ Ax) is diagognal with the
+        Coefficients such that (y @ Ay).T @ (x @ Ax) is diagonal with the
         largest correlation values possible on the diagonal.
 
     R: ndarray
@@ -329,7 +397,34 @@ class CCA_Estimator(BaseEstimator):
         srate=1.0,
         fit_intercept=True,
     ):
+        """Initialize the CCA estimator.
 
+        Parameters
+        ----------
+        times : tuple or 1d-array of float
+            Lag times (in seconds) at which the stimulus coefficients are
+            computed. Used when ``tmin``/``tmax`` are not both provided.
+        tmin : float or None
+            Minimum lag (in seconds) for a contiguous lag span. If both
+            ``tmin`` and ``tmax`` are given, ``times`` is ignored and lags
+            span the window ``[tmin, tmax]``.
+        tmax : float or None
+            Maximum lag (in seconds) for a contiguous lag span. If both
+            ``tmin`` and ``tmax`` are given, ``times`` is ignored and lags
+            span the window ``[tmin, tmax]``.
+        filterbank : bool
+            Whether to filter the data through a filterbank before fitting.
+            If ``True``, a filterbank is created from ``freqs`` and applied to
+            both ``X`` and ``y`` in :meth:`fit`.
+        freqs : tuple or 1d-array of float
+            Center frequencies (in Hz) of the filterbank bands. Only used when
+            ``filterbank=True``.
+        srate : float
+            Sampling rate (in Hz), used to convert lag times to lag samples.
+        fit_intercept : bool
+            Whether a column of ones should be added to the design matrix to
+            fit an intercept.
+        """
         self.srate = srate
         if filterbank:
             self.f_bank = create_filterbank(freqs=freqs, srate=self.srate, N=2, rs=3)
@@ -383,17 +478,75 @@ class CCA_Estimator(BaseEstimator):
         feat_names=(),
         opt_cca_svd={},
     ):
-        """Fit CCA model.
+        """Fit the CCA model.
 
+        Parameters
+        ----------
         X : ndarray (nsamples x nfeats)
-            Array of features (time-lagged)
-        y : ndarray (nsamples x nchans)
-            EEG data
+            Array of features (time-lagged or not, if it is, then second
+            dim's shape should be nfeats*nlags). If ``drop=True`` the lag
+            matrix is built internally from ``self.xlags``.
+        y : ndarray (nsamples x nchans) or list of ndarray
+            EEG data. If a list, each element must have the same number of
+            samples; a generic (concatenated) CCA is then computed.
+        cca_implementation : {'nt', 'svd', 'sklearn'}, default: 'nt'
+            Which CCA backend to use:
+
+            - ``'nt'``: eigendecomposition-based CCA (:func:`cca_nt`).
+            - ``'svd'``: SVD-based CCA (:func:`cca_svd`), with the
+              regularisation options given in ``opt_cca_svd``.
+            - ``'sklearn'``: CCA from scikit-learn (:class:`~sklearn.cross_decomposition.CCA`),
+              keeping ``n_comp`` components.
+        thresh_x : float or None, default: None
+            Variance-explained threshold used to whiten (sphere) ``X`` in the
+            ``'nt'`` implementation. If None, defaults to 0.999 (or to
+            ``thresh_y`` when that is provided).
+        normalise : bool, default: True
+            Reserved for normalising the data before fitting; currently
+            unused by the implementation.
+        thresh_y : float or None, default: None
+            Variance-explained threshold used to whiten (sphere) ``y`` in the
+            ``'nt'`` implementation. If None, defaults to ``thresh_x``.
+        n_comp : int, default: 2
+            Number of canonical components to keep when
+            ``cca_implementation='sklearn'``.
+        knee_point : bool or None, default: None
+            If not None, knee-point (elbow) detection is applied on the
+            eigenvalue curves before thresholding in the ``'nt'``
+            implementation (see :func:`pyeeg.utils.find_knee_point`).
+        drop : bool, default: True
+            Whether to drop non-valid samples when building the lag matrix
+            (if False, non-valid samples are filled with 0.).
+        y_already_dropped : bool, default: False
+            Whether the rows of ``y`` corresponding to non-valid samples have
+            already been dropped. Only used when ``drop=True``.
+        lag_y : bool, default: False
+            Whether to also time-lag ``y`` (using ``ylags``) before fitting.
+            When True, ``self.ylags`` and ``self.ytimes`` are set.
+        ylags : tuple or 1d-array of float, default: (0.0,)
+            Lag times (in seconds) at which ``y`` is lagged when
+            ``lag_y=True``.
+        feat_names : list of str, default: ()
+            Names of each feature. If provided (non-empty), stored in
+            ``self.feat_names_``.
+        opt_cca_svd : dict, default: {}
+            Regularisation options passed to :func:`cca_svd` when
+            ``cca_implementation='svd'``. Keys ``'x'`` and ``'y'`` hold
+            per-block options (see :func:`reg_eigen`).
 
         Returns
         -------
-        coef_ : ndarray (nlags x nfeats)
-        intercept_ : ndarray (nfeats x 1)
+        self : CCA_Estimator
+            The fitted estimator. Fit results are stored as attributes:
+            ``intercept_``, ``coefStim_``, ``coefResponse_``, ``score_``,
+            ``eigvals_x``, ``eigvals_y``, ``n_feats_`` and ``n_chans_``.
+
+        Notes
+        -----
+        The lagged feature matrix ``X`` (and ``y`` when ``lag_y=True``) is
+        saved to a temporary file and its path stored in ``self.tempX_path_``
+        / ``self.tempy_path_`` so it can be reused by :meth:`transform` and
+        the plotting helpers without keeping the full data in memory.
         """
         if isinstance(y, list):
             print("y is a list. CCA will be implemented more efficiently.")
@@ -583,7 +736,32 @@ class CCA_Estimator(BaseEstimator):
             self.coefStim_ = self.coefStim_[::-1, :, :]
 
     def transform(self, transform_x=True, transform_y=False, comp=0):
-        """Transform X and Y using the coefficients"""
+        """Project the data onto the canonical components.
+
+        Applies the fitted canonical coefficients to the (lagged, saved)
+        feature matrix ``X`` to obtain the canonical scores of the stimulus
+        side. The response-side projection is currently not implemented (the
+        corresponding code is commented out).
+
+        Parameters
+        ----------
+        transform_x : bool, default: True
+            Whether to project the stimulus features ``X`` onto the canonical
+            components.
+        transform_y : bool, default: False
+            Whether to project the response ``y`` onto the canonical
+            components. Not currently implemented.
+        comp : int, default: 0
+            Index of the canonical component used for the projection when
+            ``transform_x`` is True.
+
+        Returns
+        -------
+        ndarray
+            Projected data: canonical scores of the (lagged) features, of
+            shape (nsamples x nchans) -- the result of
+            ``coefResponse_.T @ coefStim_.T @ X``.
+        """
         X = np.load(self.tempX_path_ + ".npy")
         #        y = np.load(self.tempy_path_+'.npy')
         #        if len(y) > len(X):
@@ -599,11 +777,18 @@ class CCA_Estimator(BaseEstimator):
         return self.coefResponse_.T @ self.coefStim_.T @ X
 
     def plot_time_filter(self, n_comp=1, dim=[0]):
-        """Plot the TRF of the feature requested.
+        """Plot the temporal (stimulus) filters of the canonical components.
+
+        Plots ``coefStim_`` (one curve per requested lag time) for each
+        canonical component and feature dimension. For more than 5 components,
+        only the first 5 are labelled in the legend.
+
         Parameters
         ----------
-        feat_id : int
-            Index of the feature requested
+        n_comp : int, default: 1
+            Number of canonical components to plot.
+        dim : list of int, default: [0]
+            Indices of the feature dimensions to plot.
         """
         if n_comp < 6:
             for c in range(n_comp):
@@ -636,11 +821,17 @@ class CCA_Estimator(BaseEstimator):
         )
 
     def plot_spatial_filter(self, pos, n_comp=1):
-        """Plot the topo of the feature requested.
+        """Plot the spatial filters (topographies) of the canonical components.
+
+        Plots the columns of ``coefResponse_`` as topographic maps, one per
+        canonical component.
+
         Parameters
         ----------
-        feat_id : int
-            Index of the feature requested
+        pos : array-like (nchans x 2)
+            Channel positions (x, y) used for the topographic plots.
+        n_comp : int, default: 1
+            Number of canonical components to plot.
         """
         titles = [rf"CC #{k + 1:d}, $\rho$={c:.3f} " for k, c in enumerate(self.score_)]
         topoplot_array(self.coefResponse_, pos, n_topos=n_comp, titles=titles)
@@ -649,8 +840,17 @@ class CCA_Estimator(BaseEstimator):
 
     def plot_corr(self, pos, n_comp=1):
         """Plot the correlation between the EEG component waveform and the EEG channel waveform.
+
+        For each canonical component, computes the correlation between each
+        EEG channel and the reconstructed component waveform (``y @
+        coefResponse_``), and plots these correlations as topographic maps.
+
         Parameters
         ----------
+        pos : array-like (nchans x 2)
+            Channel positions (x, y) used for the topographic plots.
+        n_comp : int, default: 1
+            Number of canonical components to plot.
         """
         X = np.load(self.tempX_path_ + ".npy")
         y = np.load(self.tempy_path_ + ".npy")
@@ -677,8 +877,23 @@ class CCA_Estimator(BaseEstimator):
 
     def plot_activation_map(self, pos, n_comp=1, lag=0):
         """Plot the activation map from the spatial filter.
+
+        Computes the activation map ``a_map = (y.T @ y) @ coefResponse_ @
+        (s_hat.T @ s_hat)^-1`` (with ``s_hat = y @ coefResponse_``) and plots
+        it as topographic maps, one per canonical component. When the response
+        was time-lagged (``lag_y``) or a filterbank was used, ``a_map`` is
+        reshaped over lags/frequencies and only the map at ``lag`` is shown.
+
         Parameters
         ----------
+        pos : array-like (nchans x 2)
+            Channel positions (x, y) used for the topographic plots.
+        n_comp : int, default: 1
+            Number of canonical components to plot.
+        lag : int, default: 0
+            Index of the lag (or frequency band when a filterbank is used)
+            at which the activation map is plotted. Only relevant when the
+            response was time-lagged or a filterbank was used.
         """
         y = np.load(self.tempy_path_ + ".npy")
         if n_comp <= 0:
@@ -728,6 +943,18 @@ class CCA_Estimator(BaseEstimator):
             plt.tight_layout()
 
     def plot_compact_time(self, n_comp=2, dim=0):
+        """Plot a compact time-by-component image for a single feature dimension.
+
+        Displays ``coefStim_`` for the requested dimension as a 2-D image
+        (components on the y-axis, lag time on the x-axis) with a colorbar.
+
+        Parameters
+        ----------
+        n_comp : int, default: 2
+            Number of canonical components to display.
+        dim : int, default: 0
+            Index of the feature dimension to display.
+        """
         plt.imshow(
             self.coefStim_[:, dim, :n_comp].T,
             aspect="auto",
@@ -740,6 +967,21 @@ class CCA_Estimator(BaseEstimator):
         plt.title(f"Dimension #{dim + 1:d}")
 
     def plot_all_dim_time(self, n_comp=0, n_dim=2):
+        """Plot the temporal filters of several components across all dimensions.
+
+        Displays ``coefStim_`` as a grid of 2-D images (one per canonical
+        component), each with feature dimensions on the y-axis and lag time on
+        the x-axis. A shared colorbar is added on the right.
+
+        Parameters
+        ----------
+        n_comp : int, default: 0
+            Number of canonical components to display (components are indexed
+            from 0 to ``n_comp - 1``). With the default of 0, no components
+            are plotted.
+        n_dim : int, default: 2
+            Number of feature dimensions shown on the y-axis of each image.
+        """
         n_comp = range(n_comp)
         n_rows = len(n_comp) // 2 + len(n_comp) % 2
         fig = plt.figure(figsize=(10, 20), constrained_layout=False)

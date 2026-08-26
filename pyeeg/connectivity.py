@@ -216,6 +216,17 @@ def jackknife_resample(data):
     The ith sample has the ith measurment "knocked-out".
     This statistical method may be useful in estimating covariance-based metrics from single
     trial data.
+
+    Parameters
+    ----------
+    data : ndarray (n, ...)
+        Input data. The first axis is resampled.
+
+    Returns
+    -------
+    resampled : ndarray (n, n-1, ...)
+        Jackknife resampled data: the ith array along the first axis is
+        ``data`` with the ith observation removed.
     """
     n = data.shape[0]
     resampled = np.zeros((n, n-1, *data.shape[1:]))
@@ -227,6 +238,22 @@ def jackknife_resample(data):
 
 def csd_ndarray(x, fs=1, nfft=None):
     """Compute the cross-spectral density between each column of x.
+
+    Parameters
+    ----------
+    x : ndarray (nsamples, nchannels)
+        Input data. The cross-spectral density is computed for every pair of
+        channels with :func:`scipy.signal.csd`.
+    fs : float
+        Sampling frequency of the signal (in Hz). Default is 1.
+    nfft : int, optional
+        Length of the FFT. If None, ``nfft = nsamples``.
+
+    Returns
+    -------
+    S : ndarray (nchannels, nchannels, nfreqs)
+        Cross-spectral density tensor, where ``nfreqs = nfft // 2 + 1``.
+        ``S[i, j, :]`` is the cross-spectrum between channels ``i`` and ``j``.
     """
     N, nchans = x.shape
     if nfft is None: nfft = N
@@ -240,7 +267,50 @@ def csd_ndarray(x, fs=1, nfft=None):
     return S
 
 def wPLI(x, fs=1, nfft=None, fbands=None):
-    # see https://github.com/fieldtrip/fieldtrip/blob/master/connectivity/ft_connectivity_wpli.m for variance estimation of jackknife
+    """Weighted Phase Lag Index (wPLI).
+
+    wPLI is an extension of the phase lag index that weights the phase
+    differences by the magnitude of the imaginary part of the cross-spectrum,
+    making it more robust to noise. Values lie between 0 and 1, where higher
+    values indicate stronger phase coupling between two signals that cannot be
+    attributed to volume conduction.
+
+    If the input is a single trial (2d), it is first jackknife resampled along
+    the trial axis (see :func:`jackknife_resample`) to obtain a distribution
+    of wPLI estimates; the returned value is the sum across the resulting
+    trials.
+
+    Parameters
+    ----------
+    x : ndarray (nsamples, nchannels) or (ntrials, nsamples, nchannels)
+        Input data. If 2d, jackknife resampling is applied first.
+    fs : float
+        Sampling frequency of the signal (in Hz). Default is 1.
+    nfft : int, optional
+        Length of the FFT. If None, ``nfft = nsamples`` (passed to
+        :func:`csd_ndarray`).
+    fbands : tuple of float, optional
+        Frequency band ``(fmin, fmax)`` over which to average the wPLI. If
+        None, the full wPLI spectrum is returned.
+
+    Returns
+    -------
+    C : ndarray (nchannels, nchannels) or (nchannels, nchannels, nfreqs)
+        wPLI connectivity matrix. If ``fbands`` is given, the spectrum is
+        averaged over the band and a single value per channel pair is
+        returned; otherwise the full spectrum (``nfreqs = nfft // 2 + 1``) is
+        returned.
+
+    References
+    ----------
+    .. [1] Vinck, M., Oostenveld, R., van Wingerden, M., Battaglia, F., &
+        Pennartz, C. M. (2011). An improved index of phase-synchronization for
+        electrophysiological data in the presence of volume-conduction, noise
+        and sample-size bias. NeuroImage, 55(4), 1548–1565.
+    .. [2] FieldTrip reference implementation for variance estimation of the
+        jackknife:
+        https://github.com/fieldtrip/fieldtrip/blob/master/connectivity/ft_connectivity_wpli.m
+    """
     # TODO:
     # bias = 1
     # if x.ndim < 3:
@@ -276,13 +346,25 @@ def plm(x, fband=1, fs=1, rowvar=False):
     Parameters
     ----------
     x : ndarray shape (nsamples, nchannels)
-    fband: float
+        Input data.
+    fband : float
         Frequency of interest (bandwidth on which to integrate)
         FFT of the interferometric signal (hilbert of x times hilbert y*).
+    fs : float
+        Sampling frequency of the signal (in Hz). Default is 1.
     rowvar : bool
         This can be set to true if nchannels is the first dimension.
 
-    .. _1: https://pubmed.ncbi.nlm.nih.gov/30403622/
+    Returns
+    -------
+    C : ndarray (nchannels, nchannels)
+        Phase Linearity Measurement matrix. Symmetrical (undirectional).
+
+    References
+    ----------
+    - [`1`_]
+
+    .. 1_: https://pubmed.ncbi.nlm.nih.gov/30403622/
     """
     assert fband < fs/2, "fband must be smaller than nyquist frquency."
     if rowvar:

@@ -1,3 +1,29 @@
+"""Regression solvers for TRF (temporal response function) fitting.
+
+This module provides the building blocks used to fit linear regression
+models on (possibly segmented / multi-epoch) data:
+
+- ``svd_solver`` and :class:`SVDSolver`: ridge / truncated-SVD regression
+  via the SVD of the normal matrix ``XᵀX`` (or of the tall design matrix
+  ``X`` with ``use_full_svd=True``).
+- :class:`LSTSQSolver`: plain least-squares regression via
+  ``numpy.linalg.lstsq`` on the accumulated normal equations.
+- ``conjugate_gradient``, ``block_conjugate_gradient`` and
+  :class:`ConjugateGradientSolver`: iterative solves of the (regularized)
+  normal equations, optionally preconditioned.
+- :class:`IRLSSolver`: robust regression using Cauchy-loss iteratively
+  reweighted least squares.
+- :class:`ScipyRobustSolver`: reference robust Cauchy-loss regression
+  built on ``scipy.optimize.least_squares`` (unregularized, small dense
+  problems; validates the IRLS path).
+- Regularizers: ``create_laplacian_matrix`` and
+  ``create_quadratic_regularizer`` build quadratic (smoothness) penalty
+  matrices; ``incomplete_cholesky_preconditioner`` and
+  ``diagonal_preconditioner`` build preconditioners for CG.
+- The :class:`Solver` abstract base class and :class:`SolverResult`
+  dataclass define the common interface: every solver accepts
+  ``(X, y, alpha, M)`` and returns a :class:`SolverResult`.
+"""
 import numpy as np
 from scipy.sparse.linalg import spilu
 from scipy.sparse import csc_matrix
@@ -304,7 +330,37 @@ def block_conjugate_gradient(A, B, X0=None, tol=1e-10, max_iter=None,
 
 
 def _as_regression_segments(x, y):
-    """Normalize array or segmented regression inputs for robust solvers."""
+    """Normalize array or segmented regression inputs for robust solvers.
+
+    Converts ``x``/``y`` into matching lists of 2-D segments: a 2-D ``x``
+    with a 2-D ``y`` becomes a single-element list; a 2-D ``x`` with a 3-D
+    ``y`` (n_epochs, n_samples, n_channels) is repeated for each epoch; a
+    list ``x`` is paired element-wise with a list ``y`` or the epochs of a
+    3-D ``y``.
+
+    Parameters
+    ----------
+    x : ndarray or list of ndarray
+        Design matrix (n_samples, n_features) or list of segments.
+    y : ndarray or list of ndarray
+        Target (n_samples, n_channels), 3-D array
+        (n_epochs, n_samples, n_channels), or list of 1-D/2-D arrays (one
+        per segment).
+
+    Returns
+    -------
+    x_segments : list of ndarray
+        Each element is a 2-D design matrix (n_samples, n_features).
+    y_segments : list of ndarray
+        Each element is a 2-D target (n_samples, n_channels).
+
+    Raises
+    ------
+    ValueError
+        If the inputs are inconsistent (mismatched list lengths, wrong
+        dimensionality, unequal sample counts, or differing numbers of
+        channels / features across segments).
+    """
     if isinstance(x, list):
         x_segments = [np.asarray(xx, dtype=float) for xx in x]
         if isinstance(y, list):
@@ -346,7 +402,24 @@ def _as_regression_segments(x, y):
 
 
 def _robust_scale(residuals):
-    """Estimate a positive Cauchy scale from residuals using MAD."""
+    """Estimate a positive Cauchy scale from residuals using MAD.
+
+    Uses the median absolute deviation (MAD) scaled by 1.4826 (the
+    consistency factor for normally distributed data). Falls back to the
+    standard deviation where the MAD degenerates to zero, and clamps the
+    result to a positive machine epsilon.
+
+    Parameters
+    ----------
+    residuals : ndarray
+        Residuals of shape (n_samples,) or (n_samples, n_channels).
+
+    Returns
+    -------
+    scale : float or ndarray
+        Robust scale estimate. A float when ``residuals`` is 1-D, otherwise
+        an array of shape (n_channels,).
+    """
     residuals = np.asarray(residuals, dtype=float)
     if residuals.ndim == 1:
         residuals = residuals[:, None]
@@ -420,7 +493,18 @@ def _solve_weighted_normal_equations(x_segments, y_segments, weights, beta,
 
 @dataclass
 class SolverResult:
-    """Result container for solver runs."""
+    """Result container for solver runs.
+
+    Parameters
+    ----------
+    betas : ndarray
+        Estimated coefficients. Shape is (n_features, n_channels) for most
+        solvers, or (n_features, n_channels, n_alphas) when ``alpha`` is
+        array-like (e.g. :class:`SVDSolver`).
+    info : dict or None, optional
+        Optional solver metadata (e.g. ``n_iter``, ``converged``, ``scale``
+        for the robust solvers). Default is None.
+    """
     betas: np.ndarray
     info: Optional[dict] = None
 
@@ -452,68 +536,62 @@ class Solver(ABC):
     """
     @abstractmethod
     def solve(self, X, y, alpha=0.0, M=None):
-        """Solve the regression problem. Returns SolverResult."""
+        """Solve the regression problem and return the coefficients.
+
+        Parameters
+        ----------
+        X : ndarray or list of ndarray
+            Design matrix (n_samples, n_features) or list of segments.
+        y : ndarray or list of ndarray
+            Target (n_samples, n_channels), (n_samples, n_channels, n_epochs),
+            or list of arrays (one per segment).
+        alpha : float or array-like, optional
+            Regularization strength(s). When ``M`` is provided, ``alpha`` is
+            ignored in the solve (it only controls the output axis size for
+            API compatibility). Default is 0.0.
+        M : ndarray or None, optional
+            Quadratic regularization matrix. If provided, replaces L2
+            (``alpha``) regularization. Default is None.
+
+        Returns
+        -------
+        result : SolverResult
+            Contains ``betas`` (ndarray of estimated coefficients) and
+            ``info`` (dict or None).
+        """
         pass
 
 
 class SVDSolver(Solver):
-    """
-    Linear regression using svd.
+    """Linear regression using the singular value decomposition (SVD).
+
+    Solves the regularized normal equations ``(XᵀX + lambda I + M) beta =
+    Xᵀy`` via SVD. By default the SVD is computed on the small normal matrix
+    ``XᵀX`` (n_features, n_features), which is much faster for tall matrices
+    (n_samples >> n_features) and gives identical results to factorizing the
+    tall design matrix ``X`` directly.
 
     Parameters
     ----------
+    verbose : bool, optional
+        Whether to print progress information. Default is False.
     truncated : bool, optional
-        If True, alpha is reinterpreted as the fraction of total variance to
-        keep (between 0 and 1).  Instead of Tikhonov regularization (which
+        If True, ``alpha`` is reinterpreted as the fraction of total variance
+        to keep (between 0 and 1). Instead of Tikhonov regularization (which
         shrinks all components), truncated SVD keeps the top-k components
         explaining ``alpha`` of the variance and discards the rest entirely.
-        Incompatible with ``M`` (quadratic regularizer).
+        Incompatible with ``M`` (quadratic regularizer). Default is False.
     use_full_svd : bool, optional
         If True, SVD the tall design matrix ``X`` (n_samples, n_features)
         for higher numerical precision. If False (default), SVD the small
         normal matrix ``XᵀX`` (n_features, n_features) which is much faster
         for tall matrices (n_samples >> n_features) and gives identical
-        results.
-    verbose : bool, optional
-        Whether to print progress information.
+        results. Default is False.
 
     Notes
     -----
-    x : ndarray (nsamples, nfeats) or list of such
-        If a list of such is given (with possibly different nsamples), covariance matrices
-        will be computed by accumulating them for each trials. The number of samples must then be the same
-        in both x and y per each trial.
-    y : ndarray (nsamples, nchans) or list of such
-        If a list of such arrays is given, each element of the
-        list is treated as an individual subject, the resulting `betas` coefficients
-        are thus computed on the averaged covariance matrices.
-    alpha : float or array-like
-        If array, will compute betas for every regularisation parameters at once.
-        Used for Tikhonov/L2 regularization.
-    M : ndarray, optional
-        Quadratic regularization matrix (e.g. smoothness / Laplacian). If provided,
-        it REPLACES the L2 (alpha) regularization: the solution becomes
-        betas = (XᵀX + M)⁻¹ Xᵀy. ``alpha`` no longer enters the solve (it only
-        controls the size of the last output axis for API compatibility).
-    verbose : bool, optional
-        Whether to print progress information.
-
-    Returns
-    -------
-    betas : ndarray (nfeats, nchans, len(alpha))
-        Coefficients
-
-    Raises
-    ------
-    ValueError
-        If alpha < 0 (coefficient of L2 - regularization)
-    AssertionError
-        If trial length for each x and y differ.
-
-    Notes
-    -----
-    A warning is shown in the case where nfeats > nsamples, if so the user
-    should rather use partial regression.
+    A warning is shown in the case where n_features > n_samples; if so the
+    user should rather use partial regression.
     """
     def __init__(self, verbose=False, truncated=False, use_full_svd=False):
         self.verbose = verbose
@@ -521,6 +599,41 @@ class SVDSolver(Solver):
         self.use_full_svd = use_full_svd
 
     def solve(self, X, y, alpha=0.0, M=None):
+        """Solve the SVD regression and return the coefficients.
+
+        ``X`` may be a 2-D array or a list of 2-D arrays (segments /
+        trials). When a list is given (with possibly different n_samples),
+        the covariance matrices are accumulated across trials; the number of
+        samples must then be the same in ``X`` and ``y`` per trial. If ``y``
+        is a 3-D array (n_epochs, n_samples, n_chans), the normal equations
+        are accumulated across epochs.
+
+        Parameters
+        ----------
+        X : ndarray (n_samples, n_features) or list of such
+            Design matrix, or list of segments to accumulate.
+        y : ndarray (n_samples, n_channels) or list of such
+            Target. If ``y`` is a list of arrays, each element is treated as
+            an individual subject / segment and the ``betas`` coefficients
+            are computed on the accumulated covariance matrices.
+        alpha : float or array-like, optional
+            Regularization parameter (Tikhonov/L2). If array-like, betas are
+            computed for every regularization value at once. When ``M`` is
+            provided, ``alpha`` no longer enters the solve (it only controls
+            the size of the last output axis for API compatibility). Default
+            is 0.0.
+        M : ndarray, optional
+            Quadratic regularization matrix (e.g. smoothness / Laplacian).
+            If provided, it REPLACES the L2 (``alpha``) regularization: the
+            solution becomes ``betas = (XᵀX + M)⁻¹ Xᵀy``. Default is None.
+
+        Returns
+        -------
+        result : SolverResult
+            ``betas`` has shape (n_features, n_channels) or
+            (n_features, n_channels, len(alpha)) when ``alpha`` is
+            array-like; ``info`` is None.
+        """
         # cast alpha in ndarray
         if np.isscalar(alpha):
             alpha = np.asarray([alpha], dtype=float)
@@ -686,38 +799,50 @@ class SVDSolver(Solver):
 
 
 class LSTSQSolver(Solver):
-    """Linear regression using lstsq.
+    """Linear regression using least squares (``numpy.linalg.lstsq``).
 
-    Parameters
-    ----------
-    x : ndarray (nsamples, nfeats) or list of such
-        If a list of such is given (with possibly different nsamples), covariance matrices
-        will be computed by accumulating them for each trials. The number of samples must then be the same
-        in both x and y per each trial.
-    y : ndarray (nsamples, nchans) or list of such
-        If a list of such arrays is given, each element of the
-        list is treated as an individual subject, the resulting `betas` coefficients
-        are thus computed on the averaged covariance matrices.
-
-    Returns
-    -------
-    betas : ndarray (nfeats, nchans)
-        Coefficients
-
-    Raises
-    ------
-    AssertionError
-        If trial length for each x and y differ.
+    Accumulates the normal equations ``XᵀX`` and ``Xᵀy`` (across segments /
+    epochs when needed) and solves them with ``numpy.linalg.lstsq``. No
+    regularization is applied; ``alpha`` and ``M`` are accepted for API
+    compatibility with :class:`Solver` but do not modify the solution.
 
     Notes
     -----
-    A warning is shown in the case where nfeats > nsamples, if so the user
-    should rather use partial regression.
+    A warning is shown in the case where n_features > n_samples; if so the
+    user should rather use partial regression.
     """
     def __init__(self, verbose=False):
         self.verbose = verbose
 
     def solve(self, X, y, alpha=0.0, M=None):
+        """Solve the least-squares regression and return the coefficients.
+
+        ``X`` may be a 2-D array or a list of 2-D arrays (segments /
+        trials). When a list is given, the covariance matrices are
+        accumulated across trials; the number of samples must then be the
+        same in ``X`` and ``y`` per trial. ``alpha`` and ``M`` are accepted
+        for API compatibility but do not modify the solution.
+
+        Parameters
+        ----------
+        X : ndarray (n_samples, n_features) or list of such
+            Design matrix, or list of segments to accumulate.
+        y : ndarray (n_samples, n_channels) or list of such
+            Target. If ``y`` is a list of arrays, each element is treated as
+            an individual subject / segment and the ``betas`` coefficients
+            are computed on the accumulated covariance matrices.
+        alpha : float or array-like, optional
+            Accepted for API compatibility; not used by this solver.
+            Default is 0.0.
+        M : ndarray, optional
+            Accepted for API compatibility; not used by this solver.
+            Default is None.
+
+        Returns
+        -------
+        result : SolverResult
+            ``betas`` has shape (n_features, n_channels); ``info`` is None.
+        """
         if not isinstance(X, list) and np.ndim(X) == 2:
             if X.shape[0] < X.shape[1]:
                 LOGGER.warning("Less samples than features! The linear problem is not stable in that form. Consider using partial regression instead.")
@@ -754,8 +879,23 @@ class LSTSQSolver(Solver):
 class ConjugateGradientSolver(Solver):
     """Regression solver using Conjugate Gradient on normal equations.
 
-    Computes X^T X and X^T y, then solves (X^T X + alpha*I + M) beta = X^T y
-    using the Conjugate Gradient method.
+    Computes ``XᵀX`` and ``Xᵀy``, then solves
+    ``(XᵀX + alpha*I + M) beta = Xᵀy`` using the Conjugate Gradient method.
+
+    Parameters
+    ----------
+    tol : float, optional
+        Convergence tolerance for the conjugate gradient. Default is 1e-10.
+    max_iter : int or None, optional
+        Maximum number of iterations. If None, defaults to the number of
+        features. Default is None.
+    preconditioner : callable or None, optional
+        Function that builds a preconditioner from the system matrix
+        ``A`` (e.g. :func:`incomplete_cholesky_preconditioner` or
+        :func:`diagonal_preconditioner`). If None, no preconditioning is
+        applied. Default is None.
+    verbose : bool, optional
+        Whether to log progress information. Default is False.
     """
     def __init__(self, tol=1e-10, max_iter=None, preconditioner=None, verbose=False):
         self.tol = tol
@@ -764,6 +904,34 @@ class ConjugateGradientSolver(Solver):
         self.verbose = verbose
 
     def solve(self, X, y, alpha=0.0, M=None):
+        """Solve the regression problem with block conjugate gradient.
+
+        Accumulates the normal equations ``XᵀX`` and ``Xᵀy`` across
+        segments / epochs when needed, optionally adds the quadratic
+        regularizer ``M``, and solves for all output channels
+        simultaneously with :func:`block_conjugate_gradient`.
+
+        Parameters
+        ----------
+        X : ndarray or list of ndarray
+            Design matrix (n_samples, n_features) or list of segments
+            (with possibly different n_samples).
+        y : ndarray or list of ndarray
+            Target (n_samples, n_channels), 3-D array
+            (n_epochs, n_samples, n_channels), or list of arrays (one per
+            segment).
+        alpha : float, optional
+            Tikhonov/L2 regularization strength. When ``M`` is provided,
+            ``alpha`` is ignored in the solve. Default is 0.0.
+        M : ndarray or None, optional
+            Quadratic regularization matrix added to ``XᵀX``. If provided,
+            it replaces the L2 (``alpha``) regularization. Default is None.
+
+        Returns
+        -------
+        result : SolverResult
+            ``betas`` has shape (n_features, n_channels); ``info`` is None.
+        """
         # Handle list of segments
         if isinstance(X, list) and len(X) == len(y) and np.ndim(X[0]) == 2:
             assert all(xtr.shape[0] == ytr.shape[0] for xtr, ytr in zip(X, y)), "Inconsistent trial lengths!"
@@ -942,6 +1110,37 @@ class IRLSSolver(Solver):
         self.verbose = verbose
 
     def solve(self, X, y, alpha=0.0, M=None):
+        """Fit the robust Cauchy-loss IRLS model and return coefficients.
+
+        Accepts array, list-of-arrays, and 3-D multi-segment targets (see
+        :func:`_as_regression_segments`). Each channel is solved
+        independently with its own convergence criterion; channels may be
+        processed in parallel when ``n_jobs > 1``.
+
+        Parameters
+        ----------
+        X : ndarray or list of ndarray
+            Design matrix (n_samples, n_features) or list of segments.
+        y : ndarray or list of ndarray
+            Target (n_samples, n_channels), 3-D array
+            (n_epochs, n_samples, n_channels), or list of arrays (one per
+            segment).
+        alpha : float, optional
+            Tikhonov/L2 regularization strength. Must be scalar. When ``M``
+            is provided, ``alpha`` is ignored in the solve. Default is 0.0.
+        M : ndarray or None, optional
+            Quadratic regularization matrix. If provided, it replaces the L2
+            (``alpha``) regularization: the solution becomes
+            ``betas = (XᵀX + M)⁻¹ Xᵀy``. Default is None.
+
+        Returns
+        -------
+        result : SolverResult
+            ``betas`` has shape (n_features, n_channels). ``info`` is a dict
+            with keys ``n_iter`` (max across channels), ``converged`` (True
+            if all channels converged), ``scale`` (array of per-channel
+            scales), and ``objective`` (sum of final objectives).
+        """
         if self.loss != 'cauchy':
             raise ValueError("Only loss='cauchy' is supported by robust IRLS.")
         if self.inner_solver not in ('svd', 'cg'):
@@ -1023,6 +1222,23 @@ class ScipyRobustSolver(Solver):
 
     This reference path intentionally handles only unregularized regression.
     It is useful for small dense problems and for validating the IRLS path.
+
+    Parameters
+    ----------
+    scale : float or None, optional
+        Fixed scale for the Cauchy loss. If None, estimated from residuals
+        via :func:`_robust_scale`. Default is None.
+    max_nfev : int, optional
+        Maximum number of function evaluations per channel passed to
+        ``scipy.optimize.least_squares``. Default is 200.
+    ftol : float, optional
+        Function tolerance for ``least_squares``. Default is 1e-8.
+    xtol : float, optional
+        Variable tolerance for ``least_squares``. Default is 1e-8.
+    gtol : float, optional
+        Gradient tolerance for ``least_squares``. Default is 1e-8.
+    verbose : bool, optional
+        Whether to print per-channel solver progress. Default is False.
     """
     def __init__(self, scale=None, max_nfev=200, ftol=1e-8, xtol=1e-8, gtol=1e-8, verbose=False):
         self.scale = scale
@@ -1033,6 +1249,36 @@ class ScipyRobustSolver(Solver):
         self.verbose = verbose
 
     def solve(self, X, y, alpha=0.0, M=None):
+        """Fit the robust Cauchy-loss regression and return coefficients.
+
+        Fits each output channel with ``scipy.optimize.least_squares``
+        using the ``'cauchy'`` loss. Only unregularized regression is
+        supported: ``alpha`` and ``M`` are accepted for API compatibility
+        but ignored.
+
+        Parameters
+        ----------
+        X : ndarray or list of ndarray
+            Design matrix (n_samples, n_features) or list of segments.
+        y : ndarray or list of ndarray
+            Target (n_samples, n_channels) or list of arrays (one per
+            segment).
+        alpha : float or array-like, optional
+            Accepted for API compatibility; not used by this solver.
+            Default is 0.0.
+        M : ndarray, optional
+            Accepted for API compatibility; not used by this solver.
+            Default is None.
+
+        Returns
+        -------
+        result : SolverResult
+            ``betas`` has shape (n_features, n_channels). ``info`` is a dict
+            with keys ``n_iter`` (max nfev across channels), ``converged``
+            (True if all channels succeeded), ``scale`` (array of per-channel
+            scales), and ``results`` (list of
+            ``scipy.optimize.OptimizeResult`` objects).
+        """
         from scipy.optimize import least_squares
 
         x_segments, y_segments = _as_regression_segments(X, y)
@@ -1073,18 +1319,94 @@ class ScipyRobustSolver(Solver):
 
 
 def _lstsq_regress(x, y, verbose=False):
-    """Linear regression using lstsq. (See LSTSQSolver)"""
+    """Linear regression using lstsq. See :class:`LSTSQSolver`.
+
+    Parameters
+    ----------
+    x : ndarray or list of ndarray
+        Design matrix (n_samples, n_features) or list of segments.
+    y : ndarray or list of ndarray
+        Target (n_samples, n_channels) or list of arrays (one per segment).
+    verbose : bool, optional
+        Whether to print progress information. Default is False.
+
+    Returns
+    -------
+    betas : ndarray (n_features, n_channels)
+        Estimated coefficients.
+    """
     return LSTSQSolver(verbose=verbose).solve(x, y).betas
 
 def _svd_regress(x, y, alpha, M=None, verbose=False):
-    """Linear regression using SVD. (See SVDSolver)"""
+    """Linear regression using SVD. See :class:`SVDSolver`.
+
+    Parameters
+    ----------
+    x : ndarray or list of ndarray
+        Design matrix (n_samples, n_features) or list of segments.
+    y : ndarray or list of ndarray
+        Target (n_samples, n_channels) or list of arrays (one per segment).
+    alpha : float or array-like
+        Regularization strength(s) (Tikhonov/L2).
+    M : ndarray, optional
+        Quadratic regularization matrix. If provided, replaces the L2
+        (``alpha``) regularization. Default is None.
+    verbose : bool, optional
+        Whether to print progress information. Default is False.
+
+    Returns
+    -------
+    betas : ndarray (n_features, n_channels) or (n_features, n_channels, len(alpha))
+        Estimated coefficients.
+    """
     return SVDSolver(verbose=verbose).solve(x, y, alpha, M=M).betas
 
 def _robust_irls_regress(x, y, alpha=0., M=None, loss='cauchy',
                           scale=None, max_iter=20, tol=1e-6, damping=1.0,
                           inner_solver='svd', inner_tol=1e-8,
                           inner_max_iter=None, verbose=False):
-    """Fit robust linear model using Cauchy-loss IRLS. (See IRLSSolver)"""
+    """Fit robust linear model using Cauchy-loss IRLS. See :class:`IRLSSolver`.
+
+    Parameters
+    ----------
+    x : ndarray or list of ndarray
+        Design matrix (n_samples, n_features) or list of segments.
+    y : ndarray or list of ndarray
+        Target (n_samples, n_channels), 3-D array, or list of arrays (one
+        per segment).
+    alpha : float, optional
+        Tikhonov/L2 regularization strength (scalar). Default is 0.
+    M : ndarray, optional
+        Quadratic regularization matrix. If provided, replaces the L2
+        (``alpha``) regularization. Default is None.
+    loss : str, optional
+        Only 'cauchy' is supported. Default is 'cauchy'.
+    scale : float or None, optional
+        Fixed scale for the Cauchy loss. If None, estimated from residuals.
+        Default is None.
+    max_iter : int, optional
+        Maximum IRLS iterations per channel. Default is 20.
+    tol : float, optional
+        Convergence tolerance (per-channel). Default is 1e-6.
+    damping : float, optional
+        Damping factor for the IRLS step (0, 1]. Default is 1.0.
+    inner_solver : str, optional
+        Inner solver for weighted normal equations: 'svd' or 'cg'.
+        Default is 'svd'.
+    inner_tol : float, optional
+        Tolerance for the inner CG solver. Default is 1e-8.
+    inner_max_iter : int or None, optional
+        Max iterations for the inner CG solver. Default is None.
+    verbose : bool, optional
+        Whether to print per-iteration progress. Default is False.
+
+    Returns
+    -------
+    betas : ndarray (n_features, n_channels)
+        Estimated coefficients.
+    info : dict
+        Solver metadata (n_iter, converged, scale, objective).
+    """
     solver = IRLSSolver(loss=loss, scale=scale, max_iter=max_iter, tol=tol,
                        damping=damping, inner_solver=inner_solver,
                        inner_tol=inner_tol, inner_max_iter=inner_max_iter,
@@ -1094,7 +1416,38 @@ def _robust_irls_regress(x, y, alpha=0., M=None, loss='cauchy',
 
 def _robust_least_squares_regress(x, y, scale=None, max_nfev=200,
                                   ftol=1e-8, xtol=1e-8, gtol=1e-8, verbose=False):
-    """Fit Cauchy-loss regression with SciPy. (See ScipyRobustSolver)"""
+    """Fit Cauchy-loss regression with SciPy. See :class:`ScipyRobustSolver`.
+
+    Parameters
+    ----------
+    x : ndarray or list of ndarray
+        Design matrix (n_samples, n_features) or list of segments.
+    y : ndarray or list of ndarray
+        Target (n_samples, n_channels) or list of arrays (one per segment).
+    scale : float or None, optional
+        Fixed scale for the Cauchy loss. If None, estimated from residuals.
+        Default is None.
+    max_nfev : int, optional
+        Maximum number of function evaluations per channel. Default is 200.
+    ftol : float, optional
+        Function tolerance for ``scipy.optimize.least_squares``.
+        Default is 1e-8.
+    xtol : float, optional
+        Variable tolerance for ``scipy.optimize.least_squares``.
+        Default is 1e-8.
+    gtol : float, optional
+        Gradient tolerance for ``scipy.optimize.least_squares``.
+        Default is 1e-8.
+    verbose : bool, optional
+        Whether to print per-channel solver progress. Default is False.
+
+    Returns
+    -------
+    betas : ndarray (n_features, n_channels)
+        Estimated coefficients.
+    info : dict
+        Solver metadata (n_iter, converged, scale, results).
+    """
     solver = ScipyRobustSolver(scale=scale, max_nfev=max_nfev,
                                ftol=ftol, xtol=xtol, gtol=gtol, verbose=verbose)
     result = solver.solve(x, y)

@@ -74,11 +74,33 @@ def simulate_var(order, coef, nobs=500, ndim=2, seed=42, verbose=False):
         x_t = A_1 x_{t-1} + A_2 x_{t-2} + ... + A_p x_{t-p} + \\epsilon_t
         x_t = \\sum_{i=1}^p A_i x_{t-i} + \\epsilon_t
 
-    where :math:`x_t` is a vector of shape (ndim, 1), :math:`A_i` is a matrix of shape (ndim, ndim)
+    where :math:`x_t` is a vector of shape (ndim, 1), :math:`A_i` is a matrix of shape (ndim, ndim).
 
-    .. note::
-        The coefficients at a given lag are such as :math:`C_ij` is i->j, so it will be the coefficients for dimension j!
-        For example, each row of the first column are determining the contributions of each component onto the first component.
+    Parameters
+    ----------
+    order : int
+        The order of the VAR model.
+    coef : array_like
+        The coefficients of the VAR model. Shape (order, ndim, ndim). If
+        ``order == 1`` and ``coef`` is 2D, it is reshaped to (1, ndim, ndim).
+    nobs : int
+        The number of observations to simulate.
+    ndim : int
+        The number of dimensions of the VAR process.
+    seed : int
+        The random seed used to initialise the process.
+    verbose : bool
+        Whether to log information about the simulation.
+
+    Returns
+    -------
+    data : ndarray
+        The simulated VAR time series. Shape (nobs, ndim).
+
+    Notes
+    -----
+    The coefficients at a given lag are such as :math:`C_ij` is i->j, so it will be the coefficients for dimension j!
+    For example, each row of the first column are determining the contributions of each component onto the first component.
     """
     rng = np.random.default_rng(seed)
     if order == 1 and coef.ndim == 2:
@@ -114,11 +136,31 @@ def simulate_var_from_cov(cov, nobs=500, ndim=2, seed=42, verbose=False):
         x_t = A_1 x_{t-1} + A_2 x_{t-2} + ... + A_p x_{t-p} + \\epsilon_t
         x_t = \\sum_{i=1}^p A_i x_{t-i} + \\epsilon_t
 
-    where :math:`x_t` is a vector of shape (ndim, 1), :math:`A_i` is a matrix of shape (ndim, ndim)
+    where :math:`x_t` is a vector of shape (ndim, 1), :math:`A_i` is a matrix of shape (ndim, ndim).
 
-    .. note::
-        The coefficients at a given lag are such as :math:`C_ij` is i->j, so it will be the coefficients for dimension j!
-        For example, each row of the first column are determining the contributions of each component onto the first component.
+    Parameters
+    ----------
+    cov : array_like
+        The covariance matrices of the VAR model. Shape (order, ndim, ndim).
+        The order of the model is inferred from ``cov.shape[0]``.
+    nobs : int
+        The number of observations to simulate.
+    ndim : int
+        The number of dimensions of the VAR process.
+    seed : int
+        The random seed used to initialise the process.
+    verbose : bool
+        Whether to log information about the simulation.
+
+    Returns
+    -------
+    data : ndarray
+        The simulated VAR time series. Shape (nobs, ndim).
+
+    Notes
+    -----
+    The coefficients at a given lag are such as :math:`C_ij` is i->j, so it will be the coefficients for dimension j!
+    For example, each row of the first column are determining the contributions of each component onto the first component.
     """
     rng = np.random.default_rng(seed)
     order = cov.shape[0]
@@ -142,19 +184,73 @@ def simulate_var_from_cov(cov, nobs=500, ndim=2, seed=42, verbose=False):
 
 
 def linear_coupling(readouts, connectivity, phases=None):
-    """Linear projection of node readouts through connectivity."""
+    """
+    Linear projection of node readouts through the connectivity matrix.
+
+    Parameters
+    ----------
+    readouts : array_like
+        The node readouts. Shape (N,).
+    connectivity : array_like
+        The connectivity matrix. Shape (N, N).
+    phases : array_like, optional
+        Ignored; accepted for a uniform coupling-function interface.
+
+    Returns
+    -------
+    input : ndarray
+        The coupling input to each node. Shape (N,).
+    """
     return np.asarray(connectivity) @ np.asarray(readouts)
 
 
 def diffusive_coupling(readouts, connectivity, phases=None):
-    """Weighted diffusive coupling of scalar node readouts."""
+    """
+    Weighted diffusive coupling of scalar node readouts.
+
+    The input to node *i* is ``sum_j W_ij (readout_j - readout_i)``, where
+    ``W_ij`` is the coupling strength from node *j* to node *i*.
+
+    Parameters
+    ----------
+    readouts : array_like
+        The node readouts. Shape (N,).
+    connectivity : array_like
+        The connectivity matrix. Shape (N, N).
+    phases : array_like, optional
+        Ignored; accepted for a uniform coupling-function interface.
+
+    Returns
+    -------
+    input : ndarray
+        The coupling input to each node. Shape (N,).
+    """
     readouts = np.asarray(readouts)
     connectivity = np.asarray(connectivity)
     return connectivity @ readouts - connectivity.sum(axis=1) * readouts
 
 
 def kuramoto_coupling(readouts, connectivity, phases):
-    """Sinusoidal phase-difference coupling."""
+    """
+    Sinusoidal phase-difference (Kuramoto) coupling.
+
+    The input to node *i* is ``sum_j W_ij sin(phase_j - phase_i)``.
+
+    Parameters
+    ----------
+    readouts : array_like
+        The node readouts. Shape (N,). Unused in the coupling computation but
+        accepted for a uniform coupling-function interface.
+    connectivity : array_like
+        The connectivity matrix. Shape (N, N).
+    phases : array_like
+        The phase of each node. Shape (N,).
+
+    Returns
+    -------
+    input : ndarray
+        The coupling input to each node. Shape (N,).
+    """
     phases = np.asarray(phases)
     connectivity = np.asarray(connectivity)
     return np.sum(connectivity * np.sin(phases[None, :] - phases[:, None]), axis=1)
@@ -168,6 +264,28 @@ _COUPLING_FUNCTIONS = {
 
 
 def _resolve_coupling(coupling):
+    """
+    Resolve a coupling specification into a coupling function.
+
+    Parameters
+    ----------
+    coupling : str or callable
+        Either a supported coupling name (``"linear"``, ``"diffusive"``,
+        ``"kuramoto"``) or a callable with signature
+        ``f(readouts, connectivity, phases=None)``.
+
+    Returns
+    -------
+    coupling_function : callable
+        The resolved coupling function.
+
+    Raises
+    ------
+    ValueError
+        If ``coupling`` is a string that is not a supported coupling name.
+    TypeError
+        If ``coupling`` is neither a supported name nor callable.
+    """
     if isinstance(coupling, str):
         try:
             return _COUPLING_FUNCTIONS[coupling]
@@ -180,8 +298,20 @@ def _resolve_coupling(coupling):
 
 class NeuralMassNode:
     """
-    Abstract class for neural mass models.
-    Defines the function to be implemented for the simulation.
+    Abstract base class for a single neural-mass node.
+
+    Defines the interface to be implemented for the simulation of a single
+    node: a child class must provide a :meth:`step` method that advances the
+    internal state by one integration step, an optional :meth:`read_out`
+    method returning a scalar readout, and may override :meth:`simulate` to
+    produce a full time series.
+
+    Parameters
+    ----------
+    dt : float
+        The integration time step in seconds.
+    seed : int
+        The random seed used to initialise the node's random number generator.
     """
 
     def __init__(self, dt=0.001, seed=42):
@@ -189,16 +319,71 @@ class NeuralMassNode:
         self.seed = seed  # random seed
 
     def simulate(self):
+        """
+        Simulate the node and return its time series.
+
+        Raises
+        ------
+        NotImplementedError
+            This method must be implemented in the child class.
+        """
         raise NotImplementedError("This method must be implemented in the child class")
 
     def step(self):
+        """
+        Advance the node by one integration step.
+
+        Raises
+        ------
+        NotImplementedError
+            This method must be implemented in the child class.
+        """
         raise NotImplementedError("This method must be implemented in the child class")
 
 
 class NeuralMassNetwork:
     """
-    Abstract class for neural mass models.
-    Defines the function to be implemented for the simulation.
+    Abstract base class for a network of coupled neural-mass nodes.
+
+    A network is made of ``N`` nodes, each instantiated from a node-dynamics
+    class (e.g. :class:`Phasor`, :class:`HopfOscillator`,
+    :class:`WilsonCowan`), coupled through a connectivity matrix ``W`` and a
+    coupling function. Each step, the scalar readout of every node is combined
+    through the coupling function into an input that is fed back to the nodes.
+
+    Parameters
+    ----------
+    N : int
+        The number of nodes in the network.
+    W : array_like
+        The connectivity matrix. Shape (N, N). Entry ``W[i, j]`` is the
+        coupling strength from node *j* to node *i*.
+    delay : float
+        The delay between nodes in seconds. Stored for compatibility; not
+        used by the default coupling scheme.
+    node_dynamics : class, optional
+        The class of the node dynamics used to instantiate the ``N`` nodes.
+        Must accept ``dt`` and ``seed`` keyword arguments. If ``None``, no
+        nodes are instantiated and :meth:`step` will raise a RuntimeError.
+    dt : float
+        The integration time step in seconds.
+    seed : int
+        The random seed used to initialise the network's random number
+        generator and the per-node seeds.
+    node_kwargs : dict, optional
+        Extra keyword arguments passed to the ``node_dynamics`` constructor.
+        Cannot override ``dt`` or ``seed``.
+    coupling : str or callable
+        Either a supported coupling name (``"linear"``, ``"diffusive"``,
+        ``"kuramoto"``) or a callable with signature
+        ``f(readouts, connectivity, phases=None)`` returning the coupling
+        input to each node. Default is ``"linear"``.
+
+    Raises
+    ------
+    ValueError
+        If ``W`` does not have shape (N, N), or if ``node_kwargs`` attempts
+        to override ``dt`` or ``seed``.
     """
 
     def __init__(
@@ -235,10 +420,36 @@ class NeuralMassNetwork:
             ]
 
     def simulate(self):
+        """
+        Simulate the network and return its outputs.
+
+        Raises
+        ------
+        NotImplementedError
+            This method must be implemented in the child class.
+        """
         raise NotImplementedError("This method must be implemented in the child class")
 
     def step(self):
-        """Advance nodes using coupling computed from their previous state."""
+        """
+        Advance the network by one integration step.
+
+        The readout of every node is collected, combined through the coupling
+        function into one input per node, and each node is advanced with its
+        coupling input.
+
+        Returns
+        -------
+        outs : ndarray
+            The node readouts before the step. Shape (N,).
+
+        Raises
+        ------
+        RuntimeError
+            If ``node_dynamics`` was not provided at construction.
+        ValueError
+            If the coupling function does not return a vector of shape (N,).
+        """
         if not hasattr(self, "nodes"):
             raise RuntimeError("node_dynamics must be provided to use step()")
         outs = np.asarray([node.read_out() for node in self.nodes], dtype=float)
@@ -251,6 +462,12 @@ class NeuralMassNetwork:
         return outs
 
     def reset(self):
+        """
+        Reset the network to its initial state.
+
+        The state of every node is set to zero and the connectivity matrix
+        ``K`` is restored to the original connectivity ``W``.
+        """
         if hasattr(self, "nodes"):
             for node in self.nodes:
                 node.x = np.zeros(node.nstates, dtype=float)
@@ -258,7 +475,36 @@ class NeuralMassNetwork:
 
 
 class HopfOscillator(NeuralMassNode):
-    """Two-dimensional Stuart-Landau (Hopf normal-form) oscillator."""
+    """
+    Two-dimensional Stuart-Landau (Hopf normal-form) oscillator.
+
+    The state ``(x, y)`` evolves according to
+
+    .. math::
+        \\dot{x} = (a - r^2) x - \\omega y + I, \\quad
+        \\dot{y} = (a - r^2) y + \\omega x + I
+
+    with :math:`r^2 = x^2 + y^2` and :math:`\\omega = 2 \\pi f`. For
+    :math:`a > 0` the origin is unstable and the oscillator converges to a
+    limit cycle of radius :math:`\\sqrt{a}` at frequency :math:`f`.
+
+    Parameters
+    ----------
+    a : float
+        The bifurcation parameter. Positive values yield a stable limit
+        cycle, negative values a damped oscillator.
+    frequency : float
+        The oscillation frequency in Hz. Must be non-negative.
+    dt : float
+        The integration time step in seconds.
+    seed : int
+        The random seed used to initialise the node's random number generator.
+
+    Raises
+    ------
+    ValueError
+        If ``frequency`` is negative.
+    """
 
     def __init__(self, a=0.01, frequency=10.0, dt=0.001, seed=42):
         super().__init__(dt=dt, seed=seed)
@@ -270,6 +516,17 @@ class HopfOscillator(NeuralMassNode):
         self.rng = np.random.default_rng(seed)
 
     def step(self, I=0.0, noise=0.0):
+        """
+        Advance the oscillator by one integration step (Euler method).
+
+        Parameters
+        ----------
+        I : float
+            The external (coupling) input to the oscillator.
+        noise : float
+            The standard deviation of the additive noise, scaled by
+            ``sqrt(dt)`` per sample.
+        """
         x, y = self.x
         r2 = x * x + y * y
         self.x += self.dt * np.array(
@@ -279,14 +536,64 @@ class HopfOscillator(NeuralMassNode):
             self.x += np.sqrt(self.dt) * noise * self.rng.standard_normal(2)
 
     def read_out(self):
+        """
+        Return the scalar readout of the oscillator.
+
+        Returns
+        -------
+        readout : float
+            The first state variable ``x``.
+        """
         return float(self.x[0])
 
     def simulate(self, x0=None, tmax=1.0, noise=0.0, I=0.0):
+        """
+        Simulate the oscillator and return its states and readout.
+
+        Parameters
+        ----------
+        x0 : array_like, optional
+            The initial state. Shape (2,). Defaults to zeros.
+        tmax : float
+            The duration of the simulation in seconds.
+        noise : float
+            The standard deviation of the additive noise.
+        I : float or array_like
+            The external input. A scalar is applied at every step, an array
+            of shape (n,) is indexed per step.
+
+        Returns
+        -------
+        states : ndarray
+            The simulated states. Shape (n, 2).
+        outputs : ndarray
+            The simulated scalar readouts. Shape (n, 1).
+        """
         return _simulate_node(self, x0, tmax, noise, I)
 
 
 class Phasor(NeuralMassNode):
-    """One-dimensional phase oscillator with sinusoidal readout."""
+    """
+    One-dimensional phase oscillator with sinusoidal readout.
+
+    The phase :math:`\\phi` evolves according to
+    :math:`\\dot{\\phi} = \\omega + I` where :math:`\\omega = 2 \\pi f`, and
+    the readout is :math:`\\sin(\\phi)`.
+
+    Parameters
+    ----------
+    frequency : float
+        The oscillation frequency in Hz. Must be non-negative.
+    dt : float
+        The integration time step in seconds.
+    seed : int
+        The random seed used to initialise the node's random number generator.
+
+    Raises
+    ------
+    ValueError
+        If ``frequency`` is negative.
+    """
 
     def __init__(self, frequency=10.0, dt=0.001, seed=42):
         super().__init__(dt=dt, seed=seed)
@@ -297,19 +604,96 @@ class Phasor(NeuralMassNode):
         self.rng = np.random.default_rng(seed)
 
     def step(self, I=0.0, noise=0.0):
+        """
+        Advance the phase by one integration step (Euler method).
+
+        Parameters
+        ----------
+        I : float
+            The external (coupling) input to the oscillator.
+        noise : float
+            The standard deviation of the additive noise, scaled by
+            ``sqrt(dt)`` per sample.
+        """
         self.x[0] += self.dt * (self.omega + I)
         if noise:
             self.x[0] += np.sqrt(self.dt) * noise * self.rng.standard_normal()
         self.x[0] %= 2 * np.pi
 
     def read_out(self):
+        """
+        Return the scalar readout of the oscillator.
+
+        Returns
+        -------
+        readout : float
+            The sine of the phase, in [-1, 1].
+        """
         return float(np.sin(self.x[0]))
 
     def simulate(self, x0=None, tmax=1.0, noise=0.0, I=0.0):
+        """
+        Simulate the oscillator and return its phase and readout.
+
+        Parameters
+        ----------
+        x0 : array_like, optional
+            The initial phase. Shape (1,). Defaults to zero.
+        tmax : float
+            The duration of the simulation in seconds.
+        noise : float
+            The standard deviation of the additive noise.
+        I : float or array_like
+            The external input. A scalar is applied at every step, an array
+            of shape (n,) is indexed per step.
+
+        Returns
+        -------
+        states : ndarray
+            The simulated phases. Shape (n, 1).
+        outputs : ndarray
+            The simulated scalar readouts. Shape (n, 1).
+        """
         return _simulate_node(self, x0, tmax, noise, I)
 
 
 def _simulate_node(node, x0, tmax, noise, input_signal):
+    """
+    Shared simulation engine for the simple neural-mass nodes.
+
+    Sets the initial state of ``node`` (validating its shape), then iterates
+    the node's :meth:`~NeuralMassNode.step` forward in time, recording the
+    states and scalar readouts at every sample.
+
+    Parameters
+    ----------
+    node : NeuralMassNode
+        The node to simulate. Must expose ``nstates``, ``dt``, ``x``, a
+        ``step(I=..., noise=...)`` method and a ``read_out()`` method.
+    x0 : array_like or None
+        The initial state. Shape (node.nstates,). If ``None``, the state is
+        initialised to zeros.
+    tmax : float
+        The duration of the simulation in seconds. Must be at least ``dt``.
+    noise : float
+        The standard deviation of the additive noise applied at each step.
+    input_signal : float or array_like
+        The external input. A scalar is applied at every step, an array of
+        shape (n,) is indexed per step.
+
+    Returns
+    -------
+    states : ndarray
+        The simulated states. Shape (n, node.nstates).
+    outputs : ndarray
+        The simulated scalar readouts. Shape (n, 1).
+
+    Raises
+    ------
+    ValueError
+        If ``x0`` does not have shape (node.nstates,), or if ``tmax`` is
+        smaller than ``dt``.
+    """
     if x0 is None:
         x0 = np.zeros(node.nstates)
     node.x = np.asarray(x0, dtype=float).copy()
@@ -328,7 +712,50 @@ def _simulate_node(node, x0, tmax, noise, input_signal):
 
 
 class WilsonCowan(NeuralMassNode):
-    """Two-population excitatory/inhibitory Wilson-Cowan rate model."""
+    """
+    Two-population excitatory/inhibitory Wilson-Cowan rate model.
+
+    The mean activities of the excitatory (:math:`e`) and inhibitory
+    (:math:`i`) populations evolve according to
+
+    .. math::
+        \\tau_e \\dot{e} = -e + f(w_{ee} e - w_{ie} i + P + I)
+        \\tau_i \\dot{i} = -i + f(w_{ei} e - w_{ii} i)
+
+    where :math:`f` is the (sigmoidal) nonlinearity. The readout is the
+    difference :math:`e - i` between the two populations.
+
+    Parameters
+    ----------
+    tau_e : float
+        The time constant of the excitatory population in seconds. Must be
+        positive.
+    tau_i : float
+        The time constant of the inhibitory population in seconds. Must be
+        positive.
+    w_ee : float
+        The excitatory-to-excitatory coupling weight.
+    w_ei : float
+        The excitatory-to-inhibitory coupling weight.
+    w_ie : float
+        The inhibitory-to-excitatory coupling weight.
+    w_ii : float
+        The inhibitory-to-inhibitory coupling weight.
+    P : float
+        The constant external input to the excitatory population.
+    dt : float
+        The integration time step in seconds.
+    seed : int
+        The random seed used to initialise the node's random number generator.
+    nonlinearity : callable
+        The activation function applied to the population drives. Default is
+        :func:`~pyeeg.utils.sigmoid`.
+
+    Raises
+    ------
+    ValueError
+        If ``tau_e`` or ``tau_i`` is not positive.
+    """
 
     def __init__(
         self,
@@ -355,6 +782,20 @@ class WilsonCowan(NeuralMassNode):
         self.rng = np.random.default_rng(seed)
 
     def step(self, I=0.0, noise=0.0, P=None):
+        """
+        Advance the model by one integration step (Euler method).
+
+        Parameters
+        ----------
+        I : float
+            The external (coupling) input to the excitatory population.
+        noise : float
+            The standard deviation of the additive noise, scaled by
+            ``sqrt(dt)`` per sample.
+        P : float, optional
+            The external input to the excitatory population for this step.
+            If ``None``, the constant input set at construction is used.
+        """
         e, inh = self.x
         drive_e = self.w_ee * e - self.w_ie * inh + (self.P if P is None else P) + I
         drive_i = self.w_ei * e - self.w_ii * inh
@@ -366,9 +807,42 @@ class WilsonCowan(NeuralMassNode):
             self.x += np.sqrt(self.dt) * noise * self.rng.standard_normal(2)
 
     def read_out(self):
+        """
+        Return the scalar readout of the model.
+
+        Returns
+        -------
+        readout : float
+            The difference ``e - i`` between the excitatory and inhibitory
+            population activities.
+        """
         return float(self.x[0] - self.x[1])
 
     def simulate(self, x0=None, tmax=1.0, noise=0.0, P=None):
+        """
+        Simulate the model and return its states and readout.
+
+        Parameters
+        ----------
+        x0 : array_like, optional
+            The initial state. Shape (2,). Defaults to zeros.
+        tmax : float
+            The duration of the simulation in seconds.
+        noise : float
+            The standard deviation of the additive noise.
+        P : float or array_like, optional
+            The external input to the excitatory population. A scalar is
+            applied at every step, an array of shape (n,) is indexed per
+            step. If ``None``, the constant input set at construction is
+            used.
+
+        Returns
+        -------
+        states : ndarray
+            The simulated states. Shape (n, 2).
+        outputs : ndarray
+            The simulated scalar readouts. Shape (n, 1).
+        """
         if x0 is None:
             x0 = np.zeros(self.nstates)
         self.x = np.asarray(x0, dtype=float).copy()
@@ -388,7 +862,38 @@ class WilsonCowan(NeuralMassNode):
 
 
 class Kuramoto(NeuralMassNetwork):
-    """Convenience network of ``Phasor`` nodes with Kuramoto coupling."""
+    """
+    Convenience network of :class:`Phasor` nodes with Kuramoto coupling.
+
+    Each node is a :class:`Phasor` oscillator with the same ``frequency``.
+    The phase of node *i* evolves as
+
+    .. math::
+        \\dot{\\phi}_i = \\omega + \\sum_j K_{ij} \\sin(\\phi_j - \\phi_i)
+
+    with ``K = coupling_strength * W``, and the readout of each node is
+    :math:`\\sin(\\phi_i)`.
+
+    Parameters
+    ----------
+    N : int
+        The number of oscillators in the network.
+    W : array_like, optional
+        The connectivity matrix. Shape (N, N). If ``None``, an all-zero
+        matrix is used (uncoupled oscillators).
+    coupling_strength : float
+        The global scaling applied to ``W`` to obtain the effective coupling
+        matrix ``K``.
+    frequency : float
+        The natural frequency of every oscillator in Hz.
+    dt : float
+        The integration time step in seconds.
+    seed : int
+        The random seed used to initialise the network's random number
+        generator and the per-node seeds.
+    **node_kwargs
+        Extra keyword arguments passed to the :class:`Phasor` constructor.
+    """
 
     def __init__(
         self,
@@ -416,6 +921,29 @@ class Kuramoto(NeuralMassNetwork):
         self.K = self.coupling_strength * self.W
 
     def simulate(self, tmax=1.0, x0=None):
+        """
+        Simulate the network and return the readout of every node.
+
+        Parameters
+        ----------
+        tmax : float
+            The duration of the simulation in seconds. Must be at least
+            ``dt``.
+        x0 : array_like, optional
+            The initial phases. Shape (N,). If given, each phase is wrapped
+            into [0, 2*pi). If ``None``, the phases are initialised to zero.
+
+        Returns
+        -------
+        output : ndarray
+            The simulated readouts. Shape (n, N).
+
+        Raises
+        ------
+        ValueError
+            If ``tmax`` is smaller than ``dt``, or if ``x0`` does not have
+            shape (N,).
+        """
         n = int(tmax / self.dt)
         if n < 1:
             raise ValueError("tmax must be at least dt")
@@ -437,9 +965,40 @@ class CTRNN(NeuralMassNetwork):
     """
     Continuous Time Recurrent Neural Network (CTRNN) model.
 
+    The state :math:`x` of the network evolves according to
+
     .. math::
         \\tau \\dot{x} = -x + W o + I + \\theta
 
+    where :math:`o = f(x + \\theta)` is the output of the network through
+    the nonlinearity :math:`f`, :math:`I` is the external input projected
+    through a (trainable) input matrix, and :math:`\\theta` is a bias term.
+    A (trainable) readout matrix projects the node outputs to the desired
+    output dimension, rescaled into the range [-1, 1] when the nonlinearity
+    is a sigmoid.
+
+    Parameters
+    ----------
+    N : int
+        The number of neurons/nodes.
+    W : array_like
+        The connectivity matrix. Shape (N, N).
+    input_dim : int
+        The dimension of the external input. The input is projected through
+        a zero-initialised matrix of shape (N, input_dim).
+    output_dim : int
+        The dimension of the readout. The node outputs are projected through
+        a zero-initialised matrix of shape (output_dim, N).
+    dt : float
+        The integration time step in seconds.
+    seed : int
+        The random seed used to initialise the network's random number
+        generator.
+    nonlinearity : callable
+        The nonlinearity function applied to the network state. Default is
+        sigmoid (e.g. can use :func:`np.tanh`).
+    theta : array_like, optional
+        The bias term. Shape (N,). If ``None``, a zero bias is used.
     """
 
     def __init__(
@@ -453,16 +1012,6 @@ class CTRNN(NeuralMassNetwork):
         nonlinearity=sigmoid,
         theta=None,
     ):
-        """
-        Parameters
-        ----------
-        N : int
-            The number of neurons/nodes.
-        W : array_like
-            The connectivity matrix. Shape (N, N).
-        nonlinearity : callable
-            The nonlinearity function to apply to the network. Default is sigmoid (e.g. can use func:`np.tanh`)
-        """
         super().__init__(N=N, W=W, dt=dt, seed=seed)
         self.nonlinearity = nonlinearity  # nonlinearity function
         self.output_dim = output_dim
@@ -475,6 +1024,17 @@ class CTRNN(NeuralMassNetwork):
     def step(self, I=None, noise=0.0):
         """
         Compute one step of the CTRNN model.
+
+        Parameters
+        ----------
+        I : float or array_like, optional
+            The external input. A scalar is broadcast to all input
+            dimensions, an array must have shape (input_dim,). If ``None``,
+            a zero input is used.
+        noise : array_like or float
+            The additive noise applied to the state. Typically an array of
+            shape (N,) scaled by ``sqrt(dt)``, but any broadcastable value
+            is accepted.
         """
         if I is None:
             I = np.zeros((self.input_W.shape[1],))
@@ -486,9 +1046,16 @@ class CTRNN(NeuralMassNetwork):
         self.o = self.nonlinearity(self.x + self.theta)
 
     def read_out(self):
-        return (
-            2 * self.nonlinearity(self.readout_W @ self.o) - 1
-        )  # this is in the range -1 to 1 if the nonlinearity is sigmoid
+        """
+        Compute the readout of the network.
+
+        Returns
+        -------
+        readout : ndarray
+            The projected output. Shape (output_dim,). This is in the range
+            -1 to 1 if the nonlinearity is a sigmoid.
+        """
+        return 2 * self.nonlinearity(self.readout_W @ self.o) - 1
 
     def simulate(self, x0=None, tmax=1.0, noise=0.0, I=lambda t: 0.0):
         """
@@ -496,17 +1063,24 @@ class CTRNN(NeuralMassNetwork):
 
         Parameters
         ----------
-        x0 : array_like
-            The initial state of the system. Shape (N,).
+        x0 : array_like, optional
+            The initial state of the system. Shape (N,). Defaults to zeros.
         tmax : float
             The maximum time to simulate.
         noise : float
             The standard deviation of the noise to add to the system.
+        I : callable
+            The external input as a function of time, ``I(t)``, evaluated at
+            every sample. Defaults to a constant zero input.
 
         Returns
         -------
-        x : array_like
-            The simulated time series. Shape (n, N).
+        O : ndarray
+            The simulated readout. Shape (n, output_dim).
+        x : ndarray
+            The simulated state. Shape (n, N).
+        o : ndarray
+            The simulated node outputs (after the nonlinearity). Shape (n, N).
         """
         rng = np.random.default_rng(self.seed)
         n = int(tmax / self.dt)
@@ -533,9 +1107,6 @@ class CTRNN(NeuralMassNetwork):
             O[i] = self.read_out()
 
         return O, x, o
-
-    def read_out(self):
-        return 2 * self.nonlinearity(self.readout_W @ self.o) - 1
 
 
 class JansenRit(NeuralMassNode):
@@ -579,6 +1150,18 @@ class JansenRit(NeuralMassNode):
     """
 
     def __init__(self, dt=0.0001, seed=42, nonlinearity=sigmoid):
+        """
+        Parameters
+        ----------
+        dt : float
+            The integration time step in seconds.
+        seed : int
+            The random seed used to initialise the node's random number
+            generator.
+        nonlinearity : callable
+            The nonlinearity function applied to the population drives.
+            Default is :func:`~pyeeg.utils.sigmoid`.
+        """
         super().__init__(
             dt, seed
         )  # this is a single node (cortical column with 3 sub-populations)
@@ -609,6 +1192,11 @@ class JansenRit(NeuralMassNode):
     def step(self, I=0.0):
         """
         Compute one step of the Jansen-Rit model.
+
+        Parameters
+        ----------
+        I : float
+            The external input to the excitatory population.
         """
         # 0: pyramidal, 1: excitatory, 2: inhibitory
         x0, x1, x2, xdot0, xdot1, xdot2 = self.x  # unpack the state
@@ -654,17 +1242,24 @@ class JansenRit(NeuralMassNode):
 
         Parameters
         ----------
-        x0 : array_like
-            The initial state of the system. Shape (N,).
+        x0 : array_like, optional
+            The initial state of the system. Shape (6,). Defaults to zeros.
         tmax : float
             The maximum time to simulate.
         noise : float
             The standard deviation of the noise to add to the system.
+        P : float or array_like, optional
+            The external input to the excitatory population. A scalar is
+            applied at every step, an array of shape (n,) is indexed per
+            step. If ``None``, the constant input set at construction is
+            used.
 
         Returns
         -------
-        x : array_like
-            The simulated time series. Shape (n, N).
+        x : ndarray
+            The simulated state. Shape (n, 6).
+        o : ndarray
+            The simulated readout (excitatory minus inhibitory). Shape (n, 1).
         """
         rng = np.random.default_rng(self.seed)
         n = int(tmax / self.dt)
@@ -697,6 +1292,21 @@ class JansenRitExtended(NeuralMassNode):
     """
 
     def __init__(self, w=0.5, dt=0.0001, seed=42, nonlinearity=sigmoid):
+        """
+        Parameters
+        ----------
+        w : float
+            The relative contribution of the first (slow) subpopulation.
+            The second (fast) subpopulation contributes ``1 - w``.
+        dt : float
+            The integration time step in seconds.
+        seed : int
+            The random seed used to initialise the node's random number
+            generator.
+        nonlinearity : callable
+            The nonlinearity function applied to the population drives.
+            Default is :func:`~pyeeg.utils.sigmoid`.
+        """
         super().__init__(
             dt, seed
         )  # this is a single node (cortical column with 3 sub-populations)
@@ -736,7 +1346,12 @@ class JansenRitExtended(NeuralMassNode):
 
     def step(self, I=0.0):
         """
-        Compute one step of the Jansen-Rit model.
+        Compute one step of the extended Jansen-Rit model.
+
+        Parameters
+        ----------
+        I : float
+            The external input to the excitatory population.
         """
         # 0: pyramidal, 1: excitatory, 2: inhibitory
         (
@@ -851,21 +1466,29 @@ class JansenRitExtended(NeuralMassNode):
 
     def simulate(self, x0=None, tmax=1.0, noise=0.0, P=None):
         """
-        Simulate the Jansen-Rit model and monitor the output.
+        Simulate the extended Jansen-Rit model and monitor the output.
 
         Parameters
         ----------
-        x0 : array_like
-            The initial state of the system. Shape (N,).
+        x0 : array_like, optional
+            The initial state of the system. Shape (12,). Defaults to zeros.
         tmax : float
             The maximum time to simulate.
         noise : float
             The standard deviation of the noise to add to the system.
+        P : float or array_like, optional
+            The external input to the excitatory population. A scalar is
+            applied at every step, an array of shape (n,) is indexed per
+            step. If ``None``, the constant input set at construction is
+            used.
 
         Returns
         -------
-        x : array_like
-            The simulated time series. Shape (n, N).
+        x : ndarray
+            The simulated state. Shape (n, 12).
+        o : ndarray
+            The simulated readout (weighted excitatory minus inhibitory).
+            Shape (n, 1).
         """
         rng = np.random.default_rng(self.seed)
         n = int(tmax / self.dt)
@@ -890,8 +1513,11 @@ class JansenRitExtended(NeuralMassNode):
 
 class JRNetwork(NeuralMassNetwork):
     """
-    Abstract class for neural mass models.
-    Defines the function to be implemented for the simulation.
+    Network of coupled Jansen-Rit extended neural-mass nodes.
+
+    Each node is an :class:`JansenRitExtended` cortical column; nodes are
+    coupled through the connectivity matrix ``W`` with a delay ``delay`` and
+    activity-dependent normalisation of the coupling strengths.
 
     Notes
     -----
@@ -937,6 +1563,19 @@ class JRNetwork(NeuralMassNetwork):
             The connectivity matrix. Shape (N, N). E.g. W = np.asarray([[0, 1], [0, 0]]) means that node 1 is connected to node 2, while node 2 is not connected to node 1.
         delay : float
             The delay between nodes in seconds. Default is 10ms.
+        w : float or array_like
+            The relative contribution of the first (slow) subpopulation of
+            each :class:`JansenRitExtended` node. A scalar is applied to all
+            nodes, an array must have shape (N,).
+        node_dynamics : class, optional
+            Ignored; kept for interface compatibility with
+            :class:`NeuralMassNetwork`. Nodes are always
+            :class:`JansenRitExtended` instances.
+        dt : float
+            The integration time step in seconds.
+        seed : int
+            The random seed used to initialise the network's random number
+            generator and the per-node seeds.
         """
         self.rng = np.random.default_rng(seed)
         self.N = N  # number of neurons/nodes
@@ -961,8 +1600,20 @@ class JRNetwork(NeuralMassNetwork):
 
     def update_connectivity(self, x, sigma_p=1):
         """
-        x represents the firing rates output of all nodes, needed to compute the standard deviation
-        Shape of x: (N, ntimes)
+        Update the coupling matrix ``K`` from the history of node outputs.
+
+        The coupling strengths are normalised by the standard deviation of
+        each node's firing rate so that the mean input to each node is
+        conserved across coupling strengths (see David & Friston, 2004).
+
+        Parameters
+        ----------
+        x : array_like
+            The firing-rate outputs of all nodes, needed to compute the
+            standard deviation. Shape (N, ntimes).
+        sigma_p : float or array_like
+            The standard deviation of the external input fluctuations. A
+            scalar is applied to all nodes, an array must have shape (N,).
         """
         # See ref (David & Friston 2004: A Neural Mass model for M/EEG: coupling and neuronal dynamics)
         if np.isscalar(
@@ -986,6 +1637,24 @@ class JRNetwork(NeuralMassNetwork):
         # Then update self.K
 
     def simulate(self, tmax=1.0, P=220, sigma_p=22):
+        """
+        Simulate the network and return the readout of every node.
+
+        Parameters
+        ----------
+        tmax : float
+            The duration of the simulation in seconds.
+        P : float
+            The constant external input to each node.
+        sigma_p : float
+            The standard deviation of the external input fluctuations.
+
+        Returns
+        -------
+        outs : ndarray
+            The simulated readouts. Shape (nsamples, N). The number of
+            samples is ``int(tmax / dt)``.
+        """
         outs = []
         t = np.arange(0, tmax, self.dt)
         nsamples = len(t)
@@ -1002,6 +1671,29 @@ class JRNetwork(NeuralMassNetwork):
         return np.asarray(outs)
 
     def step(self, P=220, sigma_p=22, history_outs=None):
+        """
+        Advance the network by one integration step.
+
+        The coupling matrix is updated from the history of the outputs, then
+        every node receives the external input ``P`` plus a fluctuating
+        external input plus the inter-area contributions from the other
+        nodes.
+
+        Parameters
+        ----------
+        P : float
+            The constant external input to each node.
+        sigma_p : float
+            The standard deviation of the external input fluctuations.
+        history_outs : array_like, optional
+            The firing-rate outputs of all nodes up to the current time,
+            used to update the coupling matrix. Shape (N, ntimes).
+
+        Returns
+        -------
+        outs : ndarray
+            The readout of every node after the step. Shape (N,).
+        """
         if np.isscalar(
             sigma_p
         ):  # if sigma_p is a scalar, then it is the same for all nodes
@@ -1035,6 +1727,13 @@ class JRNetwork(NeuralMassNetwork):
         return np.asarray(outs)
 
     def reset(self):
+        """
+        Reset the network to its initial state.
+
+        The delayed states are zeroed, the state of every node is set to
+        zero, and the coupling matrix ``K`` is restored to the original
+        connectivity ``W``.
+        """
         self.delayed_states = np.zeros((self.N, 1))
         for n in self.nodes:
             n.x = np.zeros((n.nstates,))
