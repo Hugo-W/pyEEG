@@ -348,11 +348,17 @@ def _as_regression_segments(x, y):
 def _robust_scale(residuals):
     """Estimate a positive Cauchy scale from residuals using MAD."""
     residuals = np.asarray(residuals, dtype=float)
+    if residuals.ndim == 1:
+        residuals = residuals[:, None]
+        squeeze = True
+    else:
+        squeeze = False
     centered = residuals - np.median(residuals, axis=0, keepdims=True)
     scale = 1.4826 * np.median(np.abs(centered), axis=0)
     fallback = np.std(residuals, axis=0)
     scale = np.where(scale > np.finfo(float).eps, scale, fallback)
-    return np.maximum(scale, np.finfo(float).eps)
+    scale = np.maximum(scale, np.finfo(float).eps)
+    return scale[0] if squeeze else scale
 
 
 def _solve_weighted_normal_equations(x_segments, y_segments, weights, beta,
@@ -366,6 +372,12 @@ def _solve_weighted_normal_equations(x_segments, y_segments, weights, beta,
     overhead of separate factorizations.
     """
     n_features = x_segments[0].shape[1]
+    # Handle 1-D y (single channel, from per-channel IRLS)
+    if y_segments[0].ndim == 1:
+        y_segments = [yy[:, None] for yy in y_segments]
+        squeeze = True
+    else:
+        squeeze = False
     n_chans = y_segments[0].shape[1]
 
     # Stack per-channel systems: (n_chans, n_features, n_features) and
@@ -802,6 +814,76 @@ class ConjugateGradientSolver(Solver):
         return SolverResult(betas, None)
 
 
+def _irls_single_channel(x_segments, y_channel, initial_beta, alpha, M,
+                         scale, max_iter, tol, damping, inner_solver,
+                         inner_tol, inner_max_iter, verbose=False):
+    """Run the full IRLS loop for a single output channel.
+
+    Each channel is independent: residuals, weights, scale, convergence
+    are all per-channel.  This function is designed to be called in
+    parallel across channels.
+    """
+    n_features = x_segments[0].shape[1]
+    beta = np.asarray(initial_beta, dtype=float).copy()
+
+    # Per-channel residuals and scale
+    residual_segments = [yy - xx @ beta for xx, yy in zip(x_segments, y_channel)]
+    s = float(scale) if scale is not None else float(_robust_scale(
+        np.concatenate(residual_segments)))
+    if not np.isfinite(s) or s <= 0:
+        raise ValueError("scale must be positive and finite.")
+
+    reg_matrix = M if M is not None else float(alpha) * np.eye(n_features)
+
+    def objective(current):
+        value = 0.
+        for xx, yy in zip(x_segments, y_channel):
+            residual = yy - xx @ current
+            value += 0.5 * s ** 2 * np.sum(np.log1p((residual / s) ** 2))
+        if reg_matrix is not None:
+            value += float(np.sum(current * (reg_matrix @ current))) / 2.
+        return value
+
+    previous_value = objective(beta)
+    converged = False
+    n_iter = 0
+
+    for n_iter in range(1, max_iter + 1):
+        residual_segments = [yy - xx @ beta for xx, yy in zip(x_segments, y_channel)]
+        weights = [1. / (1. + (residual / s) ** 2) for residual in residual_segments]
+
+        candidate = _solve_weighted_normal_equations(
+            x_segments, y_channel, weights, beta[:, None], alpha=float(alpha),
+            M=M, inner_solver=inner_solver, tol=inner_tol,
+            max_iter=inner_max_iter)[:, 0]
+
+        # Damping and backtracking
+        step = damping
+        updated = (1. - step) * beta + step * candidate
+        updated_value = objective(updated)
+        while updated_value > previous_value and step > 1e-3:
+            step *= 0.5
+            updated = (1. - step) * beta + step * candidate
+            updated_value = objective(updated)
+
+        delta = np.max(np.abs(updated - beta))
+        beta = updated
+        if verbose:
+            LOGGER.info("IRLS ch: iter %d delta=%g obj=%g", n_iter, delta, updated_value)
+        if delta <= tol * max(1., np.max(np.abs(beta))):
+            converged = True
+            previous_value = updated_value
+            break
+        previous_value = updated_value
+
+    return beta, {
+        'n_iter': n_iter,
+        'converged': converged,
+        'scale': s,
+        'objective': previous_value,
+    }
+
+
 class IRLSSolver(Solver):
     """Fit a robust linear model using Cauchy-loss IRLS.
 
@@ -810,15 +892,44 @@ class IRLSSolver(Solver):
     ``1 / (1 + (residual / scale)**2)``. Array, list-of-arrays, and 3-D
     multi-segment targets are accepted.
 
+    Each channel is solved independently with its own convergence criterion
+    (some channels may converge faster than others).  When ``n_jobs > 1``,
+    channels are processed in parallel using joblib.
+
+    Parameters
+    ----------
+    n_jobs : int, optional
+        Number of parallel jobs for per-channel IRLS.  Default 1 (sequential).
+        Use -1 for all available cores.  When parallel, each worker uses a
+        single BLAS thread to avoid oversubscription.
+    loss : str
+        Only 'cauchy' is supported.
+    scale : float or None
+        Fixed scale for the Cauchy loss.  If None, estimated from residuals.
+    max_iter : int
+        Maximum IRLS iterations per channel.
+    tol : float
+        Convergence tolerance (per-channel).
+    damping : float
+        Damping factor for the IRLS step (0, 1].
+    inner_solver : str
+        Inner solver for weighted normal equations: 'svd' or 'cg'.
+    inner_tol : float
+        Tolerance for the inner CG solver.
+    inner_max_iter : int or None
+        Max iterations for the inner CG solver.
+    verbose : bool
+        Print per-iteration progress.
+
     Returns
     -------
-    betas : ndarray, shape (n_features, n_channels)
-    info : dict
-        Convergence metadata including ``n_iter``, ``converged`` and ``scale``.
+    result : SolverResult
+        betas : ndarray (n_features, n_channels)
+        info : dict with n_iter, converged, scale, objective
     """
     def __init__(self, loss='cauchy', scale=None, max_iter=20, tol=1e-6,
                  damping=1.0, inner_solver='svd', inner_tol=1e-8,
-                 inner_max_iter=None, verbose=False):
+                 inner_max_iter=None, n_jobs=1, verbose=False):
         self.loss = loss
         self.scale = scale
         self.max_iter = max_iter
@@ -827,6 +938,7 @@ class IRLSSolver(Solver):
         self.inner_solver = inner_solver
         self.inner_tol = inner_tol
         self.inner_max_iter = inner_max_iter
+        self.n_jobs = n_jobs
         self.verbose = verbose
 
     def solve(self, X, y, alpha=0.0, M=None):
@@ -843,67 +955,66 @@ class IRLSSolver(Solver):
         n_features = x_segments[0].shape[1]
         n_chans = y_segments[0].shape[1]
 
-        # Use the existing regression path for a stable initial estimate.
-        initial = SVDSolver(verbose=False).solve(x_segments, y_segments, float(alpha), M=M).betas[..., 0]
-        betas = np.asarray(initial, dtype=float).reshape(n_features, n_chans)
+        # Batched initial estimate for all channels at once.
+        initial = SVDSolver(verbose=False).solve(
+            x_segments, y_segments, float(alpha), M=M).betas[..., 0]
+        betas_init = np.asarray(initial, dtype=float).reshape(n_features, n_chans)
 
-        residual_segments = [yy - xx @ betas for xx, yy in zip(x_segments, y_segments)]
+        # Per-channel scale estimates
+        residual_segments = [yy - xx @ betas_init for xx, yy in zip(x_segments, y_segments)]
         scales = (_robust_scale(np.vstack(residual_segments)) if self.scale is None
                   else np.full(n_chans, float(self.scale)))
         if np.any(~np.isfinite(scales)) or np.any(scales <= 0):
             raise ValueError("scale must be positive and finite.")
 
-        reg_matrix = M if M is not None else float(alpha) * np.eye(n_features)
+        # Per-channel y slices: each is a list of 1-D arrays (one per segment)
+        y_per_channel = [
+            [yy[:, ch] for yy in y_segments]
+            for ch in range(n_chans)
+        ]
 
-        def objective(current):
-            value = 0.
-            for xx, yy in zip(x_segments, y_segments):
-                residual = yy - xx @ current
-                value += 0.5 * np.sum(scales[None, :] ** 2 *
-                                       np.log1p((residual / scales[None, :]) ** 2))
-            if reg_matrix is not None:
-                value += float(np.sum(current * (reg_matrix @ current))) / 2.
-            return value
+        # Run IRLS per channel (sequential or parallel)
+        if self.n_jobs == 1:
+            results = [
+                _irls_single_channel(
+                    x_segments, y_per_channel[ch], betas_init[:, ch],
+                    float(alpha), M, scales[ch], self.max_iter, self.tol,
+                    self.damping, self.inner_solver, self.inner_tol,
+                    self.inner_max_iter, self.verbose
+                )
+                for ch in range(n_chans)
+            ]
+        else:
+            from concurrent.futures import ThreadPoolExecutor
+            from threadpoolctl import threadpool_limits
 
-        previous_value = objective(betas)
-        converged = False
-        n_iter = 0
-        for n_iter in range(1, self.max_iter + 1):
-            residual_segments = [yy - xx @ betas
-                                 for xx, yy in zip(x_segments, y_segments)]
-            weights = [1. / (1. + (residual / scales[None, :]) ** 2)
-                       for residual in residual_segments]
-            candidate = _solve_weighted_normal_equations(
-                x_segments, y_segments, weights, betas, alpha=float(alpha), M=M,
-                inner_solver=self.inner_solver, tol=self.inner_tol,
-                max_iter=self.inner_max_iter)
+            # Limit BLAS threads to 1 per worker to avoid oversubscription.
+            # For the small normal matrices in IRLS, single-threaded BLAS
+            # is actually faster than multi-threaded (less coordination
+            # overhead), and it lets the ThreadPoolExecutor parallelise
+            # across channels without competition for CPU cores.
+            with threadpool_limits(limits=1), ThreadPoolExecutor(
+                max_workers=self.n_jobs if self.n_jobs > 0 else None
+            ) as pool:
+                results = list(pool.map(
+                    lambda ch: _irls_single_channel(
+                        x_segments, y_per_channel[ch], betas_init[:, ch],
+                        float(alpha), M, scales[ch], self.max_iter, self.tol,
+                        self.damping, self.inner_solver, self.inner_tol,
+                        self.inner_max_iter, self.verbose
+                    ),
+                    range(n_chans),
+                ))
 
-            # Damping and a small backtracking safeguard help with the non-convex
-            # Cauchy objective, especially when the initial OLS fit is poor.
-            step = self.damping
-            updated = (1. - step) * betas + step * candidate
-            updated_value = objective(updated)
-            while updated_value > previous_value and step > 1e-3:
-                step *= 0.5
-                updated = (1. - step) * betas + step * candidate
-                updated_value = objective(updated)
-
-            delta = np.max(np.abs(updated - betas))
-            betas = updated
-            if self.verbose:
-                LOGGER.info("Robust IRLS iteration %d: delta=%g, objective=%g",
-                            n_iter, delta, updated_value)
-            if delta <= self.tol * max(1., np.max(np.abs(betas))):
-                converged = True
-                previous_value = updated_value
-                break
-            previous_value = updated_value
+        # Aggregate results
+        betas = np.column_stack([r[0] for r in results])
+        infos = [r[1] for r in results]
 
         return SolverResult(betas, {
-            'n_iter': n_iter,
-            'converged': converged,
-            'scale': scales,
-            'objective': previous_value,
+            'n_iter': max(info['n_iter'] for info in infos),
+            'converged': all(info['converged'] for info in infos),
+            'scale': np.array([info['scale'] for info in infos]),
+            'objective': sum(info['objective'] for info in infos),
         })
 
 
