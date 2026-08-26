@@ -1,9 +1,8 @@
 # natMEEG - Naturalistic M/EEG data analysis
 
-[![PyPI version](https://badge.fury.io/py/natMEEG.svg)](https://badge.fury.io/py/natMEEG)
+[![PyPI version](https://badge.fury.io/py/natmeeg.svg)](https://badge.fury.io/py/natmeeg)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22081524.svg)](https://doi.org/10.5281/zenodo.22081524)
 
-> Latest released version: v2.0.0 (2026-08-24).
 
 _Formerly named `pyEEG`_
 
@@ -13,9 +12,8 @@ You can find the [documentation here](https://hugo-w.github.io/pyEEG/).
 
 > ⚠️**Note**:
 >
-> - This code repository is actively maintained as part of the natMEEG project. The library provides tools for computing TRFs (Temporal Response Functions) with the `TRFEstimator` class in `pyeeg/models/`, which implements memory-efficient and accelerated computation for handling multiple epochs or multiple subjects.
-> - The library is suitable for both research and production use.
-> - The project was formerly known as `pyEEG` and has been rebranded to `natMEEG` to better reflect its focus on naturalistic M/EEG data analysis.
+> - The library provides tools for computing TRFs (Temporal Response Functions) with the `TRFEstimator` class in `pyeeg/models/`, which implements memory-efficient and accelerated computation for handling multiple epochs or multiple subjects.
+> - The project was formerly known as `pyEEG` and has been renamed `natMEEG` to better reflect its focus on **nat**uralistic **M/EEG** data analysis.
 
 ------
 
