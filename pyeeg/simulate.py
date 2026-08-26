@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 =====================
 Simulations utilities
@@ -28,10 +27,11 @@ Simulate MEEG-like signals with different connectivity patterns or methods.
     - **17/11/2023**: Added Jansen-Rit model
     - **10/11/2023**: Initial commit (AR and VAR simulations)
 """
-import numpy as np
-from ._logging import LOGGER
-from .utils import sigmoid, scisig, poisson_onsets_fixed_N
 
+import numpy as np
+
+from ._logging import LOGGER
+from .utils import poisson_onsets_fixed_N, scisig, sigmoid
 
 
 def simulate_ar(order, coefs, n, sigma=1, seed=42):
@@ -48,7 +48,7 @@ def simulate_ar(order, coefs, n, sigma=1, seed=42):
         The number of samples to simulate.
     sigma : float
         The standard deviation of the additive noise process.
-    
+
     Returns
     -------
     x : array_like
@@ -56,12 +56,13 @@ def simulate_ar(order, coefs, n, sigma=1, seed=42):
     """
     rng = np.random.default_rng(seed)
     x = np.zeros(n + order)
-    for i in range(n+order):
+    for i in range(n + order):
         if i < order:
-            x[i] = rng.standard_normal()* sigma
+            x[i] = rng.standard_normal() * sigma
         else:
-            x[i] = np.dot(coefs[::-1], x[i-order:i]) + rng.standard_normal()*sigma
+            x[i] = np.dot(coefs[::-1], x[i - order : i]) + rng.standard_normal() * sigma
     return x[order:]
+
 
 def simulate_var(order, coef, nobs=500, ndim=2, seed=42, verbose=False):
     """
@@ -82,19 +83,26 @@ def simulate_var(order, coef, nobs=500, ndim=2, seed=42, verbose=False):
     rng = np.random.default_rng(seed)
     if order == 1 and coef.ndim == 2:
         coef = coef[None, :, :]
-    assert coef.shape == (order, ndim, ndim), "coef must be of shape (order, ndim, ndim)"
-    data = np.zeros((nobs+order, ndim))
+    assert coef.shape == (order, ndim, ndim), (
+        "coef must be of shape (order, ndim, ndim)"
+    )
+    data = np.zeros((nobs + order, ndim))
 
     if verbose:
-        LOGGER.info(f"Simulating VAR({order}) model with {ndim} dimensions and {nobs} observations")
+        LOGGER.info(
+            f"Simulating VAR({order}) model with {ndim} dimensions and {nobs} observations"
+        )
         LOGGER.info(f"Data shape: {data.shape}")
 
-    data[:, :] = rng.standard_normal(size=data.shape) # initialize with noise
-    for t in range(order, nobs+order):
+    data[:, :] = rng.standard_normal(size=data.shape)  # initialize with noise
+    for t in range(order, nobs + order):
         for lag in range(order):
-            data[t] += data[t-(lag+1)] @ coef[lag] # here if I multiply from the left, I get the contributions row wise instead of column wise
+            data[t] += (
+                data[t - (lag + 1)] @ coef[lag]
+            )  # here if I multiply from the left, I get the contributions row wise instead of column wise
 
     return data[order:, :]
+
 
 def simulate_var_from_cov(cov, nobs=500, ndim=2, seed=42, verbose=False):
     """
@@ -115,61 +123,316 @@ def simulate_var_from_cov(cov, nobs=500, ndim=2, seed=42, verbose=False):
     rng = np.random.default_rng(seed)
     order = cov.shape[0]
     assert cov.shape == (order, ndim, ndim), "cov must be of shape (order, ndim, ndim)"
-    data = np.zeros((nobs+order, ndim))
+    data = np.zeros((nobs + order, ndim))
 
     if verbose:
-        LOGGER.info(f"Simulating VAR({order}) model with {ndim} dimensions and {nobs} observations")
+        LOGGER.info(
+            f"Simulating VAR({order}) model with {ndim} dimensions and {nobs} observations"
+        )
         LOGGER.info(f"Data shape: {data.shape}")
 
-    data[:, :] = rng.standard_normal(size=data.shape) # initialize with noise
-    for t in range(order, nobs+order):
+    data[:, :] = rng.standard_normal(size=data.shape)  # initialize with noise
+    for t in range(order, nobs + order):
         for lag in range(order):
-            data[t] += data[t-(lag+1)] @ np.linalg.cholesky(cov[lag]) # here if I multiply from the left, I get the contributions row wise instead of column wise
+            data[t] += (
+                data[t - (lag + 1)] @ np.linalg.cholesky(cov[lag])
+            )  # here if I multiply from the left, I get the contributions row wise instead of column wise
 
     return data[order:, :]
 
-class NeuralMassNode(object):
+
+def linear_coupling(readouts, connectivity, phases=None):
+    """Linear projection of node readouts through connectivity."""
+    return np.asarray(connectivity) @ np.asarray(readouts)
+
+
+def diffusive_coupling(readouts, connectivity, phases=None):
+    """Weighted diffusive coupling of scalar node readouts."""
+    readouts = np.asarray(readouts)
+    connectivity = np.asarray(connectivity)
+    return connectivity @ readouts - connectivity.sum(axis=1) * readouts
+
+
+def kuramoto_coupling(readouts, connectivity, phases):
+    """Sinusoidal phase-difference coupling."""
+    phases = np.asarray(phases)
+    connectivity = np.asarray(connectivity)
+    return np.sum(connectivity * np.sin(phases[None, :] - phases[:, None]), axis=1)
+
+
+_COUPLING_FUNCTIONS = {
+    "linear": linear_coupling,
+    "diffusive": diffusive_coupling,
+    "kuramoto": kuramoto_coupling,
+}
+
+
+def _resolve_coupling(coupling):
+    if isinstance(coupling, str):
+        try:
+            return _COUPLING_FUNCTIONS[coupling]
+        except KeyError as error:
+            raise ValueError(f"Unknown coupling function: {coupling!r}") from error
+    if not callable(coupling):
+        raise TypeError("coupling must be a supported name or callable")
+    return coupling
+
+
+class NeuralMassNode:
     """
     Abstract class for neural mass models.
     Defines the function to be implemented for the simulation.
     """
+
     def __init__(self, dt=0.001, seed=42):
-        self.dt = dt # sampling rate
-        self.seed = seed # random seed
+        self.dt = dt  # sampling rate
+        self.seed = seed  # random seed
 
     def simulate(self):
         raise NotImplementedError("This method must be implemented in the child class")
-    
+
     def step(self):
         raise NotImplementedError("This method must be implemented in the child class")
-    
-class NeuralMassNetwork(object):
+
+
+class NeuralMassNetwork:
     """
     Abstract class for neural mass models.
     Defines the function to be implemented for the simulation.
     """
-    def __init__(self, N, W, delay=0, node_dynamics=None, dt=0.001, seed=42):
+
+    def __init__(
+        self,
+        N,
+        W,
+        delay=0,
+        node_dynamics=None,
+        dt=0.001,
+        seed=42,
+        node_kwargs=None,
+        coupling="linear",
+    ):
         self.rng = np.random.default_rng(seed)
-        self.N = N # number of neurons/nodes
-        self.W = W # connectivity matrix
-        self.K = W # updated connectivity in case of normalisation by activity std
-        self.delay = delay # delay 
-        self.dt = dt # sampling rate
-        self.seed = seed # random seed
-        self.node_dynamics = node_dynamics # node dynamics instance
+        self.N = N  # number of neurons/nodes
+        self.W = np.asarray(W, dtype=float)
+        if self.W.shape != (N, N):
+            raise ValueError(f"W must have shape ({N}, {N})")
+        self.K = (
+            self.W.copy()
+        )  # updated connectivity in case of normalisation by activity std
+        self.delay = delay  # delay
+        self.dt = dt  # sampling rate
+        self.seed = seed  # random seed
+        self.node_dynamics = node_dynamics  # node dynamics instance
+        self.node_kwargs = {} if node_kwargs is None else dict(node_kwargs)
+        if {"dt", "seed"} & self.node_kwargs.keys():
+            raise ValueError("node_kwargs cannot override dt or seed")
+        self.coupling_function = _resolve_coupling(coupling)
         if node_dynamics is not None:
-            self.nodes = [node_dynamics(seed=self.rng.integers(0, k+1)) for k in range(N)] # get different systems/rng for each node
+            seeds = self.rng.integers(0, np.iinfo(np.int32).max, size=N)
+            self.nodes = [
+                node_dynamics(dt=dt, seed=int(s), **self.node_kwargs) for s in seeds
+            ]
 
     def simulate(self):
         raise NotImplementedError("This method must be implemented in the child class")
-    
+
     def step(self):
-        outs = []
-        for n in self.nodes:
-            outs.append(n.read_out())
-            # incorporate delays here
-            n.step(I=self.K @ np.asarray(outs)) # the input to each node is the output of all the other nodes
-    
+        """Advance nodes using coupling computed from their previous state."""
+        if not hasattr(self, "nodes"):
+            raise RuntimeError("node_dynamics must be provided to use step()")
+        outs = np.asarray([node.read_out() for node in self.nodes], dtype=float)
+        phases = np.asarray([node.x[0] for node in self.nodes], dtype=float)
+        inputs = np.asarray(self.coupling_function(outs, self.K, phases), dtype=float)
+        if inputs.shape != (self.N,):
+            raise ValueError(f"coupling function must return shape ({self.N},)")
+        for node, node_input in zip(self.nodes, inputs):
+            node.step(I=node_input)
+        return outs
+
+    def reset(self):
+        if hasattr(self, "nodes"):
+            for node in self.nodes:
+                node.x = np.zeros(node.nstates, dtype=float)
+        self.K = self.W.copy()
+
+
+class HopfOscillator(NeuralMassNode):
+    """Two-dimensional Stuart-Landau (Hopf normal-form) oscillator."""
+
+    def __init__(self, a=0.01, frequency=10.0, dt=0.001, seed=42):
+        super().__init__(dt=dt, seed=seed)
+        if frequency < 0:
+            raise ValueError("frequency must be non-negative")
+        self.a, self.frequency = float(a), float(frequency)
+        self.omega = 2 * np.pi * self.frequency
+        self.nstates, self.x = 2, np.zeros(2)
+        self.rng = np.random.default_rng(seed)
+
+    def step(self, I=0.0, noise=0.0):
+        x, y = self.x
+        r2 = x * x + y * y
+        self.x += self.dt * np.array(
+            [(self.a - r2) * x - self.omega * y + I, (self.a - r2) * y + self.omega * x]
+        )
+        if noise:
+            self.x += np.sqrt(self.dt) * noise * self.rng.standard_normal(2)
+
+    def read_out(self):
+        return float(self.x[0])
+
+    def simulate(self, x0=None, tmax=1.0, noise=0.0, I=0.0):
+        return _simulate_node(self, x0, tmax, noise, I)
+
+
+class Phasor(NeuralMassNode):
+    """One-dimensional phase oscillator with sinusoidal readout."""
+
+    def __init__(self, frequency=10.0, dt=0.001, seed=42):
+        super().__init__(dt=dt, seed=seed)
+        if frequency < 0:
+            raise ValueError("frequency must be non-negative")
+        self.frequency, self.omega = float(frequency), 2 * np.pi * float(frequency)
+        self.nstates, self.x = 1, np.zeros(1)
+        self.rng = np.random.default_rng(seed)
+
+    def step(self, I=0.0, noise=0.0):
+        self.x[0] += self.dt * (self.omega + I)
+        if noise:
+            self.x[0] += np.sqrt(self.dt) * noise * self.rng.standard_normal()
+        self.x[0] %= 2 * np.pi
+
+    def read_out(self):
+        return float(np.sin(self.x[0]))
+
+    def simulate(self, x0=None, tmax=1.0, noise=0.0, I=0.0):
+        return _simulate_node(self, x0, tmax, noise, I)
+
+
+def _simulate_node(node, x0, tmax, noise, input_signal):
+    if x0 is None:
+        x0 = np.zeros(node.nstates)
+    node.x = np.asarray(x0, dtype=float).copy()
+    if node.x.shape != (node.nstates,):
+        raise ValueError(f"x0 must have shape ({node.nstates},)")
+    n = int(tmax / node.dt)
+    if n < 1:
+        raise ValueError("tmax must be at least dt")
+    states, outputs = np.zeros((n, node.nstates)), np.zeros((n, 1))
+    states[0], outputs[0, 0] = node.x, node.read_out()
+    for i in range(1, n):
+        value = input_signal if np.ndim(input_signal) == 0 else input_signal[i]
+        node.step(I=value, noise=noise)
+        states[i], outputs[i, 0] = node.x, node.read_out()
+    return states, outputs
+
+
+class WilsonCowan(NeuralMassNode):
+    """Two-population excitatory/inhibitory Wilson-Cowan rate model."""
+
+    def __init__(
+        self,
+        tau_e=0.008,
+        tau_i=0.008,
+        w_ee=12.0,
+        w_ei=4.0,
+        w_ie=13.0,
+        w_ii=11.0,
+        P=1.0,
+        dt=0.001,
+        seed=42,
+        nonlinearity=sigmoid,
+    ):
+        super().__init__(dt=dt, seed=seed)
+        if tau_e <= 0 or tau_i <= 0:
+            raise ValueError("time constants must be positive")
+        self.tau_e, self.tau_i = float(tau_e), float(tau_i)
+        self.w_ee, self.w_ei, self.w_ie, self.w_ii = map(
+            float, (w_ee, w_ei, w_ie, w_ii)
+        )
+        self.P, self.nonlinearity = P, nonlinearity
+        self.nstates, self.x = 2, np.zeros(2)
+        self.rng = np.random.default_rng(seed)
+
+    def step(self, I=0.0, noise=0.0, P=None):
+        e, inh = self.x
+        drive_e = self.w_ee * e - self.w_ie * inh + (self.P if P is None else P) + I
+        drive_i = self.w_ei * e - self.w_ii * inh
+        rates = np.asarray([self.nonlinearity(drive_e), self.nonlinearity(drive_i)])
+        self.x += self.dt * np.asarray(
+            [(-e + rates[0]) / self.tau_e, (-inh + rates[1]) / self.tau_i]
+        )
+        if noise:
+            self.x += np.sqrt(self.dt) * noise * self.rng.standard_normal(2)
+
+    def read_out(self):
+        return float(self.x[0] - self.x[1])
+
+    def simulate(self, x0=None, tmax=1.0, noise=0.0, P=None):
+        if x0 is None:
+            x0 = np.zeros(self.nstates)
+        self.x = np.asarray(x0, dtype=float).copy()
+        if self.x.shape != (self.nstates,):
+            raise ValueError(f"x0 must have shape ({self.nstates},)")
+        n = int(tmax / self.dt)
+        if n < 1:
+            raise ValueError("tmax must be at least dt")
+        states = np.zeros((n, self.nstates))
+        outputs = np.zeros((n, 1))
+        states[0], outputs[0, 0] = self.x, self.read_out()
+        for i in range(1, n):
+            current_P = self.P if P is None else (P if np.ndim(P) == 0 else P[i])
+            self.step(P=current_P, noise=noise)
+            states[i], outputs[i, 0] = self.x, self.read_out()
+        return states, outputs
+
+
+class Kuramoto(NeuralMassNetwork):
+    """Convenience network of ``Phasor`` nodes with Kuramoto coupling."""
+
+    def __init__(
+        self,
+        N=2,
+        W=None,
+        coupling_strength=1.0,
+        frequency=10.0,
+        dt=0.001,
+        seed=42,
+        **node_kwargs,
+    ):
+        if W is None:
+            W = np.zeros((N, N))
+        node_kwargs = {"frequency": frequency, **node_kwargs}
+        super().__init__(
+            N=N,
+            W=W,
+            node_dynamics=Phasor,
+            dt=dt,
+            seed=seed,
+            node_kwargs=node_kwargs,
+            coupling="kuramoto",
+        )
+        self.coupling_strength = float(coupling_strength)
+        self.K = self.coupling_strength * self.W
+
+    def simulate(self, tmax=1.0, x0=None):
+        n = int(tmax / self.dt)
+        if n < 1:
+            raise ValueError("tmax must be at least dt")
+        if x0 is not None:
+            x0 = np.asarray(x0, dtype=float)
+            if x0.shape != (self.N,):
+                raise ValueError(f"x0 must have shape ({self.N},)")
+            for node, phase in zip(self.nodes, x0):
+                node.x[0] = phase % (2 * np.pi)
+        output = np.zeros((n, self.N))
+        output[0] = [node.read_out() for node in self.nodes]
+        for i in range(1, n):
+            self.step()
+            output[i] = [node.read_out() for node in self.nodes]
+        return output
+
+
 class CTRNN(NeuralMassNetwork):
     """
     Continuous Time Recurrent Neural Network (CTRNN) model.
@@ -178,7 +441,18 @@ class CTRNN(NeuralMassNetwork):
         \\tau \\dot{x} = -x + W o + I + \\theta
 
     """
-    def __init__(self, N, W, input_dim=1, output_dim=1, dt=0.001, seed=42, nonlinearity=sigmoid, theta=None):
+
+    def __init__(
+        self,
+        N,
+        W,
+        input_dim=1,
+        output_dim=1,
+        dt=0.001,
+        seed=42,
+        nonlinearity=sigmoid,
+        theta=None,
+    ):
         """
         Parameters
         ----------
@@ -187,17 +461,18 @@ class CTRNN(NeuralMassNetwork):
         W : array_like
             The connectivity matrix. Shape (N, N).
         nonlinearity : callable
-            The nonlinearity function to apply to the network. Default is sigmoid (e.g. can use func:`np.tanh`)    
+            The nonlinearity function to apply to the network. Default is sigmoid (e.g. can use func:`np.tanh`)
         """
         super().__init__(N=N, W=W, dt=dt, seed=seed)
-        self.nonlinearity = nonlinearity # nonlinearity function
-        self.readout_W = np.zeros((output_dim, N)) # readout matrix
-        self.input_W = np.zeros((N, input_dim)) # input matrix
+        self.nonlinearity = nonlinearity  # nonlinearity function
+        self.output_dim = output_dim
+        self.readout_W = np.zeros((output_dim, N))  # readout matrix
+        self.input_W = np.zeros((N, input_dim))  # input matrix
         self.theta = theta if theta is not None else np.zeros((N,))
-        self.x = np.zeros((N,)) # state of the network
-        self.o = np.zeros((N,)) # output of the network
+        self.x = np.zeros((N,))  # state of the network
+        self.o = np.zeros((N,))  # output of the network
 
-    def step(self, I=None, noise=0.):
+    def step(self, I=None, noise=0.0):
         """
         Compute one step of the CTRNN model.
         """
@@ -205,13 +480,17 @@ class CTRNN(NeuralMassNetwork):
             I = np.zeros((self.input_W.shape[1],))
         elif np.isscalar(I):
             I = np.ones((self.input_W.shape[1],)) * I
-        self.x = self.x + self.dt * (-self.x + self.W @ self.o + self.input_W @ I) + noise
+        self.x = (
+            self.x + self.dt * (-self.x + self.W @ self.o + self.input_W @ I) + noise
+        )
         self.o = self.nonlinearity(self.x + self.theta)
 
     def read_out(self):
-        return 2 * self.nonlinearity( self.readout_W @ self.o) - 1 # this is in the range -1 to 1 if the nonlinearity is sigmoid
+        return (
+            2 * self.nonlinearity(self.readout_W @ self.o) - 1
+        )  # this is in the range -1 to 1 if the nonlinearity is sigmoid
 
-    def simulate(self, x0, tmax=1, noise=0., I=lambda t: 0.):
+    def simulate(self, x0=None, tmax=1.0, noise=0.0, I=lambda t: 0.0):
         """
         Simulate the CTRNN model and monitor the output.
 
@@ -223,7 +502,7 @@ class CTRNN(NeuralMassNetwork):
             The maximum time to simulate.
         noise : float
             The standard deviation of the noise to add to the system.
-        
+
         Returns
         -------
         x : array_like
@@ -233,32 +512,43 @@ class CTRNN(NeuralMassNetwork):
         n = int(tmax / self.dt)
         x = np.zeros((n, self.N))
         o = np.zeros((n, self.N))
-        O = np.zeros((n,))
+        O = np.zeros((n, self.output_dim))
+        if x0 is None:
+            x0 = np.zeros(self.N)
+        x0 = np.asarray(x0, dtype=float)
+        if x0.shape != (self.N,):
+            raise ValueError(f"x0 must have shape ({self.N},)")
         x[0] = x0
-        self.x = x0
+        self.x = x0.copy()
+        self.o = self.nonlinearity(self.x + self.theta)
+        O[0] = self.read_out()
         dt_noise = np.sqrt(self.dt) * noise
         for i in range(1, n):
-            self.step(I=I(i*self.dt), noise = rng.standard_normal(size=self.x.shape) * dt_noise)
+            self.step(
+                I=I(i * self.dt),
+                noise=rng.standard_normal(size=self.x.shape) * dt_noise,
+            )
             x[i] = self.x
             o[i] = self.o
             O[i] = self.read_out()
-            
+
         return O, x, o
-    
+
     def read_out(self):
-        return 2 * self.nonlinearity( self.readout_W @ self.o) - 1
-    
+        return 2 * self.nonlinearity(self.readout_W @ self.o) - 1
+
+
 class JansenRit(NeuralMassNode):
-    """
+    r"""
     Jansen-Rit model.
 
     3 populations: excitatory, inhibitory and pyramidal:
-    
+
     .. code-block:: text
 
         ___________    ___________
         |         |    |         |
-        !  Inhib  !    !  Excit  !    
+        !  Inhib  !    !  Excit  !
         |         |    |         |
         -----------    -----------
         C2,C4 \             / C1, C3
@@ -285,54 +575,80 @@ class JansenRit(NeuralMassNode):
 
     This table is from the paper:
     `Kulik et al, Network Neurosci. (2023) <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10473283/>`_
-    
+
     """
+
     def __init__(self, dt=0.0001, seed=42, nonlinearity=sigmoid):
-        super().__init__(dt, seed) # this is a single node (cortical column with 3 sub-populations)
-        n_synapses = 135 # number of synapses between populations
-        self.C_1 = 1. * n_synapses # probability of connection between excitatory and pyramidal populations
+        super().__init__(
+            dt, seed
+        )  # this is a single node (cortical column with 3 sub-populations)
+        n_synapses = 135  # number of synapses between populations
+        self.C_1 = (
+            1.0 * n_synapses
+        )  # probability of connection between excitatory and pyramidal populations
         self.C_2 = 0.8 * n_synapses
         self.C_3 = 0.25 * n_synapses
         self.C_4 = 0.25 * n_synapses
-        self.tau_exc = 1/100 # time scale for excitatory population ~10ms
-        self.tau_inh = 1/50 # time scale for inhibitory population ~20ms
-        self.G_exc = 3.25 # average excitatory synaptic gain (mV)
-        self.G_inh = 22 # average inhibitory synaptic gain
-        self.rmax = 5 # amplitude of sigmoid in Hz (max firing rate)
-        self.beta = 0.56 # slope of sigmoid (mV^-1)
-        self.theta = 6 # threshold of sigmoid (mV)
-        self.v = 10 # conduction velocity
-        self.P = 150 # external input to each of the neural masses
-        #self.Coupling = 0.1 # coupling between the neural masses (global coupling strength)
-        self.nstates = 6 # number of state variables
+        self.tau_exc = 1 / 100  # time scale for excitatory population ~10ms
+        self.tau_inh = 1 / 50  # time scale for inhibitory population ~20ms
+        self.G_exc = 3.25  # average excitatory synaptic gain (mV)
+        self.G_inh = 22  # average inhibitory synaptic gain
+        self.rmax = 5  # amplitude of sigmoid in Hz (max firing rate)
+        self.beta = 0.56  # slope of sigmoid (mV^-1)
+        self.theta = 6  # threshold of sigmoid (mV)
+        self.v = 10  # conduction velocity
+        self.P = 150  # external input to each of the neural masses
+        # self.Coupling = 0.1 # coupling between the neural masses (global coupling strength)
+        self.nstates = 6  # number of state variables
 
-        self.x = np.zeros((6,)) # state of the network
-        self.S = lambda x: nonlinearity(x, rmax=self.rmax, beta=self.beta, x0=self.theta) # nonlinearity function
+        self.x = np.zeros((6,))  # state of the network
+        self.S = lambda x: nonlinearity(
+            x, rmax=self.rmax, beta=self.beta, x0=self.theta
+        )  # nonlinearity function
 
-    def step(self, I=0.):
+    def step(self, I=0.0):
         """
         Compute one step of the Jansen-Rit model.
         """
         # 0: pyramidal, 1: excitatory, 2: inhibitory
-        x0, x1, x2, xdot0, xdot1, xdot2 = self.x # unpack the state
+        x0, x1, x2, xdot0, xdot1, xdot2 = self.x  # unpack the state
         # Input received by each population
         # x1 - x2: difference between excitatory and inhibitory activity, which is the input received by the pyramidal population interpreted as the average potential of pyramidal populations
         # self.C_1 * x0: input received by the excitatory population
         # self.C_3 * x0: input received by the inhibitory population
-        firing_rates = self.S(np.asarray([x1 -x2, self.C_1 * x0, self.C_3 * x0]))
-        input_excitatory = self.C_2 * firing_rates[1] + I # contribution from other nodes will go here
-        xdot0_next = xdot0 + self.dt * (self.G_exc * 1.0      * firing_rates[0] - 2 * xdot0 - x0/self.tau_exc ) / self.tau_exc # pyramidal cell
-        xdot1_next = xdot1 + self.dt * (self.G_exc * input_excitatory           - 2 * xdot1 - x1/self.tau_exc) / self.tau_exc  # excitatory stellate cell
-        xdot2_next = xdot2 + self.dt * (self.G_inh * self.C_4 * firing_rates[2] - 2 * xdot2 - x2/self.tau_inh) / self.tau_inh # inhibitory interneuron
+        firing_rates = self.S(np.asarray([x1 - x2, self.C_1 * x0, self.C_3 * x0]))
+        input_excitatory = (
+            self.C_2 * firing_rates[1] + I
+        )  # contribution from other nodes will go here
+        xdot0_next = (
+            xdot0
+            + self.dt
+            * (self.G_exc * 1.0 * firing_rates[0] - 2 * xdot0 - x0 / self.tau_exc)
+            / self.tau_exc
+        )  # pyramidal cell
+        xdot1_next = (
+            xdot1
+            + self.dt
+            * (self.G_exc * input_excitatory - 2 * xdot1 - x1 / self.tau_exc)
+            / self.tau_exc
+        )  # excitatory stellate cell
+        xdot2_next = (
+            xdot2
+            + self.dt
+            * (self.G_inh * self.C_4 * firing_rates[2] - 2 * xdot2 - x2 / self.tau_inh)
+            / self.tau_inh
+        )  # inhibitory interneuron
         x0_next = x0 + xdot0 * self.dt
         x1_next = x1 + xdot1 * self.dt
         x2_next = x2 + xdot2 * self.dt
-        self.x = np.array([x0_next, x1_next, x2_next, xdot0_next, xdot1_next, xdot2_next])
+        self.x = np.array(
+            [x0_next, x1_next, x2_next, xdot0_next, xdot1_next, xdot2_next]
+        )
 
     def read_out(self):
-        return  self.x[1] - self.x[2]
+        return self.x[1] - self.x[2]
 
-    def simulate(self, x0, tmax=1, noise=0., P=None):
+    def simulate(self, x0=None, tmax=1.0, noise=0.0, P=None):
         """
         Simulate the Jansen-Rit model and monitor the output.
 
@@ -344,7 +660,7 @@ class JansenRit(NeuralMassNode):
             The maximum time to simulate.
         noise : float
             The standard deviation of the noise to add to the system.
-        
+
         Returns
         -------
         x : array_like
@@ -354,17 +670,23 @@ class JansenRit(NeuralMassNode):
         n = int(tmax / self.dt)
         x = np.zeros((n, 6))
         o = np.zeros((n, 1))
-        self.x = x0
-        x[0] = x0
+        if x0 is None:
+            x0 = np.zeros(self.nstates)
+        self.x = np.asarray(x0, dtype=float).copy()
+        if self.x.shape != (self.nstates,):
+            raise ValueError(f"x0 must have shape ({self.nstates},)")
+        x[0] = self.x
         o[0] = self.read_out()
         dt_noise = np.sqrt(self.dt) * noise
         for i in range(1, n):
-            self.step(I = self.P if P is None else P[i])
+            current_P = self.P if P is None else (P if np.ndim(P) == 0 else P[i])
+            self.step(I=current_P)
             # noise = rng.standard_normal(size=self.x.shape) * dt_noise
-            x[i] = self.x           
+            x[i] = self.x
             o[i] = self.read_out()
         return x, o
-        
+
+
 class JansenRitExtended(NeuralMassNode):
     """
     Jansen-Rit model - Exctended version: dual kinetic model.
@@ -373,74 +695,161 @@ class JansenRitExtended(NeuralMassNode):
 
     We model two parallel subpopulations with different kinematics in order to capture multiband or broadband dynamics.
     """
+
     def __init__(self, w=0.5, dt=0.0001, seed=42, nonlinearity=sigmoid):
-        super().__init__(dt, seed) # this is a single node (cortical column with 3 sub-populations)
-        
+        super().__init__(
+            dt, seed
+        )  # this is a single node (cortical column with 3 sub-populations)
+
         # ~ 10 Hz dynamics
-        self.tau_exc_1 = 1/100 # time scale for excitatory population ~10ms
-        self.tau_inh_1 = 1/50 # time scale for inhibitory population ~20ms
+        self.tau_exc_1 = 1 / 100  # time scale for excitatory population ~10ms
+        self.tau_inh_1 = 1 / 50  # time scale for inhibitory population ~20ms
         # ~ 43 Hz dynamics
-        self.tau_exc_2 = 0.0046 # time scale for excitatory population ~4.6ms
-        self.tau_inh_2 = 0.0029 # time scale for inhibitory population ~2.9ms
-        self.G_exc_1 = 3.25 # average excitatory synaptic gain (mV)
-        self.G_inh_1 = 22 # average inhibitory synaptic gain
-        self.G_exc_2 = 2*3.25 # average excitatory synaptic gain (mV)
-        self.G_inh_2 = 150 # average inhibitory synaptic gain
-        self.w = w # relative contribution of the first subpopulation
-        
+        self.tau_exc_2 = 0.0046  # time scale for excitatory population ~4.6ms
+        self.tau_inh_2 = 0.0029  # time scale for inhibitory population ~2.9ms
+        self.G_exc_1 = 3.25  # average excitatory synaptic gain (mV)
+        self.G_inh_1 = 22  # average inhibitory synaptic gain
+        self.G_exc_2 = 2 * 3.25  # average excitatory synaptic gain (mV)
+        self.G_inh_2 = 150  # average inhibitory synaptic gain
+        self.w = w  # relative contribution of the first subpopulation
+
         # The rest is the same as the Jansen-Rit model
-        n_synapses = 135 # number of synapses between populations
-        self.C_1 = 1. * n_synapses # probability of connection between excitatory and pyramidal populations
+        n_synapses = 135  # number of synapses between populations
+        self.C_1 = (
+            1.0 * n_synapses
+        )  # probability of connection between excitatory and pyramidal populations
         self.C_2 = 0.8 * n_synapses
         self.C_3 = 0.25 * n_synapses
         self.C_4 = 0.25 * n_synapses
-        self.rmax = 5 # amplitude of sigmoid in Hz (max firing rate)
-        self.beta = 0.56 # slope of sigmoid (mV^-1)
-        self.theta = 6 # threshold of sigmoid (mV)
-        self.v = 10 # conduction velocity
-        self.P = 150 # external input to each of the neural masses
-        #self.Coupling = 0.1 # coupling between the neural masses (global coupling strength)
+        self.rmax = 5  # amplitude of sigmoid in Hz (max firing rate)
+        self.beta = 0.56  # slope of sigmoid (mV^-1)
+        self.theta = 6  # threshold of sigmoid (mV)
+        self.v = 10  # conduction velocity
+        self.P = 150  # external input to each of the neural masses
+        # self.Coupling = 0.1 # coupling between the neural masses (global coupling strength)
 
-        self.x = np.zeros((2 * 6,)) # state of the network
+        self.x = np.zeros((2 * 6,))  # state of the network
         self.nstates = 2 * 6
-        self.S = lambda x: nonlinearity(x, rmax=self.rmax, beta=self.beta, x0=self.theta) # nonlinearity function
+        self.S = lambda x: nonlinearity(
+            x, rmax=self.rmax, beta=self.beta, x0=self.theta
+        )  # nonlinearity function
 
-    def step(self, I=0.):
+    def step(self, I=0.0):
         """
         Compute one step of the Jansen-Rit model.
         """
         # 0: pyramidal, 1: excitatory, 2: inhibitory
-        x0_1, x1_1, x2_1, xdot0_1, xdot1_1, xdot2_1, \
-        x0_2, x1_2, x2_2, xdot0_2, xdot1_2, xdot2_2 = self.x # unpack the state
+        (
+            x0_1,
+            x1_1,
+            x2_1,
+            xdot0_1,
+            xdot1_1,
+            xdot2_1,
+            x0_2,
+            x1_2,
+            x2_2,
+            xdot0_2,
+            xdot1_2,
+            xdot2_2,
+        ) = self.x  # unpack the state
         # Input received by each population
         # x1 - x2: difference between excitatory and inhibitory activity, which is the input received by the pyramidal population interpreted as the average potential of pyramidal populations
         # self.C_1 * x0: input received by the excitatory population
         # self.C_3 * x0: input received by the inhibitory population
-        firing_rates = self.S(np.asarray([self.w*(x1_1 -x2_1) + (1 - self.w)*(x1_2 -x2_2),
-                                          self.C_1 * (self.w * x0_1 + (1 - self.w) * x0_2),
-                                          self.C_3 * (self.w * x0_1 + (1 - self.w) * x0_2)]))
-        input_excitatory = self.C_2 * firing_rates[1] + I # contribution from other nodes will go here
+        firing_rates = self.S(
+            np.asarray(
+                [
+                    self.w * (x1_1 - x2_1) + (1 - self.w) * (x1_2 - x2_2),
+                    self.C_1 * (self.w * x0_1 + (1 - self.w) * x0_2),
+                    self.C_3 * (self.w * x0_1 + (1 - self.w) * x0_2),
+                ]
+            )
+        )
+        input_excitatory = (
+            self.C_2 * firing_rates[1] + I
+        )  # contribution from other nodes will go here
         # pop 1
-        xdot0_next_1 = xdot0_1 + self.dt * (self.G_exc_1 * 1.0      * firing_rates[0] - 2 * xdot0_1 - x0_1/self.tau_exc_1 ) / self.tau_exc_1
-        xdot1_next_1 = xdot1_1 + self.dt * (self.G_exc_1 * input_excitatory           - 2 * xdot1_1 - x1_1/self.tau_exc_1) / self.tau_exc_1
-        xdot2_next_1 = xdot2_1 + self.dt * (self.G_inh_1 * self.C_4 * firing_rates[2] - 2 * xdot2_1 - x2_1/self.tau_inh_1) / self.tau_inh_1
+        xdot0_next_1 = (
+            xdot0_1
+            + self.dt
+            * (
+                self.G_exc_1 * 1.0 * firing_rates[0]
+                - 2 * xdot0_1
+                - x0_1 / self.tau_exc_1
+            )
+            / self.tau_exc_1
+        )
+        xdot1_next_1 = (
+            xdot1_1
+            + self.dt
+            * (self.G_exc_1 * input_excitatory - 2 * xdot1_1 - x1_1 / self.tau_exc_1)
+            / self.tau_exc_1
+        )
+        xdot2_next_1 = (
+            xdot2_1
+            + self.dt
+            * (
+                self.G_inh_1 * self.C_4 * firing_rates[2]
+                - 2 * xdot2_1
+                - x2_1 / self.tau_inh_1
+            )
+            / self.tau_inh_1
+        )
         x0_next_1 = x0_1 + xdot0_1 * self.dt
         x1_next_1 = x1_1 + xdot1_1 * self.dt
         x2_next_1 = x2_1 + xdot2_1 * self.dt
         # Pop 2
-        xdot0_next_2 = xdot0_2 + self.dt * (self.G_exc_2 * 1.0      * firing_rates[0] - 2 * xdot0_2 - x0_2/self.tau_exc_2 ) / self.tau_exc_2
-        xdot1_next_2 = xdot1_2 + self.dt * (self.G_exc_2 * input_excitatory           - 2 * xdot1_2 - x1_2/self.tau_exc_2) / self.tau_exc_2
-        xdot2_next_2 = xdot2_2 + self.dt * (self.G_inh_2 * self.C_4 * firing_rates[2] - 2 * xdot2_2 - x2_2/self.tau_inh_2) / self.tau_inh_2
+        xdot0_next_2 = (
+            xdot0_2
+            + self.dt
+            * (
+                self.G_exc_2 * 1.0 * firing_rates[0]
+                - 2 * xdot0_2
+                - x0_2 / self.tau_exc_2
+            )
+            / self.tau_exc_2
+        )
+        xdot1_next_2 = (
+            xdot1_2
+            + self.dt
+            * (self.G_exc_2 * input_excitatory - 2 * xdot1_2 - x1_2 / self.tau_exc_2)
+            / self.tau_exc_2
+        )
+        xdot2_next_2 = (
+            xdot2_2
+            + self.dt
+            * (
+                self.G_inh_2 * self.C_4 * firing_rates[2]
+                - 2 * xdot2_2
+                - x2_2 / self.tau_inh_2
+            )
+            / self.tau_inh_2
+        )
         x0_next_2 = x0_2 + xdot0_2 * self.dt
         x1_next_2 = x1_2 + xdot1_2 * self.dt
         x2_next_2 = x2_2 + xdot2_2 * self.dt
-        self.x = np.array([x0_next_1, x1_next_1, x2_next_1, xdot0_next_1, xdot1_next_1, xdot2_next_1,
-                           x0_next_2, x1_next_2, x2_next_2, xdot0_next_2, xdot1_next_2, xdot2_next_2])
+        self.x = np.array(
+            [
+                x0_next_1,
+                x1_next_1,
+                x2_next_1,
+                xdot0_next_1,
+                xdot1_next_1,
+                xdot2_next_1,
+                x0_next_2,
+                x1_next_2,
+                x2_next_2,
+                xdot0_next_2,
+                xdot1_next_2,
+                xdot2_next_2,
+            ]
+        )
 
     def read_out(self):
-        return  self.w * (self.x[1] - self.x[2]) + (1 - self.w) * (self.x[7] - self.x[8])
+        return self.w * (self.x[1] - self.x[2]) + (1 - self.w) * (self.x[7] - self.x[8])
 
-    def simulate(self, x0, tmax=1, noise=0., P=None):
+    def simulate(self, x0=None, tmax=1.0, noise=0.0, P=None):
         """
         Simulate the Jansen-Rit model and monitor the output.
 
@@ -452,7 +861,7 @@ class JansenRitExtended(NeuralMassNode):
             The maximum time to simulate.
         noise : float
             The standard deviation of the noise to add to the system.
-        
+
         Returns
         -------
         x : array_like
@@ -462,16 +871,22 @@ class JansenRitExtended(NeuralMassNode):
         n = int(tmax / self.dt)
         x = np.zeros((n, 12))
         o = np.zeros((n, 1))
-        self.x = x0
-        x[0] = x0
+        if x0 is None:
+            x0 = np.zeros(self.nstates)
+        self.x = np.asarray(x0, dtype=float).copy()
+        if self.x.shape != (self.nstates,):
+            raise ValueError(f"x0 must have shape ({self.nstates},)")
+        x[0] = self.x
         o[0] = self.read_out()
         dt_noise = np.sqrt(self.dt) * noise
         for i in range(1, n):
-            self.step(I = self.P if P is None else P[i])
+            current_P = self.P if P is None else (P if np.ndim(P) == 0 else P[i])
+            self.step(I=current_P)
             # noise = rng.standard_normal(size=self.x.shape) * dt_noise
-            x[i] = self.x           
+            x[i] = self.x
             o[i] = self.read_out()
         return x, o
+
 
 class JRNetwork(NeuralMassNetwork):
     """
@@ -488,44 +903,61 @@ class JRNetwork(NeuralMassNetwork):
 
         References
         ----------
-    
+
         - [1]_ Jansen, B. H., & Rit, V. G. (1995). Electroencephalogram and visual evoked potential generation in a mathematical model of coupled cortical columns. *Biological cybernetics*, 73(4), 357-366.
         - [2]_ Kazemi & Jamali, (2022). Phase synchronization and measure of criticality in a network of neural mass models. `Nature <https://www.nature.com/articles/s41598-022-05285-w>`_.
         - [3]_ Forrester et al. (2020). Network Neuroscience. The role of node dynamics in shaping emergent functional connectivity patterns in the brain. `PMC <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7286301/#bib70>`_.
         - [4]_ David & Friston (2006). *NeuroImage*. A Neural mass model for MEG/EEG: coupling and neuronal dynamics. `ScienceDirect <https://www.sciencedirect.com/science/article/pii/S1053811903004579?ref=cra_js_challenge&fr=RR-1>`_.
         - [5]_ David et al., (2004). Evaluation of different measures of functional connectivity using a neural mass model. `ScienceDirect <https://www.sciencedirect.com/science/article/pii/S1053811903006566?ref=pdf_download&fr=RR-2&rr=8279b478ba0328ac#APP1>`_.
-    
+
     .. [1] Jansen, B. H., & Rit, V. G. (1995). Electroencephalogram and visual evoked potential generation in a mathematical model of coupled cortical columns. *Biological cybernetics*, 73(4), 357-366.
     .. [2] Kazemi & Jamali, (2022). Phase synchronization and measure of criticality in a network of neural mass models. `Nature <https://www.nature.com/articles/s41598-022-05285-w>`_.
     .. [3] Forrester et al. (2020). Network Neuroscience. The role of node dynamics in shaping emergent functional connectivity patterns in the brain. `PMC <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7286301/#bib70>`_.
     .. [4] David & Friston (2006). *NeuroImage*. A Neural mass model for MEG/EEG: coupling and neuronal dynamics. `ScienceDirect <https://www.sciencedirect.com/science/article/pii/S1053811903004579?ref=cra_js_challenge&fr=RR-1>`_.
     .. [5] David et al., (2004). Evaluation of different measures of functional connectivity using a neural mass model. `ScienceDirect <https://www.sciencedirect.com/science/article/pii/S1053811903006566?ref=pdf_download&fr=RR-2&rr=8279b478ba0328ac#APP1>`_.
-    
+
     """
-    def __init__(self, N=2, W=np.asarray([[0, 1], [0, 0]]), delay=0.01, w=0.8, node_dynamics=None, dt=0.001, seed=42):
+
+    def __init__(
+        self,
+        N=2,
+        W=np.asarray([[0, 1], [0, 0]]),
+        delay=0.01,
+        w=0.8,
+        node_dynamics=None,
+        dt=0.001,
+        seed=42,
+    ):
         """
         Parameters
         ----------
         N : int
             The number of neurons/nodes.
         W : array_like
-            The connectivity matrix. Shape (N, N). E.g. W = np.asarray([[0, 1], [0, 0]]) means that node 1 is connected to node 2, while node 2 is not connected to node 1. 
+            The connectivity matrix. Shape (N, N). E.g. W = np.asarray([[0, 1], [0, 0]]) means that node 1 is connected to node 2, while node 2 is not connected to node 1.
         delay : float
             The delay between nodes in seconds. Default is 10ms.
         """
         self.rng = np.random.default_rng(seed)
-        self.N = N # number of neurons/nodes
-        self.W = W # connectivity matrix (W_ij is the connection from i to j, between 0 and 1, relative contribution)
-        self.K = W.copy() # updated connectivity in case of normalisation by activity std
-        self.delay = delay # delay (10ms)
-        self.dt = dt # sampling rate
-        self.seed = seed # random seed
-        if not np.isscalar(w): # if w is a scalar, then it is the same for all nodes
+        self.N = N  # number of neurons/nodes
+        self.W = W  # connectivity matrix (W_ij is the connection from i to j, between 0 and 1, relative contribution)
+        self.K = (
+            W.copy()
+        )  # updated connectivity in case of normalisation by activity std
+        self.delay = delay  # delay (10ms)
+        self.dt = dt  # sampling rate
+        self.seed = seed  # random seed
+        if not np.isscalar(w):  # if w is a scalar, then it is the same for all nodes
             w = w * np.ones((self.N,))
-        self.nodes = [JansenRitExtended(w=w, dt=dt, seed=self.rng.integers(k+seed)) for k in range(N)] # get different systems/rng for each node
-        self.S = self.nodes[0].S # nonlinearity function
+        self.nodes = [
+            JansenRitExtended(w=w, dt=dt, seed=self.rng.integers(k + seed))
+            for k in range(N)
+        ]  # get different systems/rng for each node
+        self.S = self.nodes[0].S  # nonlinearity function
         # self.delayed_states = np.zeros((N, self.nodes[0].nstates)) # delayed states of the nodes (state of the nodes at t-dt)
-        self.delayed_states = np.zeros((N, 1)) # delayed states of the nodes (state of the nodes at t-dt) / readout only
+        self.delayed_states = np.zeros(
+            (N, 1)
+        )  # delayed states of the nodes (state of the nodes at t-dt) / readout only
 
     def update_connectivity(self, x, sigma_p=1):
         """
@@ -533,9 +965,11 @@ class JRNetwork(NeuralMassNetwork):
         Shape of x: (N, ntimes)
         """
         # See ref (David & Friston 2004: A Neural Mass model for M/EEG: coupling and neuronal dynamics)
-        if np.isscalar(sigma_p): # if sigma_p is a scalar, then it is the same for all nodes
+        if np.isscalar(
+            sigma_p
+        ):  # if sigma_p is a scalar, then it is the same for all nodes
             sigma_p = sigma_p * np.ones((self.N,))
-        
+
         if np.ndim(x) <= 1 or x.shape[1] <= 1:
             sigma_rate = np.ones((self.N,))
         else:
@@ -544,16 +978,22 @@ class JRNetwork(NeuralMassNetwork):
             for j in range(self.N):
                 if i != j:
                     # k12_star[i] is the normalisation factor for connection from i to j
-                    self.K[i, j] = sigma_p[j] * np.sqrt(2 * self.W[i, j] - self.W[i, j]**2) / sigma_rate[i]
+                    self.K[i, j] = (
+                        sigma_p[j]
+                        * np.sqrt(2 * self.W[i, j] - self.W[i, j] ** 2)
+                        / sigma_rate[i]
+                    )
         # Then update self.K
 
-    def simulate(self, tmax=1, P=220, sigma_p=22):
+    def simulate(self, tmax=1.0, P=220, sigma_p=22):
         outs = []
         t = np.arange(0, tmax, self.dt)
         nsamples = len(t)
         tdelay, kdelay = 0, 0
         for k, tt in enumerate(t):
-            outs.append(self.step(P=P, sigma_p=sigma_p, history_outs=self.S(np.asarray(outs).T)))
+            outs.append(
+                self.step(P=P, sigma_p=sigma_p, history_outs=self.S(np.asarray(outs).T))
+            )
             tdelay += self.dt
             kdelay += 1
             if tdelay >= self.delay:
@@ -561,29 +1001,39 @@ class JRNetwork(NeuralMassNetwork):
                 tdelay, kdelay = 0, 0
         return np.asarray(outs)
 
-    
     def step(self, P=220, sigma_p=22, history_outs=None):
-        if np.isscalar(sigma_p): # if sigma_p is a scalar, then it is the same for all nodes
+        if np.isscalar(
+            sigma_p
+        ):  # if sigma_p is a scalar, then it is the same for all nodes
             sigma_p = sigma_p * np.ones((self.N,))
 
-        self.update_connectivity(history_outs, sigma_p=sigma_p) # update connectivity based on the history of the outputs
-        external_input_fluctuation = (sigma_p * self.rng.standard_normal(size=(self.N,))) * (1 - self.W.sum(axis=0))  
-        interarea_contributions = (self.S(self.delayed_states).ravel() - 3.84) @ self.K # using normalised connectivity
+        self.update_connectivity(
+            history_outs, sigma_p=sigma_p
+        )  # update connectivity based on the history of the outputs
+        external_input_fluctuation = (
+            sigma_p * self.rng.standard_normal(size=(self.N,))
+        ) * (1 - self.W.sum(axis=0))
+        interarea_contributions = (
+            self.S(self.delayed_states).ravel() - 3.84
+        ) @ self.K  # using normalised connectivity
         outs = []
         for k, n in enumerate(self.nodes):
             # Below y_1 and y_2 corresponds to the fast and slow dynamics respectively of the extended Jansen-Rit model
             #  I = p + (1-k21) * p̃ + k21_star *(S(w*y_1(t - δ) + (1-w)*y_2(t - δ)) - a) where "a" is the mean firing rate
             # we remove the mean firing rate to ensure mean input is conserved with different coupling strengths
             # a = 3.5 in the reference paper, my measured mean is more around 3.84
-            n.step(I=P + 
-                   external_input_fluctuation[k]  + # noise input scaled : (1-k21) * p̃
-                   interarea_contributions[k] # k21_star * (S(w*y_1(t - δ) + (1-w)*y_2(t - δ)) - a)
-                   ) # the input to each node is the output of all the other nodes
+            n.step(
+                I=P
+                + external_input_fluctuation[k]  # noise input scaled : (1-k21) * p̃
+                + interarea_contributions[
+                    k
+                ]  # k21_star * (S(w*y_1(t - δ) + (1-w)*y_2(t - δ)) - a)
+            )  # the input to each node is the output of all the other nodes
             outs.append(n.read_out())
             # for i in range(self.N):
             #     I += self.K[i, n] * (outs[i] - 3.84)
         return np.asarray(outs)
-    
+
     def reset(self):
         self.delayed_states = np.zeros((self.N, 1))
         for n in self.nodes:
@@ -591,7 +1041,9 @@ class JRNetwork(NeuralMassNetwork):
         self.K = self.W.copy()
 
 
-def dummy_trf_kernel(tmin=-0.2, tmax=0.5, srate=100, tloc=0.1, sigma=0.1, kernel_type='gaussian'):
+def dummy_trf_kernel(
+    tmin=-0.2, tmax=0.5, srate=100, tloc=0.1, sigma=0.1, kernel_type="gaussian"
+):
     """
     Dummy kernel for testing purposes.
 
@@ -607,23 +1059,25 @@ def dummy_trf_kernel(tmin=-0.2, tmax=0.5, srate=100, tloc=0.1, sigma=0.1, kernel
         The location of the peak of the kernel.
     sigma : float
         The standard deviation, or width, of the kernel.
-    
+
     Returns
     -------
     kernel : array_like
         The kernel. Shape (n,).
     """
-    t = np.arange(tmin, tmax, 1/srate)
-    if kernel_type == 'gaussian':
-        return t, np.exp(-0.5 * ((t - tloc) / sigma)**2) / (sigma * np.sqrt(2 * np.pi))
-    elif kernel_type == 'exponential':
+    t = np.arange(tmin, tmax, 1 / srate)
+    if kernel_type == "gaussian":
+        return t, np.exp(-0.5 * ((t - tloc) / sigma) ** 2) / (
+            sigma * np.sqrt(2 * np.pi)
+        )
+    elif kernel_type == "exponential":
         return t, np.exp(-np.abs(t - tloc) / sigma) / (2 * sigma)
-    elif kernel_type == 'bipolar':
-        sigma /= 2 # half the width of the kernel
-        tloc += sigma # shift the location of the peak to the right
-        ker = np.exp(-0.5 * ((t - tloc) / sigma)**2) / (sigma * np.sqrt(2 * np.pi))
-        return t, np.diff(np.r_[0, ker]) # derivative of gaussian
-    
+    elif kernel_type == "bipolar":
+        sigma /= 2  # half the width of the kernel
+        tloc += sigma  # shift the location of the peak to the right
+        ker = np.exp(-0.5 * ((t - tloc) / sigma) ** 2) / (sigma * np.sqrt(2 * np.pi))
+        return t, np.diff(np.r_[0, ker])  # derivative of gaussian
+
 
 def simulate_smooth_input(dur=1.0, srate=100, fmax=10, seed=12):
     """
@@ -637,7 +1091,7 @@ def simulate_smooth_input(dur=1.0, srate=100, fmax=10, seed=12):
         The sampling rate of the signal.
     fmax : float
         The maximum frequency of the signal.
-    
+
     Returns
     -------
     t : array_like
@@ -647,10 +1101,10 @@ def simulate_smooth_input(dur=1.0, srate=100, fmax=10, seed=12):
     """
     rng = np.random.default_rng(seed)
     n = int(dur * srate)
-    t = np.arange(0, dur, 1/srate)
+    t = np.arange(0, dur, 1 / srate)
     x = rng.standard_normal(size=n)
-    b, a = scisig.butter(4, fmax / (srate / 2), btype='low')
-    x = scisig.filtfilt(b, a, x) # filter the signal
+    b, a = scisig.butter(4, fmax / (srate / 2), btype="low")
+    x = scisig.filtfilt(b, a, x)  # filter the signal
     return t, x
 
 
@@ -666,7 +1120,7 @@ def simulate_pulse_inputs(n_events=100, dur=30.0, srate=100, seed=12):
         The duration of the signal in seconds.
     srate : int
         The sampling rate of the signal.
-    
+
     Returns
     -------
     t : array_like
@@ -675,11 +1129,11 @@ def simulate_pulse_inputs(n_events=100, dur=30.0, srate=100, seed=12):
         The simulated signal. Shape (n,).
     """
     n = int(dur * srate)
-    t = np.arange(0, dur, 1/srate)
+    t = np.arange(0, dur, 1 / srate)
     x = np.zeros(n)
     # Generate Poisson distributed events
     event_times = poisson_onsets_fixed_N(n_events, dur, seed=seed)
-    x[(event_times * srate).astype(int)] = 1 # set the events to 1
+    x[(event_times * srate).astype(int)] = 1  # set the events to 1
     return t, x
 
 
@@ -697,7 +1151,7 @@ def simulate_trf_output(tkernel, kernel, input, srate=100):
         The input signal. Shape (n,).
     srate : int
         The sampling rate of the signal.
-    
+
     Returns
     -------
     output : array_like
@@ -707,7 +1161,15 @@ def simulate_trf_output(tkernel, kernel, input, srate=100):
     tmin, tmax = tkernel[0], tkernel[-1]
     # if tker is not symmetric around 0, we need to pad the kernel
     if np.abs(tmin) > np.abs(tmax):
-        kernel = np.pad(kernel, (0, int(np.abs(tmin) * srate) - int(np.abs(tmax) * srate)), 'constant')
+        kernel = np.pad(
+            kernel,
+            (0, int(np.abs(tmin) * srate) - int(np.abs(tmax) * srate)),
+            "constant",
+        )
     elif np.abs(tmax) > np.abs(tmin):
-        kernel = np.pad(kernel, (int(np.abs(tmax) * srate) - int(np.abs(tmin) * srate), 0), 'constant')
-    return np.convolve(input, kernel, mode='same')
+        kernel = np.pad(
+            kernel,
+            (int(np.abs(tmax) * srate) - int(np.abs(tmin) * srate), 0),
+            "constant",
+        )
+    return np.convolve(input, kernel, mode="same")
