@@ -20,6 +20,7 @@ Based on NNLM/lm_featurize by Hugo Weissbart
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -28,15 +29,18 @@ from .._logging import LOGGER
 try:
     import torch
     from torch.nn import functional as F
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
-    raise ImportError("torch is not installed. Instal torch to use this module (all optional deps installable via natmeeg[features])")
+    raise ImportError(
+        "torch is not installed. Instal torch to use this module (all optional deps installable via natmeeg[features])"
+    )
 
 
 # Special tokens used in BPE tokenization
-SEPARATOR = '\u0160'  # 'Ġ' - Byte pair encoding separator
-NEWLINE = '\u010a'   # 'Ċ' - Newline token
+SEPARATOR = "\u0160"  # 'Ġ' - Byte pair encoding separator
+NEWLINE = "\u010a"  # 'Ċ' - Newline token
 
 
 @dataclass
@@ -74,6 +78,7 @@ class LLMFeatureConfig:
         decoded text when the fast (offset-mapping) alignment is unavailable
         (e.g. ``'nl'`` or ``'en'``). Defaults to ``'en'``.
     """
+
     model_name: str = "GroNLP/gpt2-small-dutch"
     device: str = "cpu"
     batch_size: int = 32
@@ -112,7 +117,7 @@ class LLMFeatureExtractor:
         Loaded Hugging Face language model, populated by ``_initialize_model``.
     """
 
-    def __init__(self, config: LLMFeatureConfig = None):
+    def __init__(self, config: LLMFeatureConfig | None = None):
         """Initialize the extractor and load the language model.
 
         Parameters
@@ -124,8 +129,8 @@ class LLMFeatureExtractor:
         if config is None:
             config = LLMFeatureConfig()
         self.config = config
-        self._tokenizer = None
-        self._model = None
+        self._tokenizer: Any = None
+        self._model: Any = None
         self._initialize_model()
 
     def _initialize_model(self):
@@ -169,8 +174,12 @@ class LLMFeatureExtractor:
 
         LOGGER.info(f"Loaded model: {self.config.model_name}")
 
-    def get_surprisal(self, logits: torch.Tensor, input_ids: torch.Tensor,
-                    return_shape: str = None) -> torch.Tensor:
+    def get_surprisal(
+        self,
+        logits: torch.Tensor,
+        input_ids: torch.Tensor,
+        return_shape: str | None = None,
+    ) -> torch.Tensor:
         """Calculate surprisal (-log(p)) for tokens.
 
         Surprisal is the negative natural logarithm of the probability the
@@ -225,18 +234,22 @@ class LLMFeatureExtractor:
         logp = F.log_softmax(logits, dim=1)
         ids = input_ids.flatten()
 
-        if return_shape == 'valid':
+        if return_shape == "valid":
             # Surprisal of tokens 1..N-1 predicted by positions 0..N-2.
             return -logp[:-1, :].gather(1, ids[1:].unsqueeze(1)).squeeze(1)
-        elif return_shape == 'same':
-            nan_val = torch.ones(1, device=logits.device) * float('nan')
-            return torch.cat((nan_val, -logp[:-1, :].gather(1, ids[1:].unsqueeze(1)).squeeze(1)))
-        elif return_shape == 'full':
+        elif return_shape == "same":
+            nan_val = torch.ones(1, device=logits.device) * float("nan")
+            return torch.cat(
+                (nan_val, -logp[:-1, :].gather(1, ids[1:].unsqueeze(1)).squeeze(1))
+            )
+        elif return_shape == "full":
             return -logp[:, :].gather(1, ids.unsqueeze(1)).squeeze(1)
         else:
             raise ValueError(f"Unknown return_shape: {return_shape}")
 
-    def get_entropy(self, logits: torch.Tensor, return_shape: str = None) -> torch.Tensor:
+    def get_entropy(
+        self, logits: torch.Tensor, return_shape: str | None = None
+    ) -> torch.Tensor:
         """Calculate entropy of token distributions.
 
         Computes the Shannon entropy in nats of the predictive distribution
@@ -274,17 +287,30 @@ class LLMFeatureExtractor:
         if return_shape is None:
             return_shape = self.config.return_shape
 
-        if return_shape == 'valid':
-            return -torch.sum(F.softmax(logits, dim=1) * F.log_softmax(logits, dim=1), 1)[:-1]
-        elif return_shape == 'same':
-            nan_val = torch.ones(1, device=logits.device) * float('nan')
-            return torch.cat((nan_val, -torch.sum(F.softmax(logits, dim=1) * F.log_softmax(logits, dim=1), 1)[:-1]))
-        elif return_shape == 'full':
-            return -torch.sum(F.softmax(logits, dim=1) * F.log_softmax(logits, dim=1), 1)
+        if return_shape == "valid":
+            return -torch.sum(
+                F.softmax(logits, dim=1) * F.log_softmax(logits, dim=1), 1
+            )[:-1]
+        elif return_shape == "same":
+            nan_val = torch.ones(1, device=logits.device) * float("nan")
+            return torch.cat(
+                (
+                    nan_val,
+                    -torch.sum(
+                        F.softmax(logits, dim=1) * F.log_softmax(logits, dim=1), 1
+                    )[:-1],
+                )
+            )
+        elif return_shape == "full":
+            return -torch.sum(
+                F.softmax(logits, dim=1) * F.log_softmax(logits, dim=1), 1
+            )
         else:
             raise ValueError(f"Unknown return_shape: {return_shape}")
 
-    def get_kl_divergence(self, logits: torch.Tensor, return_shape: str = None) -> torch.Tensor:
+    def get_kl_divergence(
+        self, logits: torch.Tensor, return_shape: str | None = None
+    ) -> torch.Tensor:
         """Compute KL divergence between current and previous state.
 
         Measures how much the predictive distribution at each token position
@@ -329,17 +355,28 @@ class LLMFeatureExtractor:
 
         P = F.log_softmax(logits, dim=1)
 
-        if return_shape == 'valid':
+        if return_shape == "valid":
             # KL between each adjacent pair of distributions: KL(P_t || P_{t-1})
             # for t = 1..N-1, i.e. N-1 values.
-            return F.kl_div(P[:-1, :], P[1:, :], reduction='none', log_target=True).sum(1)
-        elif return_shape == 'same':
-            nan_val = torch.ones(1, device=logits.device) * float('nan')
-            return torch.cat((nan_val, F.kl_div(P[:-1, :], P[1:, :], reduction='none', log_target=True).sum(1)))
+            return F.kl_div(P[:-1, :], P[1:, :], reduction="none", log_target=True).sum(
+                1
+            )
+        elif return_shape == "same":
+            nan_val = torch.ones(1, device=logits.device) * float("nan")
+            return torch.cat(
+                (
+                    nan_val,
+                    F.kl_div(
+                        P[:-1, :], P[1:, :], reduction="none", log_target=True
+                    ).sum(1),
+                )
+            )
         else:
             raise ValueError(f"Unknown return_shape: {return_shape}")
 
-    def get_prediction_error(self, surprisal: torch.Tensor, entropy: torch.Tensor) -> torch.Tensor:
+    def get_prediction_error(
+        self, surprisal: torch.Tensor, entropy: torch.Tensor
+    ) -> torch.Tensor:
         """Calculate prediction error (surprisal/entropy).
 
         Prediction error is the ratio of surprisal to entropy, normalizing the
@@ -381,8 +418,13 @@ class LLMFeatureExtractor:
         """
         return self._tokenizer.convert_ids_to_tokens(input_ids.flatten())
 
-    def bpe_to_words(self, tokens: list[str], sep: str = SEPARATOR, newline: str = NEWLINE,
-                     lang: str = 'nl') -> list[list[int]]:
+    def bpe_to_words(
+        self,
+        tokens: list[str],
+        sep: str = SEPARATOR,
+        newline: str = NEWLINE,
+        lang: str = "nl",
+    ) -> list[list[int]]:
         """Map BPE tokens to word indices.
 
         Joins the BPE tokens into a string (replacing the BPE separator with
@@ -424,7 +466,9 @@ class LLMFeatureExtractor:
             LOGGER.error("NLTK not installed")
             raise
 
-        tokens_clean = word_tokenize(''.join(tokens).replace(sep, ' ').replace(newline, '\n'), language=lang)
+        tokens_clean = word_tokenize(
+            "".join(tokens).replace(sep, " ").replace(newline, "\n"), language=lang
+        )
 
         indices_map = []
         k = 0
@@ -432,21 +476,23 @@ class LLMFeatureExtractor:
         for t in tokens_clean:
             bytepairs = []
             test_token = tokens[k].strip(sep).strip(newline)
-            if test_token != '':
+            if test_token != "":
                 bytepairs.append(k)
 
             while test_token != t:
                 k += 1
-                if k == len(tokens): break
+                if k == len(tokens):
+                    break
                 test_token += tokens[k].strip(sep).strip(newline)
-                if test_token != '':
+                if test_token != "":
                     bytepairs.append(k)
                 if len(bytepairs) > 100:
                     raise RecursionError(f"Can't match token: {t}")
 
             indices_map.append(bytepairs)
             k += 1
-            if k >= len(tokens): break
+            if k >= len(tokens):
+                break
 
         return indices_map
 
@@ -513,7 +559,9 @@ class LLMFeatureExtractor:
 
         return indices_map
 
-    def reduce_features(self, features: dict[str, np.ndarray], indices_map: list[list[int]]) -> dict[str, np.ndarray]:
+    def reduce_features(
+        self, features: dict[str, np.ndarray], indices_map: list[list[int]]
+    ) -> dict[str, np.ndarray]:
         """Reduce BPE-level features to word-level.
 
         Aggregates per-token feature arrays into one value per word using the
@@ -553,28 +601,40 @@ class LLMFeatureExtractor:
         """
         from functools import reduce as functools_reduce
 
+        # Use the module-level BPE markers. These were previously referenced
+        # as bare ``sep``/``newline`` names here, which would raise NameError
+        # at runtime (they are not parameters of this method).
+        sep = SEPARATOR
+        newline = NEWLINE
+
         def sum_reduce(x):
-            return functools_reduce(lambda x, y: x+y, x)
+            return functools_reduce(lambda x, y: x + y, x)
 
         reduced_features = {}
 
         for feat_name, feat_array in features.items():
-            if feat_name == 'tokens':
+            if feat_name == "tokens":
                 reduced_tokens = []
                 for bpe_indices in indices_map:
-                    token_str = ''.join([features['tokens'][i] for i in bpe_indices]).replace(sep, '').replace(newline, '')
+                    token_str = (
+                        "".join([features["tokens"][i] for i in bpe_indices])
+                        .replace(sep, "")
+                        .replace(newline, "")
+                    )
                     reduced_tokens.append(token_str)
                 reduced_features[feat_name] = np.array(reduced_tokens)
-            elif feat_name == 'entropy':
+            elif feat_name == "entropy":
                 reduced_values = []
                 for bpe_indices in indices_map:
                     reduced_values.append(feat_array[bpe_indices[-1]])
                 reduced_features[feat_name] = np.array(reduced_values)
-            elif feat_name == 'kl_divergence':
+            elif feat_name == "kl_divergence":
                 reduced_values = []
                 for bpe_indices in indices_map:
                     if len(bpe_indices) > 1:
-                        reduced_values.append(feat_array[bpe_indices[0]] + feat_array[bpe_indices[-1]])
+                        reduced_values.append(
+                            feat_array[bpe_indices[0]] + feat_array[bpe_indices[-1]]
+                        )
                     else:
                         reduced_values.append(feat_array[bpe_indices[0]])
                 reduced_features[feat_name] = np.array(reduced_values)
@@ -584,15 +644,21 @@ class LLMFeatureExtractor:
                     reduced_values.append(sum_reduce(feat_array[bpe_indices]))
                 reduced_features[feat_name] = np.array(reduced_values)
 
-        if 'surprisal' in reduced_features and 'entropy' in reduced_features:
-            entropy_safe = reduced_features['entropy'].copy()
+        if "surprisal" in reduced_features and "entropy" in reduced_features:
+            entropy_safe = reduced_features["entropy"].copy()
             entropy_safe[entropy_safe == 0] = 1e-10
-            reduced_features['prediction_error'] = reduced_features['surprisal'] / entropy_safe
+            reduced_features["prediction_error"] = (
+                reduced_features["surprisal"] / entropy_safe
+            )
 
         return reduced_features
 
-    def extract(self, text: str, features: list[str] = None,
-                return_word_level: bool = True) -> dict[str, np.ndarray]:
+    def extract(
+        self,
+        text: str,
+        features: list[str] | None = None,
+        return_word_level: bool = True,
+    ) -> dict[str, np.ndarray]:
         """Extract features from text.
 
         Runs the language model over the tokenized text and returns the
@@ -613,9 +679,11 @@ class LLMFeatureExtractor:
             computed.
         return_word_level : bool, optional
             If ``True`` (default), BPE-level features are aggregated to
-            word-level using :meth:`bpe_to_words` and :meth:`reduce_features`
-            (with ``lang='en'``). If ``False``, raw per-token arrays are
-            returned.
+            word-level using :meth:`bpe_to_words` (or :meth:`bpe_to_words_fast`
+            when the tokenizer is a fast tokenizer) and :meth:`reduce_features`.
+            The word-tokenization language is controlled by
+            ``LLMFeatureConfig.language``. If ``False``, raw per-token arrays
+            are returned.
 
         Returns
         -------
@@ -631,10 +699,10 @@ class LLMFeatureExtractor:
             empty.
         """
         if features is None:
-            features = ['surprisal', 'entropy', 'kl_divergence', 'prediction_error']
+            features = ["surprisal", "entropy", "kl_divergence", "prediction_error"]
 
         inputs = self._tokenizer(text, return_tensors="pt")
-        input_ids = inputs['input_ids']
+        input_ids = inputs["input_ids"]
 
         if self.config.device == "cuda" and torch.cuda.is_available():
             input_ids = input_ids.cuda()
@@ -645,17 +713,21 @@ class LLMFeatureExtractor:
 
         result = {}
 
-        if 'surprisal' in features or 'prediction_error' in features:
-            result['surprisal'] = self.get_surprisal(logits, input_ids, 'same').detach().cpu().numpy()
+        if "surprisal" in features or "prediction_error" in features:
+            result["surprisal"] = (
+                self.get_surprisal(logits, input_ids, "same").detach().cpu().numpy()
+            )
 
-        if 'entropy' in features or 'prediction_error' in features:
-            result['entropy'] = self.get_entropy(logits, 'same').detach().cpu().numpy()
+        if "entropy" in features or "prediction_error" in features:
+            result["entropy"] = self.get_entropy(logits, "same").detach().cpu().numpy()
 
-        if 'kl_divergence' in features:
-            result['kl_divergence'] = self.get_kl_divergence(logits, 'same').detach().cpu().numpy()
+        if "kl_divergence" in features:
+            result["kl_divergence"] = (
+                self.get_kl_divergence(logits, "same").detach().cpu().numpy()
+            )
 
-        if 'tokens' in features:
-            result['tokens'] = np.array(self.get_tokens(input_ids))
+        if "tokens" in features:
+            result["tokens"] = np.array(self.get_tokens(input_ids))
 
         if return_word_level and len(result) > 0:
             tokens = self.get_tokens(input_ids)
