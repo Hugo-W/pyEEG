@@ -37,7 +37,7 @@ logging.basicConfig(
 # This enables access to all submodules from the top-level
 # pyeeg module
 from ._logging import set_log_level, get_logger
-from . import connectivity, io, models, preprocess, vizu, utils, simulate, features
+from . import connectivity, io, models, preprocess, vizu, utils, simulate, features, stats
 from .models import TRFEstimator
 from .cca import CCA_Estimator
 from .preprocess import MultichanWienerFilter, Whitener
@@ -78,6 +78,7 @@ __all__ = [
     'utils',
     'simulate',
     'features',
+    'stats',
     # Version
     '__version__',
 ]
