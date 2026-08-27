@@ -82,6 +82,7 @@ class TestEnvelopeExtraction:
 class TestFilterbankExtraction:
     """Band-pass filterbank extraction."""
 
+    @pytest.mark.slow
     def test_filterbank_shape(self, sine_signal):
         extractor = AcousticFeatureExtractor(
             AcousticFeatureConfig(features=['filterbank'], sampling_rate=16000)
