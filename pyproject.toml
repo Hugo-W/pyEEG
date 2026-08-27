@@ -65,9 +65,9 @@ package-dir = {"pyeeg" = "pyeeg"}
 # This allows you to use `pip install .[docs]` to install optional dependencies.
 [project.optional-dependencies]
 mne = ["mne"]
-docs = ["sphinx", "sphinx-rtd-theme", "nbsphinx", "ipykernel"]
+docs = ["sphinx", "sphinx-rtd-theme", "nbsphinx", "ipykernel", "myst-parser"]
 features = ["torch", "transformers"]
-full = ["mne", "sphinx", "sphinx-rtd-theme", "nbsphinx", "torch", "transformers"]
+full = ["mne", "sphinx", "sphinx-rtd-theme", "nbsphinx", "torch", "transformers", "myst-parser"]
 exploratory-trf = [
     "flask>=2.0.0",
     "werkzeug>=2.0.0",

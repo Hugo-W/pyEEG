@@ -38,6 +38,7 @@ natMEEG is a Python package for the analysis of EEG and MEG data. It focuses on 
    :maxdepth: 1
    :caption: Other
 
+   changelog
    about
 
 Indices and tables

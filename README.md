@@ -32,6 +32,7 @@ natMEEG provides tools across the full naturalistic M/EEG analysis pipeline:
 - **IO** — `pyeeg.io` for EEGLAB/FieldTrip → MNE conversion and aligned word-level feature handling.
 
 See the [documentation](https://hugo-w.github.io/pyEEG/) for full API reference.
+See the [changelog](CHANGELOG.md) for release history.
 
 ------
 
