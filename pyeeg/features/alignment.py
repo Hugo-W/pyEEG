@@ -7,7 +7,7 @@ using TextGrid files or forced alignment with external tools.
 
 import numpy as np
 from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 
 from .._logging import LOGGER
@@ -69,12 +69,13 @@ class TextGrid:
     ----------
     intervals : dict of str -> list of Interval
         Mapping from tier name to the list of intervals in that tier.
+        Defaults to an empty dict.
     start_time : float
         Start time of the TextGrid in seconds. Default: 0.0.
     end_time : float
         End time of the TextGrid in seconds. Default: 0.0.
     """
-    intervals: Dict[str, List[Interval]]
+    intervals: Dict[str, List[Interval]] = field(default_factory=dict)
     start_time: float = 0.0
     end_time: float = 0.0
     
@@ -145,10 +146,20 @@ class TextGridParser:
         """Parse a TextGrid from a string.
 
         Iterates over the lines of a Praat TextGrid in short text format.
-        Tier headers matching ``item [N]: "name"`` start a new tier; lines
-        matching ``intervals [N]: "label" start end`` are parsed as
-        intervals of the current tier. Tier and interval indices reported by
-        Praat are ignored; only names, labels, and timestamps are kept.
+        Two tier header formats are supported:
+
+        - compact: ``item [N]: "tier_name"`` on a single line.
+        - long (Praat's default): an ``item [N]:`` header line followed by
+          ``class = "..."`` and ``name = "tier_name"`` lines.
+
+        Two interval formats are supported:
+
+        - compact: ``intervals [N]: "label" start end`` on a single line.
+        - long (Praat's default): an ``intervals [N]:`` header line followed
+          by ``xmin = ...``, ``xmax = ...`` and ``text = "..."`` lines.
+
+        Tier and interval indices reported by Praat are ignored; only names,
+        labels, and timestamps are kept.
 
         Parameters
         ----------
@@ -163,33 +174,108 @@ class TextGridParser:
         """
         textgrid = TextGrid()
         textgrid.intervals = {}
-        
+
         lines = content.split('\n')
         current_tier = None
-        
+        # Whether we are inside a long-format ``item [N]:`` block and waiting
+        # for the ``name = "..."`` line that declares the tier name.
+        in_item = False
+        # Pending interval being assembled from long-format lines.
+        pending: Dict[str, object] = {}
+
+        def flush_pending():
+            nonlocal pending
+            if not pending or current_tier is None:
+                return
+            if pending['start'] is None or pending['end'] is None:
+                pending = {}
+                return
+            textgrid.intervals[current_tier].append(
+                Interval(
+                    start=float(pending['start']),
+                    end=float(pending['end']),
+                    label=str(pending['label']) if pending['label'] is not None else "",
+                    tier=current_tier,
+                )
+            )
+            pending = {}
+
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-            
+
+            # Compact tier header, e.g. ``item [1]: "words"``.
             tier_match = re.match(r'item \[(\d+)\]:\s*"(.+?)"', line)
             if tier_match:
+                flush_pending()
                 current_tier = tier_match.group(2)
+                in_item = False
                 textgrid.intervals[current_tier] = []
                 continue
-            
+
+            # Long-format tier header, e.g. ``item [1]:``.
+            tier_header = re.match(r'item \[(\d+)\]:$', line)
+            if tier_header:
+                flush_pending()
+                current_tier = None
+                in_item = True
+                continue
+
+            # Long-format tier name, e.g. ``name = "words"``.
+            if in_item:
+                name_match = re.match(r'name\s*=\s*"(.+?)"', line)
+                if name_match:
+                    current_tier = name_match.group(1)
+                    in_item = False
+                    textgrid.intervals[current_tier] = []
+                    continue
+
+            # Compact interval, e.g. ``intervals [1]: "label" 0 1``.
             interval_match = re.match(
-                r'intervals \[(\d+)\]:\s*"(.+?)"\s*(\d+\.\d+)\s*(\d+\.\d+)',
+                r'intervals \[(\d+)\]:\s*"(.*?)"\s*(\d+\.\d+)\s*(\d+\.\d+)',
                 line
             )
             if interval_match and current_tier:
+                flush_pending()
                 label = interval_match.group(2)
                 start = float(interval_match.group(3))
                 end = float(interval_match.group(4))
                 textgrid.intervals[current_tier].append(
                     Interval(start=start, end=end, label=label, tier=current_tier)
                 )
-        
+                continue
+
+            # Long-format interval header, e.g. ``intervals [1]:``.
+            interval_header = re.match(r'intervals \[(\d+)\]:$', line)
+            if interval_header and current_tier:
+                flush_pending()
+                pending = {'start': None, 'end': None, 'label': None}
+                continue
+
+            # Long-format interval fields while assembling a pending interval.
+            if pending:
+                xmin_match = re.match(r'xmin\s*=\s*([-\d.]+)', line)
+                xmax_match = re.match(r'xmax\s*=\s*([-\d.]+)', line)
+                text_match = re.match(r'text\s*=\s*"(.*?)"', line)
+                if xmin_match:
+                    pending['start'] = xmin_match.group(1)
+                elif xmax_match:
+                    pending['end'] = xmax_match.group(1)
+                elif text_match:
+                    pending['label'] = text_match.group(1)
+                    flush_pending()
+            else:
+                # Global TextGrid bounds (before any tier / interval).
+                global_xmin = re.match(r'xmin\s*=\s*([-\d.]+)', line)
+                global_xmax = re.match(r'xmax\s*=\s*([-\d.]+)', line)
+                if global_xmin and current_tier is None and not in_item:
+                    textgrid.start_time = float(global_xmin.group(1))
+                elif global_xmax and current_tier is None and not in_item:
+                    textgrid.end_time = float(global_xmax.group(1))
+
+        flush_pending()
+
         return textgrid
 
 

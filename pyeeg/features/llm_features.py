@@ -534,6 +534,14 @@ class LLMFeatureExtractor:
         # Build character-level word boundaries from the original text.
         # Iterate over the offset spans and group consecutive tokens that
         # belong to the same whitespace-delimited word.
+        #
+        # Two offset conventions exist for GPT-2-style tokenizers:
+        #   - **trimmed**: the leading space is excluded from the span, so
+        #     word boundaries appear as gaps between spans.
+        #   - **untrimmed** (the default for most GPT-2 tokenizers): the
+        #     space is included in the span (e.g. "Ġcat" → (3, 7)), so there
+        #     are no gaps.  In that case we detect word boundaries by checking
+        #     whether the character *before* the span is whitespace.
         indices_map = []
         current_group = []
         last_word_end = -1
@@ -546,9 +554,19 @@ class LLMFeatureExtractor:
                     current_group = []
                 last_word_end = end
                 continue
-            # A new word starts when there is a gap (whitespace) since the
-            # previous token's end.
-            if current_group and start > last_word_end:
+            # A new word starts when:
+            #   (a) there is a gap since the previous token's end (trimmed
+            #       offsets), or
+            #   (b) the first character of this token's span in the original
+            #       text is whitespace (untrimmed offsets where the space
+            #       is part of the span, e.g. "Ġcat" → (3, 7), text[3]=' ').
+            is_new_word = False
+            if current_group:
+                if start > last_word_end:
+                    is_new_word = True
+                elif start < len(text) and text[start].isspace():
+                    is_new_word = True
+            if is_new_word:
                 indices_map.append(current_group)
                 current_group = []
             current_group.append(idx)
@@ -710,6 +728,11 @@ class LLMFeatureExtractor:
         with torch.no_grad():
             outputs = self._model(**inputs)
             logits = outputs.logits
+
+        # The metric methods expect 2D logits (seq_len, vocab_size); squeeze the
+        # batch dimension that Hugging Face models always return.
+        if logits.dim() == 3:
+            logits = logits.squeeze(0)
 
         result = {}
 

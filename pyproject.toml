@@ -66,8 +66,9 @@ package-dir = {"pyeeg" = "pyeeg"}
 [project.optional-dependencies]
 mne = ["mne"]
 docs = ["sphinx", "sphinx-rtd-theme", "nbsphinx", "ipykernel", "myst-parser"]
-features = ["torch", "transformers"]
-full = ["mne", "sphinx", "sphinx-rtd-theme", "nbsphinx", "torch", "transformers", "myst-parser"]
+features = ["torch", "transformers", "nltk"]
+test = ["pytest", "nltk"]
+full = ["mne", "sphinx", "sphinx-rtd-theme", "nbsphinx", "torch", "transformers", "nltk", "myst-parser"]
 exploratory-trf = [
     "flask>=2.0.0",
     "werkzeug>=2.0.0",
@@ -80,3 +81,19 @@ pyeeg = ["examples/*.ipynb", "pyeeg/bin/*dll", "pyeeg/bin/*so", "pyeeg/bin/*dyli
 [tool.setuptools_scm]
 write_to = "pyeeg/version.py"
 local_scheme = "no-local-version"
+
+[tool.pytest.ini_options]
+# Single source of truth for pytest config (no separate pytest.ini).
+# `testpaths` limits bare `pytest` to tests/, which avoids accidentally
+# collecting --doctest-modules from pyeeg/ source (e.g. llm_features.py needs
+# torch at import). Run `uv run pytest --doctest-modules pyeeg` separately to
+# exercise the doctests embedded in the package source.
+testpaths = ["tests"]
+addopts = "--doctest-modules --ignore=scripts/ --ignore=docs/ --ignore=build/ --durations=10"
+filterwarnings = [
+    "ignore:'*instead of*return*?':UserWarning",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "llm: marks tests that load a Hugging Face language model (requires torch/transformers)",
+]

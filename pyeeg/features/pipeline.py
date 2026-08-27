@@ -24,6 +24,12 @@ except ImportError:
 from .syntactic_features import SyntacticFeatureExtractor, ParserConfig
 from .alignment import AlignmentHandler, TextGrid
 
+try:
+    from .acoustic import AcousticFeatureConfig, AcousticFeatureExtractor
+    ACOUSTICEXTRACTOR_AVAILABLE = True
+except ImportError:
+    ACOUSTICEXTRACTOR_AVAILABLE = False
+
 
 @dataclass
 class FeatureSpec:
@@ -91,6 +97,21 @@ class PipelineConfig:
     cache_features: bool = True
 
 
+class UserDefinedExtractor:
+    """Wraps a user-provided callable as a feature extractor.
+
+    The callable should accept the stimulus (text or audio signal) and
+    return a dict mapping feature names to numpy arrays.
+    """
+
+    def __init__(self, func, name="custom"):
+        self._func = func
+        self.name = name
+
+    def extract(self, stimulus, **kwargs):
+        return self._func(stimulus, **kwargs)
+
+
 class FeaturePipeline:
     """Pipeline for extracting and aligning multiple features from stimuli.
 
@@ -146,19 +167,32 @@ class FeaturePipeline:
         skipped.
         """
         for spec in self.config.feature_specs:
+            cfg = spec.config or {}
             if spec.extractor_type == 'llm':
                 llm_config = LLMFeatureConfig(
-                    model_name=spec.config.get('model_name', 'GroNLP/gpt2-small-dutch'),
-                    device=spec.config.get('device', 'cpu')
+                    model_name=cfg.get('model_name', 'GroNLP/gpt2-small-dutch'),
+                    device=cfg.get('device', 'cpu')
                 )
                 if LLMEXTRACTOR_AVAILABLE:
                     self._extractors[spec.name] = LLMFeatureExtractor(llm_config)
             elif spec.extractor_type == 'syntactic':
                 parser_config = ParserConfig(
-                    parser_name=spec.config.get('parser_name', 'stanford'),
-                    language=spec.config.get('language', 'en')
+                    parser_name=cfg.get('parser_name', 'stanford'),
+                    language=cfg.get('language', 'en')
                 )
                 self._extractors[spec.name] = SyntacticFeatureExtractor(parser_config)
+            elif spec.extractor_type == 'custom':
+                func = cfg.get('func')
+                if func is not None:
+                    self._extractors[spec.name] = UserDefinedExtractor(func, spec.name)
+            elif spec.extractor_type == 'acoustic':
+                if ACOUSTICEXTRACTOR_AVAILABLE:
+                    acoustic_config = AcousticFeatureConfig(
+                        sampling_rate=cfg.get('sampling_rate', 16000),
+                        features=cfg.get('features') or ['envelope'],
+                        envelope_method=cfg.get('envelope_method', 'hilbert'),
+                    )
+                    self._extractors[spec.name] = AcousticFeatureExtractor(acoustic_config)
     
     def _initialize_alignment(self):
         """Initialize alignment handler.
@@ -237,6 +271,8 @@ class FeaturePipeline:
                 features = extractor.extract(text, spec.features)
             elif spec.extractor_type == 'syntactic':
                 features = extractor.extract_to_dict(text, spec.features)
+            elif spec.extractor_type == 'custom':
+                features = extractor.extract(text)
             else:
                 continue
             
@@ -264,9 +300,35 @@ class FeaturePipeline:
             textgrid = TextGrid()
         
         result = {}
+        aligned = np.array([])
         for extractor_name, feat_dict in all_features.items():
+            # ``align_word_features`` expects a mapping of
+            # ``{word_index: {feature_name: value}}``.  Convert from the two
+            # conventions used by the extractors:
+            #   LLM:       {feature_name: ndarray}  (one value per word)
+            #   Syntactic: {feature_name: {word_index: value}}
+            # Non-numeric features (e.g. "tokens" strings) and NaN values are
+            # skipped so they do not corrupt the float alignment matrix.
+            n_words = len(text.split())
+            word_map: Dict[int, Dict[str, float]] = {}
+            for feat_name, values in feat_dict.items():
+                if isinstance(values, np.ndarray):
+                    if values.dtype.kind in ('f', 'i', 'u'):
+                        for i in range(min(len(values), n_words)):
+                            val = float(values[i])
+                            if not np.isnan(val):
+                                word_map.setdefault(i, {})[feat_name] = val
+                elif isinstance(values, dict):
+                    for pos, val in values.items():
+                        try:
+                            pos_int = int(pos)
+                            fval = float(val)
+                        except (ValueError, TypeError):
+                            continue
+                        if not np.isnan(fval):
+                            word_map.setdefault(pos_int, {})[feat_name] = fval
             aligned, feat_names = self._alignment_handler.align_word_features(
-                feat_dict, textgrid, signal_length
+                word_map, textgrid, signal_length
             )
             for i, feat_name in enumerate(feat_names):
                 result[f"{extractor_name}_{feat_name}"] = aligned[:, i]
@@ -276,7 +338,68 @@ class FeaturePipeline:
         metadata['sampling_rate'] = self._alignment_handler.sampling_rate
         
         return result, metadata
-    
+
+    def extract_audio(
+        self,
+        signal: np.ndarray,
+        srate: float,
+        signal_length: Optional[int] = None
+    ) -> Tuple[Dict[str, np.ndarray], Dict]:
+        """Extract acoustic features from an audio signal.
+
+        Runs every configured acoustic extractor over ``signal`` and collects
+        the resulting features, prefixed with each extractor's name.
+
+        Parameters
+        ----------
+        signal : ndarray
+            Audio signal as a 1D numpy array.
+        srate : float
+            Sampling rate of the audio signal in Hz.
+        signal_length : int, optional
+            Reserved for compatibility with the text path; not used by
+            acoustic extraction.
+
+        Returns
+        -------
+        result : dict of str -> ndarray
+            Feature name to array mapping. Keys are
+            ``"{extractor_name}_{feature}"``.
+        metadata : dict
+            Metadata describing the extraction: ``stimulus_type`` (``"audio"``),
+            ``sampling_rate`` (provided sampling rate), ``feature_specs``
+            (configured acoustic spec names), and ``n_samples`` (length of the
+            input signal).
+        """
+        metadata = {
+            'stimulus_type': 'audio',
+            'sampling_rate': srate,
+            'feature_specs': [
+                spec.name for spec in self.config.feature_specs
+                if spec.extractor_type == 'acoustic'
+            ],
+            'n_samples': len(signal) if signal is not None else 0,
+        }
+
+        all_features: Dict[str, Dict] = {}
+
+        for spec in self.config.feature_specs:
+            if spec.extractor_type != 'acoustic':
+                continue
+            extractor = self._extractors.get(spec.name)
+            if extractor is None:
+                continue
+            features = extractor.extract(signal, srate)
+            if features:
+                all_features[spec.name] = features
+
+        result = {}
+        for extractor_name, feat_dict in all_features.items():
+            for feat_name, values in feat_dict.items():
+                result[f"{extractor_name}_{feat_name}"] = values
+
+        return result, metadata
+
     def normalize_features(
         self,
         features: Dict[str, np.ndarray],
@@ -317,15 +440,15 @@ class FeaturePipeline:
         result = {}
         for name, arr in features.items():
             if method == 'zscore':
-                mean = np.mean(arr)
-                std = np.std(arr)
+                mean = np.nanmean(arr)
+                std = np.nanstd(arr)
                 if std > 0:
                     result[name] = (arr - mean) / std
                 else:
                     result[name] = arr - mean
             elif method == 'minmax':
-                min_val = np.min(arr)
-                max_val = np.max(arr)
+                min_val = np.nanmin(arr)
+                max_val = np.nanmax(arr)
                 if max_val > min_val:
                     result[name] = (arr - min_val) / (max_val - min_val)
                 else:
@@ -445,7 +568,84 @@ class StimulusEncoder:
         )
         self.pipeline.config.feature_specs.append(spec)
         self.pipeline._initialize_extractors()
-    
+
+    def add_custom_extractor(self, func, name='custom', features=[]):
+        """Add a user-defined extractor to the pipeline.
+
+        Appends a ``"custom"`` :class:`FeatureSpec` wrapping ``func`` to the
+        pipeline configuration and re-initializes the extractors so the new
+        spec takes effect. The callable is invoked with the stimulus (text or
+        audio signal) and should return a dict mapping feature names to numpy
+        arrays.
+
+        Parameters
+        ----------
+        func : callable
+            User-provided extractor callable, called as ``func(stimulus)``.
+            Must return a dict of ``{feature_name: numpy array}``.
+        name : str, optional
+            Extractor name used as prefix for the output feature keys and as
+            the pipeline spec name. Defaults to ``"custom"``.
+        features : list of str, optional
+            Optional feature names for the spec. Defaults to an empty list.
+
+        Returns
+        -------
+        None
+        """
+        spec = FeatureSpec(
+            name=name,
+            extractor_type='custom',
+            features=features,
+            config={'func': func}
+        )
+        self.pipeline.config.feature_specs.append(spec)
+        self.pipeline._initialize_extractors()
+
+    def add_acoustic_features(
+        self,
+        features=None,
+        sampling_rate=16000,
+        name='acoustic',
+        **kwargs
+    ):
+        """Add acoustic features to the pipeline.
+
+        Appends an ``"acoustic"`` :class:`FeatureSpec` to the pipeline
+        configuration and re-initializes the extractors so the new spec takes
+        effect.
+
+        Parameters
+        ----------
+        features : list of str, optional
+            Acoustic features to extract (e.g. ``"envelope"``). If ``None``
+            (default), ``["envelope"]`` is used.
+        sampling_rate : float, optional
+            Sampling rate of the audio signal in Hz. Defaults to ``16000``.
+        name : str, optional
+            Extractor name used as prefix for the output feature keys and as
+            the pipeline spec name. Defaults to ``"acoustic"``.
+        **kwargs
+            Additional acoustic configuration options passed through to the
+            extractor's config (e.g. ``envelope_method``).
+
+        Returns
+        -------
+        None
+        """
+        if features is None:
+            features = ['envelope']
+        config = {'sampling_rate': sampling_rate, 'features': features}
+        config.update(kwargs)
+        spec = FeatureSpec(
+            name=name,
+            extractor_type='acoustic',
+            features=features,
+            config=config
+        )
+        self.pipeline.config.feature_specs.append(spec)
+        self.pipeline._initialize_extractors()
+
     def set_alignment(self, sampling_rate: float = 1000.0):
         """Set alignment configuration.
 
@@ -507,7 +707,49 @@ class StimulusEncoder:
                 self.pipeline.config.normalization
             )
         return features, metadata
-    
+
+    def encode_audio(
+        self,
+        signal: np.ndarray,
+        srate: float,
+        signal_length: Optional[int] = None
+    ) -> Tuple[Dict[str, np.ndarray], Dict]:
+        """Extract acoustic features from an audio signal.
+
+        Runs the pipeline's :meth:`FeaturePipeline.extract_audio`, then applies
+        the normalization configured in the pipeline configuration (unless it is
+        ``"none"``).
+
+        Parameters
+        ----------
+        signal : ndarray
+            Audio signal as a 1D numpy array.
+        srate : float
+            Sampling rate of the audio signal in Hz.
+        signal_length : int, optional
+            Reserved for compatibility with the text path; not used by
+            acoustic extraction.
+
+        Returns
+        -------
+        features : dict of str -> ndarray
+            Feature name to values array mapping (see
+            :meth:`FeaturePipeline.extract_audio`). If normalization is
+            configured, arrays are normalized.
+        metadata : dict
+            Metadata describing the extraction (see
+            :meth:`FeaturePipeline.extract_audio`).
+        """
+        features, metadata = self.pipeline.extract_audio(
+            signal, srate, signal_length
+        )
+        if self.pipeline.config.normalization != 'none':
+            features = self.pipeline.normalize_features(
+                features,
+                self.pipeline.config.normalization
+            )
+        return features, metadata
+
     def encode_to_array(
         self,
         text: str,

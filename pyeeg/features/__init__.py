@@ -4,13 +4,17 @@ Stimulus Feature Extraction Module
 This module provides tools for extracting features from various types of stimuli:
 - Text: LLM-based features (surprisal, entropy, KL divergence)
 - Text: Syntactic features (depth, closing nodes, etc.)
+- Audio: Acoustic features (envelope, filterbank, gammatone)
 - Audio: Alignment with transcripts
 
 Main Classes:
 - LLMFeatureExtractor: Extract word-level features using language models
 - SyntacticFeatureExtractor: Extract features from constituency trees
+- AcousticFeatureExtractor: Extract envelope, filterbank, gammatone features
 - AlignmentHandler: Handle alignment between stimuli and neural data
 - FeaturePipeline: Compose multiple feature extractors
+- StimulusEncoder: High-level interface for feature extraction
+- FeatureReducer: PCA/ICA dimensionality reduction
 """
 
 from .._logging import LOGGER
@@ -23,15 +27,22 @@ except ImportError:
     LOGGER.info("Using a dummy value for LLMFeatureExtractor as torch is unavailable")
     LLMFeatureExtractor = None
 from .syntactic_features import SyntacticFeatureExtractor
+from .acoustic import AcousticFeatureExtractor, AcousticFeatureConfig
 from .alignment import AlignmentHandler, TextGridParser
-from .pipeline import FeaturePipeline
-from .reduction import FeatureReducer
+from .pipeline import FeaturePipeline, StimulusEncoder, FeatureSpec, PipelineConfig
+from .reduction import FeatureReducer, ReductionConfig
 
 __all__ = [
     'LLMFeatureExtractor',
     'SyntacticFeatureExtractor',
+    'AcousticFeatureExtractor',
+    'AcousticFeatureConfig',
     'AlignmentHandler',
     'TextGridParser',
     'FeaturePipeline',
+    'StimulusEncoder',
+    'FeatureSpec',
+    'PipelineConfig',
     'FeatureReducer',
+    'ReductionConfig',
 ]

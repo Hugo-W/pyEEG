@@ -197,7 +197,7 @@ class FeatureReducer:
 
         Centers the data and computes a whitening transform from the
         eigendecomposition of the covariance matrix (small eigenvalues are
-        floored at ``1e-10``). The whitened data transpose is stored as the
+        floored at ``1e-10``). The whitening matrix transpose is stored as the
         components, and the number of components is selected from
         ``n_components`` or kept equal to the input dimensionality.
 
@@ -211,13 +211,12 @@ class FeatureReducer:
         eigenvalues, eigenvectors = np.linalg.eigh(cov)
         eigenvalues[eigenvalues < 1e-10] = 1e-10
         whitening_matrix = eigenvectors @ np.diag(1.0 / np.sqrt(eigenvalues)) @ eigenvectors.T
-        whitened = centered @ whitening_matrix.T
-        self._components = whitened.T
+        self._components = whitening_matrix.T
         
         if self.config.n_components is not None:
-            self._n_components = min(self.config.n_components, whitened.shape[1])
+            self._n_components = min(self.config.n_components, whitening_matrix.shape[1])
         else:
-            self._n_components = whitened.shape[1]
+            self._n_components = whitening_matrix.shape[1]
     
     def transform(self, features: np.ndarray) -> np.ndarray:
         """Transform features to reduced space.
@@ -317,7 +316,12 @@ class FeatureReducer:
             reconstructed = reduced_features @ self._components[:self._n_components]
             return self._uncenter_data(reconstructed)
         elif self.config.method == 'ica':
-            return self._uncenter_data(reduced_features @ self._components[:self._n_components])
+            # The whitening matrix is not orthonormal, so we must use the
+            # pseudoinverse of the projection for reconstruction.
+            projection = self._components[:self._n_components].T
+            return self._uncenter_data(
+                reduced_features @ np.linalg.pinv(projection)
+            )
         elif self.config.method == 'none':
             return reduced_features
         else:
