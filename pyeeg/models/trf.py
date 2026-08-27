@@ -1901,6 +1901,16 @@ class TRFEstimator(BaseEstimator):
     def copy(self):
         """Return a copy of the estimator.
 
+        All constructor parameters are preserved so that refitting the
+        returned instance reproduces the original model configuration
+        (same solver, loss, robust settings, intercept, regularization,
+        caching, etc.). The ``solver`` instance, when present, is shared
+        by reference rather than deep-copied; this is safe because the
+        :class:`pyeeg.solvers.Solver` contract is stateless across
+        :meth:`solve` calls. Fitted attributes (``coef_``, ``intercept_``,
+        lag/feature/channel metadata, and statistics) are carried over so
+        the copy is immediately usable like the original.
+
         Returns
         -------
         trf : TRFEstimator
@@ -1908,21 +1918,47 @@ class TRFEstimator(BaseEstimator):
             feature names and lag configuration as ``self``.
         """
         trf = TRFEstimator(
+            times=self.times,
             tmin=self.tmin,
             tmax=self.tmax,
             srate=self.srate,
             alpha=self.alpha,
-            feature_alphas=self.feature_alphas,
+            fit_intercept=self.fit_intercept,
+            verbose=self.verbose,
+            quadratic_reg=self.quadratic_reg,
             block_order=self.block_order,
+            loss=self.loss,
+            robust_solver=self.robust_solver,
+            robust_sigma=self.robust_sigma,
+            robust_max_iter=self.robust_max_iter,
+            robust_tol=self.robust_tol,
+            robust_damping=self.robust_damping,
+            robust_inner_solver=self.robust_inner_solver,
+            robust_inner_tol=self.robust_inner_tol,
+            robust_inner_max_iter=self.robust_inner_max_iter,
+            feature_alphas=self.feature_alphas,
+            solver=self.solver,
+            cache_lagged=self.cache_lagged,
+            max_cache_size=self.max_cache_size,
         )
         trf.coef_ = self.coef_
         trf.intercept_ = self.intercept_
         trf.feat_names_ = self.feat_names_
         trf.n_feats_ = self.n_feats_
         trf.n_chans_ = self.n_chans_
-        trf.fitted = True
+        trf.fitted = self.fitted
         trf.times = self.times
         trf.lags = self.lags
+        # Fitted diagnostics (only meaningful when fitted, but cheap to copy)
+        trf.tvals_ = self.tvals_
+        trf.pvals_ = self.pvals_
+        trf.standardized_coef_ = getattr(self, "standardized_coef_", None)
+        trf.valid_samples_ = self.valid_samples_
+        trf.robust_n_iter_ = self.robust_n_iter_
+        trf.robust_converged_ = self.robust_converged_
+        trf.robust_scale_ = self.robust_scale_
+        trf.robust_objective_ = self.robust_objective_
+        trf.all_betas = getattr(self, "all_betas", None)
         return trf
 
     def save(self, filename):

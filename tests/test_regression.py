@@ -429,6 +429,145 @@ class TestTRFEstimator:
             "Higher alpha should produce smaller coefficient norms"
         )
 
+    # ------------------------------------------------------------------
+    # copy() completeness (prerequisite for Issue #14 stats module)
+    # ------------------------------------------------------------------
+
+    def test_copy_preserves_all_constructor_kwargs(self):
+        """copy() must preserve every constructor parameter so the clone
+        can be refit identically to the original (Issue #14 prerequisite).
+
+        Introspects ``TRFEstimator.__init__`` to future-proof against new
+        parameters being silently dropped by ``copy()``.
+        """
+        import inspect
+
+        from pyeeg.models import TRFEstimator
+        from pyeeg.solvers import SVDSolver
+
+        sig = inspect.signature(TRFEstimator.__init__)
+        # All constructor params except ``self`` must appear on the instance
+        # as attributes accessible to ``copy()``.
+        param_names = [
+            p
+            for p in sig.parameters
+            if p != "self"
+        ]
+        solver = SVDSolver()
+        trf = TRFEstimator(
+            tmin=-0.2,
+            tmax=0.5,
+            srate=100.0,
+            alpha=2.0,
+            fit_intercept=False,
+            verbose=False,
+            quadratic_reg="smoothness",
+            block_order="features",
+            loss="cauchy",
+            robust_solver="least_squares",
+            robust_sigma=1.0,
+            robust_max_iter=50,
+            robust_tol=1e-4,
+            robust_damping=0.5,
+            robust_inner_solver="cg",
+            robust_inner_tol=1e-6,
+            robust_inner_max_iter=10,
+            feature_alphas=None,  # cannot combine with quadratic_reg
+            solver=solver,
+            cache_lagged=True,
+            max_cache_size=1_000_000,
+        )
+        for name in param_names:
+            assert hasattr(trf, name), (
+                f"Constructor param '{name}' is not stored as an attribute; "
+                f"copy() cannot preserve it."
+            )
+
+        # The copy must carry over every constructor param.
+        trf_copy = trf.copy()
+        for name in param_names:
+            assert hasattr(trf_copy, name), (
+                f"copy() lost constructor param '{name}'."
+            )
+            # Values must match (solver is shared by reference)
+            original_val = getattr(trf, name)
+            copied_val = getattr(trf_copy, name)
+            if isinstance(original_val, np.ndarray):
+                np.testing.assert_array_equal(copied_val, original_val)
+            elif original_val is None or isinstance(original_val, (str, int, float, bool)):
+                assert copied_val == original_val, (
+                    f"copy() changed '{name}': {original_val!r} → {copied_val!r}"
+                )
+            else:
+                # Objects (solver, etc.) compared by identity
+                assert copied_val is original_val, (
+                    f"copy() did not share '{name}' by reference"
+                )
+
+    def test_copy_preserves_fitted_state(self):
+        """copy() of a fitted TRF carries coef_, intercept_, diagnostics."""
+        from pyeeg.models import TRFEstimator
+
+        _, x, y, _, _ = _make_trf_data(seed=7)
+        x = x[:, None]
+        y = y[:, None]
+        trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=100, alpha=None)
+        trf.fit(x, y)
+        assert trf.fitted
+        assert trf.tvals_ is not None  # OLS → stats computed
+
+        trf_copy = trf.copy()
+        assert trf_copy.fitted
+        np.testing.assert_array_equal(trf_copy.coef_, trf.coef_)
+        assert trf_copy.intercept_ == trf.intercept_
+        np.testing.assert_array_equal(trf_copy.tvals_, trf.tvals_)
+        np.testing.assert_array_equal(trf_copy.pvals_, trf.pvals_)
+        np.testing.assert_array_equal(trf_copy.lags, trf.lags)
+        np.testing.assert_array_equal(trf_copy.times, trf.times)
+
+    def test_copy_refit_produces_identical_coef(self):
+        """Refitting a copy on the same data must give identical coef_."""
+        from pyeeg.models import TRFEstimator
+
+        _, x, y, _, _ = _make_trf_data(seed=99)
+        x = x[:, None]
+        y = y[:, None]
+        trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=100, alpha=5.0)
+        trf.fit(x, y)
+
+        trf_copy = trf.copy()
+        trf_copy.fit(x, y)
+        np.testing.assert_allclose(trf_copy.coef_, trf.coef_, atol=1e-12)
+
+    def test_copy_preserves_solver_and_robust_config(self):
+        """copy() of a solver/robust-configured TRF can be refit identically."""
+        from pyeeg.models import TRFEstimator
+        from pyeeg.solvers import SVDSolver
+
+        _, x, y, _, _ = _make_trf_data(seed=12)
+        x = x[:, None]
+        y = y[:, None]
+        solver = SVDSolver()
+        trf = TRFEstimator(
+            tmin=-0.1, tmax=0.3, srate=100, alpha=1.0, solver=solver
+        )
+        trf.fit(x, y)
+
+        trf_copy = trf.copy()
+        assert trf_copy.solver is solver  # shared by reference (stateless)
+        trf_copy.fit(x, y)
+        np.testing.assert_allclose(trf_copy.coef_, trf.coef_, atol=1e-12)
+
+        # Robust config
+        trf_rob = TRFEstimator(
+            tmin=-0.1, tmax=0.3, srate=100, alpha=None, loss="cauchy"
+        )
+        trf_rob.fit(x, y)
+        trf_rob_copy = trf_rob.copy()
+        assert trf_rob_copy.loss == "cauchy"
+        trf_rob_copy.fit(x, y)
+        np.testing.assert_allclose(trf_rob_copy.coef_, trf_rob.coef_, atol=1e-10)
+
 
 # ===========================================================================
 # CCA tests
