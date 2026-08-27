@@ -116,9 +116,10 @@ def phase_transfer_entropy(data, delay=None, binsize='scott'):
 
     References
     ----------
-     - [`1`_]
-
-    .. 1_: Lobier, M., Siebenhühner, F., Palva, S., & Palva, J. M. (2014). Phase transfer entropy: A novel phase-based measure for directed connectivity in networks coupled by oscillatory interactions. NeuroImage, 85, 853–872. https://doi.org/10.1016/j.neuroimage.2013.04.090
+    Lobier, M., Siebenhühner, F., Palva, S., & Palva, J. M. (2014). Phase
+    transfer entropy: A novel phase-based measure for directed connectivity
+    in networks coupled by oscillatory interactions. NeuroImage, 85, 853–872.
+    https://doi.org/10.1016/j.neuroimage.2013.04.090
 
     Notes
     -----
@@ -303,13 +304,15 @@ def wPLI(x, fs=1, nfft=None, fbands=None):
 
     References
     ----------
-    .. [1] Vinck, M., Oostenveld, R., van Wingerden, M., Battaglia, F., &
-        Pennartz, C. M. (2011). An improved index of phase-synchronization for
-        electrophysiological data in the presence of volume-conduction, noise
-        and sample-size bias. NeuroImage, 55(4), 1548–1565.
-    .. [2] FieldTrip reference implementation for variance estimation of the
-        jackknife:
-        https://github.com/fieldtrip/fieldtrip/blob/master/connectivity/ft_connectivity_wpli.m
+    Vinck, M., Oostenveld, R., van Wingerden, M., Battaglia, F., & Pennartz,
+    C. M. (2011). An improved index of phase-synchronization for
+    electrophysiological data in the presence of volume-conduction, noise and
+    sample-size bias. NeuroImage, 55(4), 1548–1565.
+    https://doi.org/10.1016/j.neuroimage.2011.01.055
+
+    FieldTrip reference implementation for variance estimation of the
+    jackknife:
+    https://github.com/fieldtrip/fieldtrip/blob/master/connectivity/ft_connectivity_wpli.m
     """
     # TODO:
     # bias = 1
@@ -341,7 +344,7 @@ def wPLI(x, fs=1, nfft=None, fbands=None):
 
 def plm(x, fband=1, fs=1, rowvar=False):
     """
-    Compute Phase Linearity Measurement (see [`1`_]).
+    Compute Phase Linearity Measurement.
 
     Parameters
     ----------
@@ -362,9 +365,8 @@ def plm(x, fband=1, fs=1, rowvar=False):
 
     References
     ----------
-    - [`1`_]
-
-    .. 1_: https://pubmed.ncbi.nlm.nih.gov/30403622/
+    Phase Linearity Measurement (PLM):
+    https://pubmed.ncbi.nlm.nih.gov/30403622/
     """
     assert fband < fs/2, "fband must be smaller than nyquist frquency."
     if rowvar:

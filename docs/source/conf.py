@@ -29,7 +29,7 @@ with open("../../pyeeg/version.py") as fp:
 # The short X.Y version
 version = version['__version__']
 # The full version, including alpha/beta/rc tags
-release = version + 'a'
+release = version
 
 
 # -- General configuration ---------------------------------------------------
@@ -47,9 +47,19 @@ extensions = [
     'sphinx.ext.coverage',
     'sphinx.ext.autosummary',
     'sphinx.ext.napoleon',
+    'sphinx.ext.intersphinx',
     'nbsphinx',
     'sphinx.ext.mathjax',
 ]
+
+# Cross-reference external documentation
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "matplotlib": ("https://matplotlib.org/stable/", None),
+    "pandas": ("https://pandas.pydata.org/docs/", None),
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

@@ -11,17 +11,9 @@ Preprocessing module
 Classes
 -------
 
-From another module, we can use the multiway CCA as a preprocessing step. Also known as hyperalignment in the literature.
+See also the :doc:`mcca` page for the multiway CCA (hyperalignment) preprocessing class.
 
-.. currentmodule:: pyeeg.mcca
-
-.. autosummary::
-   :toctree: generated/
-   :template: class.rst
-
-   mCCA
-
-Directly in :mod:`pyeeg.preprocess` one can find also the two following classes:
+Directly in :mod:`pyeeg.preprocess` one can find also the following classes:
 
 .. currentmodule:: pyeeg.preprocess
 
@@ -30,6 +22,7 @@ Directly in :mod:`pyeeg.preprocess` one can find also the two following classes:
    :template: class.rst
 
    MultichanWienerFilter
+   Whitener
 
 .. autosummary::
     :toctree: generated/

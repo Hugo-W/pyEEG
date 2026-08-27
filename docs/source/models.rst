@@ -28,15 +28,7 @@ Classes
 
 Functions
 ---------
-.. currentmodule:: pyeeg.solvers
-
-.. autosummary:: 
-    :toctree: generated/
-    :template: function.rst
-
-    _svd_regress
-    _robust_irls_regress
-    _robust_least_squares_regress
+See also the :doc:`solvers` page for the regression solver classes.
 
 .. currentmodule:: pyeeg.models
 

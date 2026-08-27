@@ -22,6 +22,40 @@ Then, from the folder containing ``pyproject.toml``:
     
     pip install . 
 
+With `uv <https://docs.astral.sh/uv/>`_ (recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The project is managed with `uv <https://docs.astral.sh/uv/>`_. If you have
+``uv`` installed, you can install and run the package with:
+
+.. code-block:: bash
+
+    uv sync
+
+which creates a virtual environment and installs the package and its core
+dependencies, or
+
+.. code-block:: bash
+
+    uv run python path/to/script.py
+
+to run a script directly without manually activating the environment.
+
+Development installation
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+To install the package in editable/developer mode with ``uv``:
+
+.. code-block:: bash
+
+    uv sync
+
+For working on the documentation, install the docs extra as well:
+
+.. code-block:: bash
+
+    uv sync --extra docs
+
 .. note::
 
     To ensure that the code you run follows your edit, you may want to install the library in *developer*
@@ -35,6 +69,28 @@ To install in developer mode:
 .. code-block:: bash
 
     pip install -e  . 
+
+Optional dependencies
+---------------------
+
+The following optional extras are defined in ``pyproject.toml``:
+
+- ``[mne]`` — installs `MNE-Python <https://mne.tools/>`_ (``mne``), the
+  standard toolbox for M/EEG data handling and analysis.
+- ``[docs]`` — installs the dependencies needed to build the documentation:
+  ``sphinx``, ``sphinx-rtd-theme``, ``nbsphinx`` and ``ipykernel``.
+- ``[full]`` — installs everything needed for both MNE-based workflows and
+  documentation builds: ``mne``, ``sphinx``, ``sphinx-rtd-theme`` and
+  ``nbsphinx``.
+- ``[exploratory-trf]`` — installs the web-server dependencies of the
+  exploratory TRF dashboard: ``flask`` (>= 2.0.0), ``werkzeug`` (>= 2.0.0) and
+  ``gunicorn`` (>= 20.0.0).
+
+Install an extra with, for example:
+
+.. code-block:: bash
+
+    pip install natmeeg[full]
 
 Generate documentation
 ----------------------

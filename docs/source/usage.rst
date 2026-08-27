@@ -90,6 +90,106 @@ row per sample and one column per channel.
     f.tight_layout()
     plt.show()
 
+CCA
+---
+
+:class:`~pyeeg.CCA_Estimator` performs canonical correlation analysis between
+a (possibly time-lagged) feature matrix ``X`` and a response matrix ``y``,
+such as EEG channels. The minimal fit API mirrors the TRF estimator.
+
+.. code-block:: python
+
+    from pyeeg import CCA_Estimator
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((1000, 4))      # (samples, features)
+    y = rng.standard_normal((1000, 8))      # (samples, channels)
+
+    cca = CCA_Estimator(tmin=0.0, tmax=0.1, srate=100)
+    cca.fit(X, y)
+    print(cca.coef_.shape)                  # (nlags, nfeats, nchans)
+
+mCCA
+----
+
+:class:`~pyeeg.mCCA` finds components shared across several datasets (for
+example, one dataset per subject) with the same number of samples but
+potentially different numbers of channels.
+
+.. code-block:: python
+
+    from pyeeg import mCCA
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    datasets = [rng.standard_normal((500, 8)), rng.standard_normal((500, 16))]
+
+    mcca = mCCA(n_components=4)
+    mcca.fit(datasets)
+    print(mcca.SCs_.shape)                  # (samples, components)
+    shared = mcca.canonical_correlate_single(datasets[0], idx=0)
+
+Connectivity
+------------
+
+Connectivity measures such as Granger causality or the weighted Phase Lag
+Index (wPLI) quantify directed or phase-based interactions between channels.
+
+.. code-block:: python
+
+    from pyeeg import connectivity
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((1000, 5))      # (samples, channels)
+
+    # Directed interactions via Granger causality
+    GC = connectivity.granger_causality(X, nlags=2)
+    print(GC.shape)                         # (nchannels, nchannels)
+
+    # Phase coupling via wPLI, averaged over the alpha band (8-13 Hz)
+    C = connectivity.wPLI(X, fs=100, fbands=(8, 13))
+    print(C.shape)                          # (nchannels, nchannels)
+
+Simulation
+----------
+
+The :mod:`pyeeg.simulate` module provides synthetic data generators, from
+simple autoregressive processes to biophysically inspired neural-mass models.
+
+.. code-block:: python
+
+    from pyeeg import simulate
+    import numpy as np
+
+    # Autoregressive process
+    x = simulate.simulate_ar(order=2, coefs=[0.5, -0.2], n=1000)
+
+    # A Hopf (Stuart-Landau) oscillator with a 10 Hz limit cycle
+    node = simulate.HopfOscillator(a=0.1, frequency=10.0, dt=0.001)
+    states, outputs = node.simulate(tmax=2.0)
+    print(outputs.shape)                    # (n_samples, 1)
+
+Whitener
+--------
+
+:class:`~pyeeg.preprocess.Whitener` linearly transforms data so that its
+covariance becomes the identity matrix (PCA or ZCA whitening).
+
+.. code-block:: python
+
+    from pyeeg.preprocess import Whitener
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((500, 8))
+
+    wh = Whitener(axis=0, zca=True).fit(X)
+    X_white = wh.transform(X)
+    print(X_white.shape)                    # (500, 8), ~identity covariance
+    X_back = wh.inverse(X_white)            # round-trip de-whitening
+
 Robust TRF fitting
 ------------------
 
