@@ -66,7 +66,8 @@ package-dir = {"pyeeg" = "pyeeg"}
 [project.optional-dependencies]
 mne = ["mne"]
 docs = ["sphinx", "sphinx-rtd-theme", "nbsphinx", "ipykernel"]
-full = ["mne", "sphinx", "sphinx-rtd-theme", "nbsphinx"]
+features = ["torch", "transformers"]
+full = ["mne", "sphinx", "sphinx-rtd-theme", "nbsphinx", "torch", "transformers"]
 exploratory-trf = [
     "flask>=2.0.0",
     "werkzeug>=2.0.0",

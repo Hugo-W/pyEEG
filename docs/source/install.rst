@@ -79,9 +79,13 @@ The following optional extras are defined in ``pyproject.toml``:
   standard toolbox for M/EEG data handling and analysis.
 - ``[docs]`` — installs the dependencies needed to build the documentation:
   ``sphinx``, ``sphinx-rtd-theme``, ``nbsphinx`` and ``ipykernel``.
-- ``[full]`` — installs everything needed for both MNE-based workflows and
-  documentation builds: ``mne``, ``sphinx``, ``sphinx-rtd-theme`` and
-  ``nbsphinx``.
+- ``[features]`` — installs the dependencies needed for the LLM-based
+  stimulus feature extraction in :mod:`pyeeg.features.llm_features`:
+  ``torch`` and ``transformers``. Required to use
+  :class:`~pyeeg.features.LLMFeatureExtractor`.
+- ``[full]`` — installs everything (MNE, documentation, and LLM feature
+  dependencies): ``mne``, ``sphinx``, ``sphinx-rtd-theme``, ``nbsphinx``,
+  ``torch`` and ``transformers``.
 - ``[exploratory-trf]`` — installs the web-server dependencies of the
   exploratory TRF dashboard: ``flask`` (>= 2.0.0), ``werkzeug`` (>= 2.0.0) and
   ``gunicorn`` (>= 20.0.0).

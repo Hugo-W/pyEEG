@@ -34,7 +34,7 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
     raise ImportError(
-        "torch is not installed. Instal torch to use this module (all optional deps installable via natmeeg[features])"
+        "torch is not installed. Install torch to use this module (all optional deps installable via natmeeg[features])"
     )
 
 
