@@ -1,8 +1,10 @@
 # Roadmap
 
-This document is the current source of truth for work on the `ai-revamp`
-branch. It replaces the former `TODO.md`, `NEXT_STEPS.md`,
-`TODO-feature-stimulus-extraction.md`, and `AI_REVAMP_GUIDE.md` files.
+This document tracks ongoing and planned work on `natMEEG` (the `pyeeg`
+import namespace). It replaces the former `TODO.md`, `NEXT_STEPS.md`,
+`TODO-feature-stimulus-extraction.md`, and `AI_REVAMP_GUIDE.md` files. The
+`ai-revamp` work has been merged to `main`; this document is kept current
+against `main`.
 
 ## Project principles
 
@@ -13,7 +15,7 @@ branch. It replaces the former `TODO.md`, `NEXT_STEPS.md`,
 - Keep documentation and examples aligned with the `pyeeg` import namespace
   and the `natMEEG` project name.
 
-## Completed on `ai-revamp`
+## Completed on `ai-revamp` (merged to `main`)
 
 - Cleaned the main Sphinx naming and project links for `natMEEG`.
 - Stabilized the public API and added `pyeeg.__all__`.
@@ -34,20 +36,29 @@ branch. It replaces the former `TODO.md`, `NEXT_STEPS.md`,
 - Added the exploratory `pyeeg.dashboard` TRF Explorer with a `uv` console
   entry point, NumPy upload validation, real TRF fitting, regularisation and
   solver controls, responsive UI, and channel-wise result overlays.
+- Added neural-mass simulation models in `pyeeg.simulate`: `NeuralMassNode`/
+  `NeuralMassNetwork` base classes, `HopfOscillator`, `Phasor`,
+  `WilsonCowan`, `Kuramoto`, `CTRNN`, plus the `JansenRit` /
+  `JansenRitExtended` / `JRNetwork` family and AR/VAR couplings.
+- Implemented banded ridge regularization (`feature_alphas` on
+  `TRFEstimator`, feature-block ordering, per-feature alphas, solver support,
+  and the `scripts/tutorials/feature_alphas_banded_ridge.ipynb` tutorial) —
+  closes Issue #18.
 
 ## Current verification
 
 Focused regression and solver tests pass. The current full suite passes:
 
 ```text
-155 passed
+214 passed
 ```
 
 The full test suite currently has collection blockers:
 
 - `pyeeg/features/llm_features.py` requires optional Torch when collected
   directly.
-- `tests/test_connectivity.py::test_plm` is still a placeholder.
+- `tests/test_connectivity.py::test_plm` is still a placeholder (`pass`); the
+  connectivity metrics (Granger, PTE, wPLI, PLM) lack deterministic coverage.
 - `tests/test_gammatone.py` is script/doctest-style and needs assertions; its
   C-extension behavior remains insufficiently covered.
 
@@ -91,14 +102,24 @@ feature/channel selection.
 
 ### 5. Add planned modeling features
 
-- Issue #18: add banded ridge regularization, including feature-block ordering,
-  per-feature alpha values, solver support, coefficient reshaping, and tests.
+- Issue #18: banded ridge regularization is implemented (`feature_alphas`,
+  feature-block ordering, per-feature alphas, solver support, tests, and a
+  tutorial); close the upstream issue after release verification.
 - Issue #17: weighted and robust TRF estimation is implemented on this branch;
   close the upstream issue after review and release verification.
 - Issue #14: design statistically appropriate permutation, bootstrap, and
   cross-subject inference for continuous naturalistic data.
 - Issue #12: decide whether a solver-pattern abstraction reduces complexity
   without obscuring the current solver API.
+
+### 6. Connectivity and simulation coverage
+
+- `pyeeg.connectivity` (Granger, PTE, wPLI, PLM, CSD) is documented but
+  undertested — replace the `test_plm` placeholder with deterministic metric
+  tests (against analytic or FieldTrip/MNE references).
+- `pyeeg.simulate` neural-mass models (Hopf, WilsonCowan, Kuramoto, CTRNN,
+  JansenRit family) are now documented; add behavioral/regression tests for
+  network coupling, `read_out`, and the `_simulate_node` shared engine.
 
 ## Documentation maintenance
 

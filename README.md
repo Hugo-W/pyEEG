@@ -17,6 +17,24 @@ You can find the [documentation here](https://hugo-w.github.io/pyEEG/).
 
 ------
 
+## Features
+
+natMEEG provides tools across the full naturalistic M/EEG analysis pipeline:
+
+- **Temporal Response Functions (TRF)** — `TRFEstimator` (`pyeeg.models`) for memory-efficient, accelerated TRF estimation from continuous signals and real-valued event features, with ridge and robust Cauchy fitting, banded ridge (`feature_alphas`), sample weighting, and pluggable solvers.
+- **Canonical Correlation Analysis** — `CCA_Estimator` (`pyeeg.cca`) with lagged/regularized CCA and visualization; `mCCA` (`pyeeg.mcca`) for multiway CCA / hyperalignment preprocessing.
+- **Connectivity** — `pyeeg.connectivity` with Granger causality, phase transfer entropy (PTE), weighted phase lag index (wPLI), phase linearity measurement (PLM), and cross-spectral density.
+- **Simulation** — `pyeeg.simulate` with AR/VAR generation and neural-mass models (Hopf oscillator, Wilson–Cowan, Kuramoto, CTRNN, Jansen–Rit and its network extension) for generating synthetic coupled dynamics and TRF test data.
+- **Feature extraction** — `pyeeg.features` for aligning stimulus annotations (TextGrid), extracting LLM-derived features (surprisal, entropy, KL divergence; requires `torch` via the `[features]` extra), syntactic features (tree depth, opening, closing), dimensionality reduction, and end-to-end encoding pipelines.
+- **Preprocessing** — `pyeeg.preprocess` with `Whitener` (PCA/ZCA), `WaveletTransform`, `MultichanWienerFilter`, filterbanks, and covariance estimators.
+- **VAR modeling** — `fit_ar` / `fit_var` (`pyeeg.models`) for autoregressive and vector autoregressive coefficient estimation.
+- **Visualization** — `pyeeg.vizu` with topomaps, filterbank plots, TRF significance overlays, and pairwise boxplots.
+- **IO** — `pyeeg.io` for EEGLAB/FieldTrip → MNE conversion and aligned word-level feature handling.
+
+See the [documentation](https://hugo-w.github.io/pyEEG/) for full API reference.
+
+------
+
 ## Installation
 
 ### Dependencies
@@ -133,6 +151,14 @@ See [examples/CCA_envelope.ipynb](docs/source/examples/CCA_envelope.ipynb)
 ### Computing Word-feature TRF
 
 See [examples/TRF_wordonsets.ipynb](docs/source/examples/TRF_wordonsets.ipynb)
+
+### Computing TRF from syntactic features
+
+See [examples/TRF_syntactic_feats.ipynb](docs/source/examples/TRF_syntactic_feats.ipynb)
+
+### Simulating TRF data
+
+See [examples/TRF_simulation_tutorial.ipynb](docs/source/examples/TRF_simulation_tutorial.ipynb)
 
 ### Working with Word vectors
 
