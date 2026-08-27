@@ -71,8 +71,10 @@ def fit_var(x, nlags=1, time_axis=0):
 
     Returns
     -------
-    betas : ndarray (nchans, nlags)
-        Coefficients of the autoregressive model.
+    betas : ndarray (nchans, nlags, nchans)
+        Coefficients of the vector autoregressive model.
+        ``betas[i, tau, j]`` is the coefficient linking channel ``j`` at lag
+        ``tau`` to the current value of channel ``i``.
     """
     if x.ndim == 1:
         time_axis = 1

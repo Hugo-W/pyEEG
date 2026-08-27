@@ -127,7 +127,7 @@ def load_ica_matrices(fname):
     -------
     weights : ndarray (ncomp x nchan)
         Unmixing matrix (form _whitened_ observed data to sources)
-    weights : ndarray (nchan x ncomp)
+    winv : ndarray (nchan x ncomp)
         Mixing matrix (form sources to _whitened_ observed data)
     sphere : ndarray (nchan x nchan)
         Sphering matrix
@@ -163,7 +163,7 @@ def eeglab2mne(fname, montage='standard_1020', event_id=None, load_ica=False):
 
     Parameters
     ----------
-    input_fname : str
+    fname : str
         Path to the .set file. If the data is stored in a separate .fdt file,
         it is expected to be in the same folder as the .set file.
     montage : str | None | instance of montage
@@ -288,7 +288,7 @@ def extract_duration_praat(fname):
 
     Parameters
     ----------
-    filepath : str
+    fname : str
         Path of audio file
 
     Returns
@@ -321,7 +321,22 @@ def extract_duration_audio(filepath):
         return (len(snd)-1)/rate
 
 def load_surprisal_values(filepath, eps=1e-12):
-    "Load surprisal values from the given file."
+    """Load surprisal values from the given file.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the file containing surprisal values, as extracted with the
+        RNNLM toolkit. If None, returns None.
+    eps : float
+        Small value added to the probabilities before taking the negative
+        logarithm, to avoid infinite values (Default: 1e-12).
+
+    Returns
+    -------
+    surprisal : ndarray
+        Negative log probability of each word, i.e. surprisal values.
+    """
     if filepath is None:
         return None
     try:
@@ -337,7 +352,27 @@ def load_surprisal_values(filepath, eps=1e-12):
     return -np.log(surprisal + eps)
 
 def load_wordfreq_values(filepath, key='frequency', unkval=111773390, normfactor=3.2137e12):
-    "Load word frequency, and returns -log of it (scaled by median value)"
+    """Load word frequency, and returns -log of it (scaled by median value).
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the file containing word counts, e.g. as extracted from Google
+        Unigrams. If None, returns None.
+    key : str
+        Name of the column containing the word counts (Default: 'frequency').
+    unkval : int
+        Value used to replace unknown word counts (i.e. entries equal to -1)
+        before transformation (Default: 111773390, global median from stories).
+    normfactor : float
+        Normalization factor, roughly equal to the total word count, used to
+        turn raw counts into probabilities (Default: 3.2137e12).
+
+    Returns
+    -------
+    wordfreq : ndarray
+        Negative log frequency (i.e. log probability) of each word.
+    """
     if filepath is None:
         return None
     csv = pd.read_csv(filepath)
@@ -364,6 +399,18 @@ def load_depth_values(filepath):
         word2   depth2  ...
 
     Note that the second format has a header line.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the file containing syntactic structure depth values. If None,
+        returns None.
+
+    Returns
+    -------
+    depth : ndarray
+        Depth values for each word, i.e. position in the syntactic structure
+        parse tree.
     """
     if filepath is None:
         return None
@@ -383,6 +430,17 @@ def load_open_values(filepath):
         word1   depth1  open1   close1  ton1    toff1
         word2   depth2  ...
 
+    Parameters
+    ----------
+    filepath : str
+        Path to the file containing syntactic structure open values. If None,
+        returns None.
+
+    Returns
+    -------
+    open : ndarray
+        Opening node values for each word, i.e. number of opening nodes at
+        each word position.
     """
     if filepath is None:
         return None
@@ -391,13 +449,24 @@ def load_open_values(filepath):
 
 def load_close_values(filepath):
     """
-    Load syntactic structure open values.
+    Load syntactic structure close values.
     Expected file format is:
 
         Word    Depth   Open    Close   ton toff
         word1   depth1  open1   close1  ton1    toff1
         word2   depth2  ...
 
+    Parameters
+    ----------
+    filepath : str
+        Path to the file containing syntactic structure close values. If None,
+        returns None.
+
+    Returns
+    -------
+    close : ndarray
+        Closing node values for each word, i.e. number of closing nodes at
+        each word position.
     """
     if filepath is None:
         return None
@@ -531,6 +600,23 @@ class AlignedSpeech:
         TODO Deprecated parameters to be removed?      
     """
     def __init__(self, onset, srate, path_audio=None, doing_copy=False):
+        """Initialize an :class:`AlignedSpeech` instance.
+
+        Parameters
+        ----------
+        onset : float
+            Value of onset of speech segment in the experiment relative to EEG
+            recording.
+        srate : float
+            Sampling rate at which EEG and speech features will be aligned.
+        path_audio : str
+            Path to audio corresponding to speech segment to be aligned
+            (Default: None).
+        doing_copy : bool
+            TODO Deprecated parameter to be removed? When True, indicates that
+            this instance is being created as a copy (e.g. by ``__add__``) and
+            audio loading is skipped.
+        """
         
         self.onset_list = [onset] # a list of onset for each speech segment
         self.srate = srate
@@ -605,6 +691,27 @@ class AlignedSpeech:
 
     def get_envelope(self, cutoff=20, method='rectify'):
         """Extract envelope from sound associated with this instance and add to it as a feature.
+
+        Parameters
+        ----------
+        cutoff : float
+            Cutoff frequency (Hz) of the low-pass filter applied to the
+            envelope (Default: 20).
+        method : str
+            Method used to extract the envelope, e.g. 'rectify'. See
+            :func:`pyeeg.utils.signal_envelope` for the list of possible
+            methods (Default: 'rectify').
+
+        Returns
+        -------
+        env : ndarray
+            The envelope signal, resampled at the sampling rate of this
+            instance (:attr:`self.srate`), and added as an 'envelope' feature.
+
+        Raises
+        ------
+        AttributeError
+            If the audio path has not been set on this instance.
         """
         if self.path_audio:
             srate, snd = wavread(self.path_audio)
@@ -618,6 +725,20 @@ class AlignedSpeech:
         """Add an existing :class:`WordLevelFeatures` instance to this :class:`AlignedSpeech` instance,
         but not simply as an object here, but actually add the aligned features...
         Hence this only work for the list of features handled by :class:`WordLevelFeatures`.
+
+        Parameters
+        ----------
+        word_feats : :class:`WordLevelFeatures`
+            Word level feature object whose features will be aligned and added
+            to this instance.
+        use_wordonsets : bool
+            Whether to also add the word onset feature (a spike at each word
+            onset) to the aligned features (Default: False).
+
+        Returns
+        -------
+        self : :class:`AlignedSpeech`
+            This instance, with the aligned word level features added.
 
         See also :func:`create_word_level_features`.
         """
@@ -647,11 +768,34 @@ class AlignedSpeech:
         * openning nodes
         * closing nodes
 
-        
+        Parameters
+        ----------
+        path_wordonsets : str
+            Path to the file with word onsets (e.g. a `*_timed.csv` file).
+        path_surprisal : str
+            Path to the file containing surprisal values as extracted with the
+            RNNLM toolkit (Default: None).
+        path_wordvectors : str
+            Path to the Word Vector file, `gensim` compatible (Default: None).
+        path_wordfrequency : str
+            Path to the file containing word counts as extracted from Google
+            Unigrams (Default: None).
+        path_syntactic : str
+            Path to the file containing syntactic features: depth, opening and
+            closing nodes (Default: None).
+        use_wordonsets : bool
+            Whether to also add the word onset feature to the aligned features
+            (Default: False).
+
+        Returns
+        -------
+        self : :class:`AlignedSpeech`
+            This instance, with the created word level features added.
+
         For any other arbitrary word level features, one should attach it "by hand" to this instance using
         :meth:`add_word_level_features` or :meth:`add_feature`.
 
-        seealso::
+        .. seealso::
             * :func:`add_feature`
             * :func:`add_word_level_features`
 
@@ -795,6 +939,47 @@ class WordLevelFeatures:
     def __init__(self, path_praat_env=None, path_surprisal=None, path_wordvectors=None,
                  path_wordfrequency=None, path_syntactic=None, path_wordonsets=None, path_transcript=None,
                  rnnlm_model=None, path_audio=None, keep_vectors=False, unk_wv='rdm'):
+        """Initialize a :class:`WordLevelFeatures` instance by loading the
+        requested word level features from disk.
+
+        Parameters
+        ----------
+        path_praat_env : str
+            Path to Praat file for envelopes (.Env files), used to extract the
+            speech duration (Default: None).
+        path_surprisal : str
+            Path to file containing surprisal values, as extracted with RNNLM
+            toolkit (Default: None).
+        path_wordvectors : str
+            Path to Word Vector file, can be binary or textual. Though for
+            text, must start with a line indicating number of words and
+            dimension (i.e. `gensim` compatible) (Default: None).
+        path_wordfrequency : str
+            Path to file containing word counts as extracted from Google
+            Unigrams (Default: None).
+        path_syntactic : str
+            Path to file containing all following syntactic features: depth in
+            syntactic structure parse, opening node, closing node
+            (Default: None).
+        path_wordonsets : str
+            Path to file with word onsets, e.g. one of the `*_timed.csv` files
+            (Default: None).
+        path_transcript : str
+            Path to actual text data of corresponding speech segment
+            (transcript) (Default: None).
+        rnnlm_model : str
+            Path to RNNLM toolkit to compute surprisal and entropy values from
+            a text (Default: None).
+        path_audio : str
+            Path to audio file, used to extract the speech duration if no Praat
+            envelope file is given (Default: None).
+        keep_vectors : bool
+            If True, will keep the full matrix of all word vectors in memory
+            along with vocabulary (see :attr:`self.wordvectors_matrix`)
+            (Default: False).
+        unk_wv : str {'skip', 'rdm', 'closest'}
+            See parameter `unk` in :func:'get_word_vectors' (Default: 'rdm').
+        """
 
         if path_praat_env:
             self.duration = extract_duration_praat(path_praat_env)
@@ -832,7 +1017,17 @@ class WordLevelFeatures:
             self.wordvectors = get_word_vectors(self.wordlist, wordvectors_gensim, unk=unk_wv)
 
     def summary(self):
-        "Print a short summary for each variables contained in the instance"
+        """Print a short summary for each variables contained in the instance.
+
+        Displays the first rows of the word level features (surprisal,
+        wordfrequency, depth, open, close, words, onsets) followed by summary
+        statistics of the numeric features.
+
+        Returns
+        -------
+        None
+            Output is printed to the standard output.
+        """
         dataframe = pd.DataFrame(dict(surprisal=self.surprisal, wordfreq=self.wordfrequency,
                                       depth=self.depth, open=self.open, close=self.close,
                                       words=self.wordlist, onsets=self.wordonsets))

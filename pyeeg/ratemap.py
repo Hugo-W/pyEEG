@@ -1,3 +1,14 @@
+"""
+Auditory rate-map / cochleagram utilities.
+
+This module provides helpers for building gammatone-derived rate maps
+(cochleograms) of audio signals. It contains functions to convert between
+frequency (Hz) and the equivalent rectangular bandwidth (ERB) rate scale,
+to generate the centre frequencies of a filterbank evenly spaced on the
+ERB scale (as used by gammatone filterbanks), and to compute the rate map
+of a signal via the compiled :func:`make_rate_map` extension.
+"""
+
 import numpy as np
 import platform
 import os
@@ -35,12 +46,68 @@ except ImportError:
     ]
 
 def erb_rate_to_hz(erb_rate):
+    """Convert an ERB-rate value (in ERB units) to frequency in Hz.
+
+    Uses the inverse of Glasberg and Moore's (1990) ERB-rate formula:
+
+    .. math::
+
+        f = \\frac{10^{\\text{erb\\_rate} / 21.4} - 1}{4.37 \\times 10^{-3}}
+
+    Parameters
+    ----------
+    erb_rate : float
+        ERB-rate value (in ERB units).
+
+    Returns
+    -------
+    hz : float or ndarray
+        Corresponding frequency in Hertz.
+    """
     return (10**(erb_rate / 21.4) - 1.0) / 4.37e-3
 
 def hz_to_erb_rate(hz):
+    """Convert a frequency in Hz to ERB-rate (in ERB units).
+
+    Uses Glasberg and Moore's (1990) ERB-rate formula:
+
+    .. math::
+
+        \\text{erb\\_rate} = 21.4 \\log_{10}(4.37 \\times 10^{-3} f + 1)
+
+    Parameters
+    ----------
+    hz : float
+        Frequency in Hertz.
+
+    Returns
+    -------
+    erb_rate : float
+        Corresponding ERB-rate value (in ERB units).
+    """
     return 21.4 * np.log10(4.37e-3 * hz + 1.0)
 
 def generate_cfs(lowcf, highcf, numchans):
+    """Generate centre frequencies evenly spaced on the ERB-rate scale.
+
+    The centre frequencies are computed by linearly spacing the ERB-rate
+    between ``lowcf`` and ``highcf`` and mapping back to Hz, which matches
+    the channel placement used by gammatone filterbanks.
+
+    Parameters
+    ----------
+    lowcf : float
+        Centre frequency of the lowest channel in Hz.
+    highcf : float
+        Centre frequency of the highest channel in Hz.
+    numchans : int
+        Number of channels in the filterbank.
+
+    Returns
+    -------
+    cfs : ndarray (numchans,)
+        Array of centre frequencies in Hz.
+    """
     low_erb = 21.4 * np.log10(4.37e-3 * lowcf + 1.0)
     high_erb = 21.4 * np.log10(4.37e-3 * highcf + 1.0)
     erb_space = (high_erb - low_erb) / (numchans - 1)
@@ -53,8 +120,8 @@ def make_rate_map(x, fs, lowcf, highcf, numchans, frameshift, ti, compression):
     The rate map is a matrix where each row corresponds to a frequency channel
     and each column corresponds to a time frame.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     x : array_like
         Input signal.
     fs : int
@@ -72,13 +139,13 @@ def make_rate_map(x, fs, lowcf, highcf, numchans, frameshift, ti, compression):
     compression : str
         Type of compression ['cuberoot', 'log', 'none'] (e.g., 'cuberoot').
 
-    Returns:
-    --------
+    Returns
+    -------
     ratemap : ndarray
         The computed rate map.
 
-    Example:
-    --------
+    Example
+    -------
     ratemap = make_rate_map(x, 8000, 50, 3500, 32, 10, 8, 'cuberoot')
     """
     x = np.asarray(x, dtype=np.float64)

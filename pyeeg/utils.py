@@ -88,6 +88,20 @@ def poisson_onsets_fixed_N(N, dur=1.0, seed=None):
 
     Uniformly distribute them over [0,dur], which matches the order statistics of the Poisson process.
 
+    Parameters
+    ----------
+    N : int
+        Number of events to generate.
+    dur : float
+        Duration of the process (in seconds, default 1.0)
+    seed : int, optional
+        Seed for the random number generator (default is None)
+
+    Returns
+    -------
+    onsets : ndarray
+        Sorted array of onsets (in seconds)
+
     .. seealso::
         :func:`poisson_onsets`, :func:`poisson_onsets_fixed_N`
     """
@@ -106,6 +120,11 @@ def print_title(msg, line='=', frame=True):
         Which character to use to underline (default "=")
     frame : bool
         Whether to frame or only underline title
+
+    Returns
+    -------
+    None
+        This function only prints to stdout and returns nothing.
     """
     print((line*len(msg)+"\n" if frame else "") + msg + '\n'+line*len(msg)+'\n')
 
@@ -397,6 +416,10 @@ def signal_envelope(signal, srate, cutoff=20., method='hilbert', comp_factor=1./
     resample : float (default 125Hz)
         New sampling rate of envelope (must be 2*cutoff < .. <= srate)
         Explicitly set to False or None to skip resampling
+    verbose : int or str, optional (default None)
+        Logging level used for the progress message. Can be an integer
+        (e.g. 20 for INFO) or a level name (e.g. 'INFO'). If None,
+        defaults to INFO level (20).
 
     Returns
     -------
@@ -500,7 +523,20 @@ def _is_1d(arr):
     return np.prod(arr.shape) == max(arr.shape)
 
 def is_pos_def(A):
-    """Check if matrix is positive definite
+    """Check if matrix is positive definite.
+
+    A matrix is positive definite if it is Hermitian and admits a Cholesky
+    decomposition.
+
+    Parameters
+    ----------
+    A : ndarray
+        Square matrix to check.
+
+    Returns
+    -------
+    bool
+        True if ``A`` is positive definite, False otherwise.
 
     Ref: https://stackoverflow.com/a/44287862/5303618
     """
@@ -514,7 +550,34 @@ def is_pos_def(A):
         return False
 
 def rolling_func(func, data, winsize=2, overlap=1, padding=True):
-    """Apply a function on a rolling window on the data
+    """Apply a function on a rolling window on the data.
+
+    The data is first chunked into (overlapping) windows with
+    :func:`chunk_data`, then ``func`` is applied to each window along the
+    channel dimension.
+
+    Parameters
+    ----------
+    func : callable
+        Function to apply to each window. It receives a 2D array of shape
+        (winsize, nchannels) and must return a scalar or array.
+    data : ndarray (nsamples, nchannels)
+        Data to compute rolling statistics on.
+    winsize : int
+        Number of samples in one window (default 2).
+    overlap : int
+        Number of samples overlapping between consecutive windows
+        (0 means no overlap, default 1).
+    padding : bool
+        Whether to pad the data so that all samples are covered by a window
+        (default True). Currently accepted for API compatibility but ignored:
+        the implementation always passes ``padding=True`` to
+        :func:`chunk_data`.
+
+    Returns
+    -------
+    out : list
+        List of ``func`` results, one per window.
     """
     #TODO: check when Parallel()(delayed(func)(x) for x in rolled_array)
     # becomes advantageous, because for now it seemed actually slower...
@@ -522,7 +585,23 @@ def rolling_func(func, data, winsize=2, overlap=1, padding=True):
     return [func(x) for x in chunk_data(data, win_as_samples=True, window_size=winsize, overlap_size=overlap, padding=True).swapaxes(1, 2)]
 
 def moving_average(data, winsize=2):
-    """#TODO: pad before calling chunk_data?
+    """Compute the moving average of the data using overlapping windows.
+
+    The data is chunked into windows of size ``winsize`` with an overlap of
+    ``winsize - 1`` samples (i.e. a step of 1 sample), and the mean over
+    each window is returned.
+
+    Parameters
+    ----------
+    data : ndarray (nsamples, nchannels) or (nsamples,)
+        Data to average.
+    winsize : int
+        Number of samples in one window (default 2).
+
+    Returns
+    -------
+    avg : ndarray (num_windows, nchannels) or (num_windows,)
+        Moving average of the data, one value per window.
     """
     return chunk_data(data, window_size=winsize, overlap_size=(winsize-1)).mean(1)
 
@@ -537,9 +616,9 @@ def shift_array(arr, win=2, overlap=0, padding=False, axis=0):
         Number of samples in one window
     overlap : int
         Number of samples overlapping (0 means no overlap)
-    pad : function
-        padding function to be applied to data (if False
-        will throw away data)
+    padding : bool
+        Whether to pad the array (if False will throw away data).
+        Currently always raises NotImplementedError (see Notes).
     axis : int
         Axis on which to apply the rolling window
 
@@ -581,7 +660,35 @@ def shift_array(arr, win=2, overlap=0, padding=False, axis=0):
     return as_strided(arr, (win, n_samples - win + 1), (arr.itemsize, arr.itemsize))
 
 def chunk_data(data, window_size, overlap_size=0, padding=False, win_as_samples=True):
-    """Nd array version of :func:`shift_array`
+    """Nd array version of :func:`shift_array`.
+
+    Splits the data into (overlapping) windows along the first axis using
+    the NumPy `as_strided` trick. `win_as_samples` controls the ordering of
+    the first two axes of the output.
+
+    Parameters
+    ----------
+    data : ndarray (nsamples, nchannels) or (nsamples,)
+        Data to chunk. Must be at most 2D.
+    window_size : int
+        Number of samples in one window.
+    overlap_size : int
+        Number of samples overlapping between consecutive windows
+        (0 means no overlap, default 0).
+    padding : bool
+        Whether to edge-pad the data so that all samples are covered by a
+        window (default False). If False, trailing samples that do not fit
+        in a full window are dropped.
+    win_as_samples : bool
+        If True (default), the output has shape (num_windows, window_size,
+        nchannels); if False, the output has shape (window_size,
+        num_windows, nchannels).
+
+    Returns
+    -------
+    chunks : ndarray
+        View of the data reshaped into overlapping windows. The exact shape
+        depends on ``win_as_samples`` (see above).
 
     Notes
     -----
@@ -669,6 +776,23 @@ def design_lagmatrix(x, nlags=1, time_axis=0):
     Design a matrix of lagged time series.
     This is a helper function for autoregressive models estimation (so it will design a matrix of its own signal
     and will not use lag 0, only negative lag, i.e. to use for AR models and not ARMA).
+
+    Parameters
+    ----------
+    x : ndarray (nsamples, nchans) or (nsamples, )
+        Time series to lag.
+    nlags : int
+        Number of lags to use in the model (model order, default 1).
+    time_axis : int
+        Axis of the time series (0 or 1, default 0).
+
+    Returns
+    -------
+    X : ndarray (nsamples-nlags, nlags, nchans)
+        Matrix of lagged time series. ``X[t, i, j]`` is the value of
+        channel ``j`` at lag ``i+1`` (i.e. ``i+1`` samples in the past)
+        for observation ``t``. If ``x`` is 1D, the channel dimension is
+        squeezed out.
     """
     if x.ndim == 1:
         time_axis = 1
@@ -695,6 +819,11 @@ def log_likelihood_lm(y, X, beta):
     beta : array_like
         The parameters of the model. Shape (p, k), with k number of dependent variables.
 
+    Returns
+    -------
+    log_likelihood : float
+        Log likelihood of the linear model given the data and the parameters.
+
     """
     n = len(y)
     residuals = y - X @ beta
@@ -708,13 +837,73 @@ def log_likelihood_lm(y, X, beta):
     return log_likelihood
 
 def sigmoid(x, rmax=1, beta=1, x0=0):
+    """Logistic sigmoid function.
+
+    .. math::
+
+        f(x) = \\frac{r_{max}}{1 + \\exp(\\beta (x_0 - x))}
+
+    Parameters
+    ----------
+    x : float or ndarray
+        Input value(s).
+    rmax : float
+        Maximum value of the sigmoid (default 1).
+    beta : float
+        Slope (steepness) of the sigmoid (default 1).
+    x0 : float
+        Midpoint (inflection point) of the sigmoid (default 0).
+
+    Returns
+    -------
+    out : float or ndarray
+        Sigmoid of the input value(s), ranging between 0 and ``rmax``.
+    """
     return rmax / (1 + np.exp(beta*(x0-x)))
 
 def sigmoid_derivative(x, rmax=1, beta=1, x0=0):
+    """Derivative of the logistic sigmoid function.
+
+    .. math::
+
+        f'(x) = \\beta \\, f(x) \\, (1 - f(x))
+
+    where :math:`f` is the logistic sigmoid (see :func:`sigmoid`).
+
+    Parameters
+    ----------
+    x : float or ndarray
+        Input value(s).
+    rmax : float
+        Maximum value of the sigmoid (default 1).
+    beta : float
+        Slope (steepness) of the sigmoid (default 1).
+    x0 : float
+        Midpoint (inflection point) of the sigmoid (default 0).
+
+    Returns
+    -------
+    out : float or ndarray
+        Derivative of the sigmoid evaluated at the input value(s).
+    """
     return beta * sigmoid(x, rmax, beta, x0) * (1 - sigmoid(x, rmax, beta, x0))
 
 def mem_check(units='Gb'):
-    "Get available RAM"
+    """Get available RAM.
+
+    Parameters
+    ----------
+    units : str, optional
+        Unit in which to report the available memory. Valid choices are
+        'GB', 'MB' and 'KB' (case-insensitive). If an unrecognised unit is
+        passed, the available memory is returned in bytes and a message is
+        printed (default 'Gb').
+
+    Returns
+    -------
+    available : float
+        Available memory expressed in the requested unit.
+    """
     stats = psutil.virtual_memory()
     units = units.lower()
     if units == 'gb':

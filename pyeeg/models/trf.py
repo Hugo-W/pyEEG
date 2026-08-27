@@ -41,6 +41,72 @@ class TRFEstimator(BaseEstimator):
     the coefficients of the TRF.
 
 
+    Parameters
+    ----------
+    times : tuple of float
+        Time-lags (in seconds) at which to compute the TRF coefficients.
+        Used when ``tmin`` and ``tmax`` are not given.
+    tmin : float or None
+        Minimum lag in seconds. When both ``tmin`` and ``tmax`` are given,
+        lags span from ``tmin`` to ``tmax``.
+    tmax : float or None
+        Maximum lag in seconds.
+    srate : float
+        Sampling rate.
+    alpha : float, 1d-array, or None
+        Regularisation strength. An array fits several regularisation
+        values at once (requires :class:`pyeeg.solvers.SVDSolver`; see
+        :meth:`xfit`). When ``quadratic_reg`` is given, ``alpha`` scales
+        the quadratic matrix and defaults to 1; otherwise ``None`` means
+        unregularized (plain least squares).
+    fit_intercept : bool
+        Whether a column of ones should be added to the design matrix to
+        fit an intercept.
+    verbose : bool
+        Whether to log progress information.
+    quadratic_reg : str, ndarray, or None
+        Quadratic regularization: a ``'smoothness'``/``'laplacian'`` string
+        or a custom matrix. Replaces the L2 (``alpha``) regularization; see
+        :meth:`_build_quadratic_regularizer`.
+    block_order : str
+        Ordering of the lagged columns: ``'lags'`` or ``'features'``.
+    loss : str
+        Loss function: ``'linear'`` (ordinary least squares / ridge) or
+        ``'cauchy'`` (robust fitting).
+    robust_solver : str
+        Solver used for robust fitting: ``'irls'`` (default) or
+        ``'least_squares'`` (SciPy nonlinear Cauchy solver).
+    robust_sigma : float or None
+        Scale parameter of the Cauchy loss; when ``None`` (default), the
+        scale is estimated from the data (median absolute deviation).
+    robust_max_iter : int
+        Maximum number of iterations for the IRLS robust solver.
+    robust_tol : float
+        Convergence tolerance for the IRLS robust solver.
+    robust_damping : float
+        Damping factor in ``(0, 1]`` applied to the IRLS updates.
+    robust_inner_solver : str
+        Inner linear solver used by IRLS: ``'svd'`` or ``'cg'``.
+    robust_inner_tol : float
+        Tolerance for the inner linear solver.
+    robust_inner_max_iter : int or None
+        Maximum number of iterations for the inner solver.
+    feature_alphas : 1d-array or None
+        Optional per-feature ridge strengths; each value is repeated over
+        all lags following ``block_order``. Cannot be combined with
+        ``quadratic_reg`` or with an ``alpha`` path.
+    solver : Solver or None
+        Optional :class:`pyeeg.solvers.Solver` instance for dependency
+        injection; when ``None`` the estimator auto-selects the solver
+        based on ``loss``, ``alpha``, and ``quadratic_reg``.
+    cache_lagged : bool
+        Whether to cache the lagged design matrix so repeated
+        :meth:`fit` calls with the same ``X`` skip re-lagging. See
+        :meth:`clear_cache`.
+    max_cache_size : int
+        Maximum size (in bytes) of the lagged-X cache.
+
+
     Attributes
     ----------
     lags : 1d-array
@@ -154,6 +220,10 @@ class TRFEstimator(BaseEstimator):
         cache_lagged=False,
         max_cache_size=1_000_000_000,
     ):
+        """Initialize the TRF estimator.
+
+        See the class docstring for the full description of all parameters.
+        """
 
         if block_order not in ("lags", "features"):
             raise ValueError("block_order must be 'lags' or 'features'")
@@ -399,7 +469,29 @@ class TRFEstimator(BaseEstimator):
         return np.asarray(self.quadratic_reg) * self.alpha
 
     def _fit_robust(self, X, y, M):
-        """Fit the configured Cauchy-loss model and store convergence metadata."""
+        """Fit the configured robust (Cauchy-loss) model.
+
+        Dispatches to ``_robust_irls_regress`` or
+        ``_robust_least_squares_regress`` depending on
+        ``self.robust_solver``, and stores convergence metadata
+        (``robust_n_iter_``, ``robust_converged_``, ``robust_scale_``,
+        ``robust_objective_``) on the estimator.
+
+        Parameters
+        ----------
+        X : ndarray (nsamples, nfeats)
+            Design matrix (lagged, intercept column already added).
+        y : ndarray (nsamples, nchans)
+            EEG data.
+        M : ndarray or None
+            Quadratic regularization matrix in solver column order, or
+            ``None`` when no quadratic regularization is requested.
+
+        Returns
+        -------
+        betas : ndarray (nfeats, nchans)
+            Fitted regression coefficients in solver column order.
+        """
         if self.robust_solver == "least_squares":
             if self.use_regularisation:
                 raise ValueError(
@@ -1014,12 +1106,21 @@ class TRFEstimator(BaseEstimator):
         Plot the score against different alphas to visualise effect of
         regularisation.
 
+        Uses :meth:`multialpha_score` and marks the best regularisation
+        value(s) with a star. The estimator must have been fitted with an
+        array of several ``alpha`` values at once.
+
         Parameters
         ----------
-        X : TYPE
-            DESCRIPTION.
-        y : TYPE
-            DESCRIPTION.
+        X : ndarray or list of ndarray
+            Feature matrix (already lagged or not) used to score the
+            models. A list of segments is accepted, in which case scores
+            are averaged across segments.
+        y : ndarray or list of ndarray
+            EEG data, shape (nsamples, nchans) for a single subject or
+            (nsubjects, nsamples, nchans) for several subjects. When
+            ``y`` is 3-dimensional, the best alpha is searched *per
+            subject* and each peak is marked individually.
 
         Returns
         -------
@@ -1052,6 +1153,29 @@ class TRFEstimator(BaseEstimator):
             )
 
     def multialpha_score(self, X, y):
+        """Score the fitted multi-alpha models against held-out data.
+
+        Computes the per-channel correlation between the data predicted by
+        the coefficients stored in ``all_betas`` (one solution per alpha)
+        and the true target ``y``. The estimator must have been fitted with
+        an array of several ``alpha`` values at once.
+
+        Parameters
+        ----------
+        X : ndarray or list of ndarray
+            Feature matrix (already lagged or not). A list of segments is
+            accepted and must match ``y`` in length; scores are averaged
+            across segments.
+        y : ndarray or list of ndarray
+            EEG data, shape (nsamples, nchans) for a single subject or
+            (nsubjects, nsamples, nchans) for several subjects.
+
+        Returns
+        -------
+        scores : ndarray
+            Array of shape (nsegments_or_subjects, n_alphas, n_chans)
+            containing the per-channel correlation score for each alpha.
+        """
         assert hasattr(self, "all_betas"), (
             "TRF must be fitted with several regularisation values alpha at once."
         )
@@ -1119,6 +1243,41 @@ class TRFEstimator(BaseEstimator):
         User is expected to re-fit TRF fr each subject using their best individual alpha.
 
         For a single subject (y is 2-dimensional), the TRF stored is the one with best alpha.
+
+        Parameters
+        ----------
+        X : ndarray (nsamples, nfeats)
+            Array of features (time-lagged or not). If not lagged, the
+            second dimension must be ``nfeats``; if already lagged, it
+            must be ``nfeats * nlags``.
+        y : ndarray
+            EEG data, shape (nsamples, nchans) for a single subject or
+            (nsubjects, nsamples, nchans) for several subjects.
+        n_splits : int
+            Number of K-fold splits to use for cross-validation. Default: 5.
+        lagged : bool
+            Whether the ``X`` matrix has been previously lagged.
+            Default: False.
+        drop : bool
+            Whether to drop non-valid samples (if False, non-valid samples
+            are filled with 0.). Default: True.
+        feat_names : list
+            Names of features being fitted. Must be of length ``nfeats``.
+        plot : bool
+            Whether to plot the score against the different alphas.
+            Default: False.
+        verbose : bool
+            Whether to log progress information. Default: False.
+
+        Returns
+        -------
+        scores : ndarray
+            Cross-validation scores, shape (n_splits, n_subjects_or_1,
+            n_alphas, n_chans).
+        best_alphas : ndarray or float
+            Best regularisation value found for each subject. A 1d-array
+            (one per subject) when ``y`` is 3-dimensional, or a float for
+            a single subject.
 
         Notes
         -----
@@ -1393,6 +1552,14 @@ class TRFEstimator(BaseEstimator):
             Default is to use all features.
         ax : array of axes (flatten)
             list of subaxes
+        spatial_colors : bool
+            Whether to color the butterfly lines according to the spatial
+            position of the channels (requires ``info``). Default: False.
+        info : :class:`mne.Info` or None
+            Info instance from MNE, used for spatial coloring or for
+            plotting interactively.
+        picks : list of int, optional
+            Channel indices to plot when ``info`` is given.
         plot_kws : ``**dict``
             Parameters to pass to :func:`plt.plot` (so that you can control the line style, color, etc...)
         **kwargs : ``**dict``
@@ -1509,6 +1676,19 @@ class TRFEstimator(BaseEstimator):
         return fig
 
     def _select_time_lag(self, indices):
+        """Return a copy of the TRF restricted to a subset of time-lags.
+
+        Parameters
+        ----------
+        indices : int or array-like of int
+            Index (or indices) of the lags to keep.
+
+        Returns
+        -------
+        trf : TRFEstimator
+            New fitted instance whose ``coef_``, ``times`` and ``lags``
+            are restricted to the selected lags.
+        """
         trf = self.copy()
         trf.coef_ = self.coef_[indices, :, :]
         trf.times = self.times[indices]
@@ -1516,6 +1696,20 @@ class TRFEstimator(BaseEstimator):
         return trf
 
     def _select_features(self, indices):
+        """Return a new TRF instance restricted to a subset of features.
+
+        Parameters
+        ----------
+        indices : int or list of int
+            Index (or indices) of the features to keep.
+
+        Returns
+        -------
+        trf : TRFEstimator
+            New fitted instance whose ``coef_`` and ``feat_names_`` (and
+            the per-feature ``feature_alphas``, if any) are restricted to
+            the selected features.
+        """
         selected_feature_alphas = (
             self.feature_alphas[indices] if self.feature_alphas is not None else None
         )
@@ -1541,6 +1735,18 @@ class TRFEstimator(BaseEstimator):
         """
         Extract a sub-part of TRF instance as a new TRF instance (useful for plotting only some features...).
         If a float, or an array of floats is supplied, will return a new TRF instance with only the corresponding time-lags.
+
+        Parameters
+        ----------
+        feats : int, list of int, float, list of float, or str
+            Feature index/indices or feature name(s) to extract, or a
+            time-lag (in seconds) / array of time-lags to extract.
+
+        Returns
+        -------
+        trf : TRFEstimator
+            New fitted instance restricted to the selected features or
+            time-lags.
         """
         # Argument check
         integer_indices = isinstance(feats, int) or (
@@ -1629,7 +1835,24 @@ class TRFEstimator(BaseEstimator):
             return obj
 
     def __add__(self, other_trf):
-        "Make available the '+' operator. Will simply add coefficients. Be mindful of dividing by the number of elements later if you want the true mean."
+        """Make available the '+' operator.
+
+        Adds the coefficients (``coef_`` and ``intercept_``) of two fitted
+        TRF estimators element-wise and returns a new estimator. Both TRFs
+        must have the same number of features and channels. Note that the
+        result is a *sum* — divide by the number of elements later if you
+        want the true mean (see :meth:`__truediv__`).
+
+        Parameters
+        ----------
+        other_trf : TRFEstimator
+            Fitted TRF instance to add to ``self``.
+
+        Returns
+        -------
+        trf : TRFEstimator
+            New fitted instance with summed coefficients.
+        """
         assert (
             other_trf.n_feats_ == self.n_feats_ and other_trf.n_chans_ == self.n_chans_
         ), "Both TRF objects must have the same number of features and channels"
@@ -1652,7 +1875,22 @@ class TRFEstimator(BaseEstimator):
         return trf
 
     def __truediv__(self, scalar):
-        "Make available the '/' operator. Will simply divide coefficients by scalar (useful for averaging)."
+        """Make available the '/' operator.
+
+        Divides the coefficients (``coef_`` and ``intercept_``) of the
+        fitted TRF by a scalar and returns a new estimator (useful for
+        averaging, e.g. ``(trf1 + trf2) / 2``).
+
+        Parameters
+        ----------
+        scalar : int or float
+            Scalar to divide the coefficients by. Must be non-zero.
+
+        Returns
+        -------
+        trf : TRFEstimator
+            New fitted instance with scaled coefficients.
+        """
         assert isinstance(scalar, (int, float)), "Can only divide by scalar"
         assert scalar != 0, "Cannot divide by zero"
         trf = self.copy()
@@ -1661,6 +1899,14 @@ class TRFEstimator(BaseEstimator):
         return trf
 
     def copy(self):
+        """Return a copy of the estimator.
+
+        Returns
+        -------
+        trf : TRFEstimator
+            New fitted instance with the same coefficients, intercept,
+            feature names and lag configuration as ``self``.
+        """
         trf = TRFEstimator(
             tmin=self.tmin,
             tmax=self.tmax,
@@ -1693,8 +1939,8 @@ class TRFEstimator(BaseEstimator):
         -------
         None.
 
-        Raise
-        -----
+        Raises
+        ------
         AssertionError: if trf is empty (not fitted).
         """
         assert self.fitted, "Fit TRF before saving it."
