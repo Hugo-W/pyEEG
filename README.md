@@ -1,5 +1,9 @@
 # natMEEG - Naturalistic M/EEG data analysis
 
+<div align="center">
+  <img src="docs/source/img/natmeeg_logo_fulltransparent.png" width="200" alt="natMEEG logo">
+</div>
+
 [![PyPI version](https://badge.fury.io/py/natmeeg.svg)](https://badge.fury.io/py/natmeeg)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22081524.svg)](https://doi.org/10.5281/zenodo.22081524)
 
