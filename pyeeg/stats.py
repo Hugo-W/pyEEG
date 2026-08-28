@@ -945,8 +945,17 @@ def permutation_test_trf(
         Z = all_maps / sd_safe[None, ...]
         Z[:, zero_var_stat] = 0.0
 
-        # FWE: max|Z| per map
-        z_max = np.max(np.abs(Z.reshape(Z.shape[0], -1)), axis=1)
+        # FWE: max-stat per map, honoring family_mask and tails
+        # Mask non-family coordinates to 0 before computing max
+        Z_masked = Z.copy()
+        Z_masked[:, ~family_mask] = 0.0
+
+        if tails == "two-sided":
+            z_max = np.max(np.abs(Z_masked.reshape(Z_masked.shape[0], -1)), axis=1)
+        elif tails == "positive":
+            z_max = np.max(Z_masked.reshape(Z_masked.shape[0], -1), axis=1)
+        elif tails == "negative":
+            z_max = np.min(Z_masked.reshape(Z_masked.shape[0], -1), axis=1)
         null_max_stats = z_max[1:]  # null max-stats
 
         # Plus-one p-values from normalized ensemble
@@ -991,10 +1000,11 @@ def _resolve_family(family, shape):
     if isinstance(family, str):
         if family == "global":
             return np.ones(shape, dtype=bool)
-        elif family == "per_channel":
-            return np.ones(shape, dtype=bool)  # same as global for max-stat
-        elif family == "per_feature":
-            return np.ones(shape, dtype=bool)  # same as global for max-stat
+        elif family in ("per_channel", "per_feature"):
+            raise NotImplementedError(
+                f"family='{family}' is not yet implemented. Use 'global' "
+                f"or a custom boolean ndarray mask."
+            )
         else:
             raise ValueError(f"Unknown family: {family!r}")
     elif isinstance(family, np.ndarray):
@@ -1424,8 +1434,12 @@ def cluster_based_permutation_test(
         Multiplicity family (same as ``permutation_test_trf``).
     tails : {"two-sided", "positive", "negative"}
         Tail of the test.
-    stat : {"zscore", "t", "coef", "perm_norm"}
-        Statistic (same as ``permutation_test_trf``).
+    stat : {"zscore", "t", "coef"}
+        Statistic. Note: ``"perm_norm"`` is not supported for cluster-based
+        testing because the two-pass ensemble normalization requires the
+        full null distribution, which is incompatible with the cluster
+        test's separate null-map collection. Use ``permutation_test_trf``
+        with ``stat="perm_norm"`` for pointwise FWE instead.
     n_jobs, seed, allow_robust, weights, lagged, fade_edges, fade_time
         See ``permutation_test_trf``.
 
@@ -1433,6 +1447,13 @@ def cluster_based_permutation_test(
     -------
     result : ClusterResult
     """
+    if stat == "perm_norm":
+        raise ValueError(
+            "stat='perm_norm' is not supported for cluster_based_permutation_test. "
+            "The two-pass ensemble normalization is incompatible with cluster "
+            "null-map collection. Use permutation_test_trf with stat='perm_norm' "
+            "for pointwise FWE, or use stat='zscore'/'t'/'coef' for clustering."
+        )
     # --- resolve threshold ---
     # Need stat map shape to build adjacency, so run the permutation test first
     # and extract the observed stat map, then do clustering on top.
@@ -1705,6 +1726,14 @@ def bootstrap_ci_trf(
         )
     if stat not in ("zscore", "coef"):
         raise ValueError(f"stat must be 'zscore' or 'coef' for bootstrap, got {stat!r}.")
+    if method != "circular":
+        raise ValueError(f"method must be 'circular', got {method!r}.")
+    if interval != "percentile":
+        raise ValueError(f"interval must be 'percentile', got {interval!r}.")
+    if not (0 < alpha < 1):
+        raise ValueError(f"alpha must be in (0, 1), got {alpha}.")
+    if n_boot < 1:
+        raise ValueError(f"n_boot must be >= 1, got {n_boot}.")
     if trf.loss == "cauchy":
         raise ValueError(
             "Robust loss (Cauchy) bootstrap refits are expensive. Use OLS or ridge."
@@ -2063,7 +2092,14 @@ class TRFAnalyzer:
 
     Wraps a (fitted) TRFEstimator + its X, y and chains the stats methods.
 
-    Not yet implemented — see plan v6 §6.
+    Parameters
+    ----------
+    trf : TRFEstimator
+        Fitted or configured TRF estimator.
+    X : ndarray or list of ndarray, optional
+        Stimulus features (stored for method calls).
+    y : ndarray or list of ndarray, optional
+        Response (stored for method calls).
     """
 
     def __init__(self, trf, X=None, y=None):

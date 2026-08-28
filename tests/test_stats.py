@@ -929,6 +929,22 @@ class TestClusterBasedTest:
         )
         assert result.adjacency_layout == "none"
 
+    def test_perm_norm_rejected(self):
+        """stat='perm_norm' should be rejected for cluster test."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        with pytest.raises(ValueError, match="not supported"):
+            cluster_based_permutation_test(
+                trf, x, y, n_perm=5, seed=42, stat="perm_norm", threshold=0.5,
+            )
+
+    def test_per_channel_family_rejected(self):
+        """family='per_channel' should raise NotImplementedError."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        with pytest.raises(NotImplementedError, match="not yet implemented"):
+            permutation_test_trf(trf, x, y, n_perm=5, seed=42, family="per_channel")
+
     def test_power_detects_signal(self):
         """With a true TRF and sufficient data, cluster test should find clusters."""
         x, y, _, _ = _make_trf_data(dur=60, noise=0.05)
