@@ -769,6 +769,106 @@ class TestFindClusters:
         m = _max_cluster_mass(stat, threshold=0.5, adj=adj, tails="two-sided")
         assert m == 0.0
 
+    def test_two_sided_adjacent_opposite_signs_separate(self):
+        """Adjacent opposite-sign supra-threshold points must NOT merge."""
+        adj = _build_adjacency("lags", (5, 1, 1))
+        # Index 0: +3, index 1: -3 (adjacent, both above threshold)
+        stat = np.array([3.0, -3.0, 0.0, 0.0, 0.0])
+        clusters = _find_clusters(stat, threshold=1.0, adj=adj, tails="two-sided")
+        # Must produce 2 separate clusters, not 1 merged
+        assert len(clusters) == 2
+        pos = [c for c in clusters if c[0] > 0]
+        neg = [c for c in clusters if c[0] < 0]
+        assert len(pos) == 1
+        assert len(neg) == 1
+        assert pos[0][2] == 3.0  # mass = 3
+        assert neg[0][2] == -3.0  # mass = -3
+
+
+class TestCloneTrfNoneOverride:
+    def test_fit_intercept_none_preserves_original(self):
+        """_clone_trf with fit_intercept=None must preserve the original value."""
+        from pyeeg.stats import _clone_trf
+        trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=100, alpha=None,
+                          fit_intercept=True)
+        clone = _clone_trf(trf, fit_intercept=None)
+        assert clone.fit_intercept is True  # preserved, not overwritten with None
+
+    def test_fit_intercept_false_overrides(self):
+        """_clone_trf with fit_intercept=False must override."""
+        from pyeeg.stats import _clone_trf
+        trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=100, alpha=None,
+                          fit_intercept=True)
+        clone = _clone_trf(trf, fit_intercept=False)
+        assert clone.fit_intercept is False
+
+    def test_jackknife_coef_preserves_intercept(self):
+        """jackknife with stat='coef' should preserve the user's fit_intercept."""
+        rng = np.random.default_rng(42)
+        X = [rng.standard_normal((200, 1)) for _ in range(10)]
+        Y = [rng.standard_normal((200, 1)) for _ in range(10)]
+        trf = TRFEstimator(tmin=-0.2, tmax=0.5, srate=100, alpha=None,
+                          fit_intercept=True)
+        # Manual fit with intercept
+        trf.fit(X, Y)
+        # Jackknife with stat='coef'
+        result = jackknife_se_trf(trf, X, Y, stat="coef")
+        # The full-data coef should match the user's TRF fit (with intercept)
+        np.testing.assert_allclose(result.coef, trf.coef_, atol=1e-10)
+
+
+class TestPlusOnePvalsNegativeTail:
+    def test_negative_tail_pval(self):
+        """Negative tail: obs=-3, null maxes (most negative) = [-1, -2, -4].
+        More extreme = more negative. -4 is more extreme than -3.
+        count(null <= -3) = 1 (only -4). p = (1+1)/(1+3) = 0.5."""
+        obs = np.array([[[-3.0]]])
+        null_max = np.array([-1.0, -2.0, -4.0])
+        family_mask = np.ones_like(obs, dtype=bool)
+        pvals = _plus_one_pvals(obs, null_max, "negative", family_mask)
+        # obs_abs = 3, null_abs = [1, 2, 4]. #{null >= 3} = 1 (only 4).
+        # p = (1+1)/(1+3) = 0.5
+        np.testing.assert_allclose(pvals[0, 0, 0], 0.5)
+
+    def test_positive_tail_pval(self):
+        """Positive tail: obs=3, null maxes = [1, 2, 4].
+        count(null >= 3) = 1. p = (1+1)/(1+3) = 0.5."""
+        obs = np.array([[[3.0]]])
+        null_max = np.array([1.0, 2.0, 4.0])
+        family_mask = np.ones_like(obs, dtype=bool)
+        pvals = _plus_one_pvals(obs, null_max, "positive", family_mask)
+        np.testing.assert_allclose(pvals[0, 0, 0], 0.5)
+
+
+class TestBootstrapBoundaryDrop:
+    def test_bootstrap_preserves_enough_data(self):
+        """Bootstrap should not discard most of the data (boundary drop fix)."""
+        x, y, _, _ = _make_trf_data(dur=30.0)
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        result = bootstrap_ci_trf(trf, x, y, n_boot=5, seed=42, stat="zscore")
+        # SE should be finite and reasonable (not enormous from tiny subsample)
+        assert np.all(np.isfinite(result.se))
+        assert np.all(result.se < 100)  # not absurdly large
+
+
+class TestClusterFamilyMask:
+    def test_family_mask_excludes_nodes(self):
+        """Cluster test with family mask should only cluster within family."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        trf.fill_lags()
+        n_lags = len(trf.lags)
+        # Family mask: only first half of lags
+        family = np.ones((n_lags, 1, 1), dtype=bool)
+        family[n_lags // 2:, :, :] = False
+        result = cluster_based_permutation_test(
+            trf, x, y, n_perm=5, seed=42, stat="zscore", threshold=0.5,
+            family=family,
+        )
+        # No significant nodes outside the family
+        if result.mask_significant.any():
+            assert not np.any(result.mask_significant[n_lags // 2:, :, :])
+
 
 class TestClusterBasedTest:
     def test_shape(self):

@@ -71,8 +71,7 @@ class PermutationResult:
     pvals_corrected : ndarray, shape (n_lags, n_feats, n_chans)
         FWE-corrected p-values (plus-one formula).
     stat : str
-        Statistic used (``"zscore"``, ``"t"``, ``"coef"``, ``"perm_norm"``,
-        ``"jackknife"``).
+        Statistic used (``"zscore"``, ``"t"``, ``"coef"``, ``"perm_norm"``).
     tails : str
         Tail (``"two-sided"``, ``"positive"``, ``"negative"``).
     family : str
@@ -557,7 +556,8 @@ def _clone_trf(trf, **overrides):
     clone.robust_objective_ = None
     clone._lagged_cache = None
     for key, val in overrides.items():
-        setattr(clone, key, val)
+        if val is not None:  # skip None overrides (preserve original value)
+            setattr(clone, key, val)
     return clone
 
 
@@ -651,8 +651,11 @@ def _plus_one_pvals(
         obs_abs = obs_vals
         null_abs = null_max_stats
     elif tails == "negative":
-        obs_abs = -obs_vals
-        null_abs = -null_max_stats
+        # For negative tail, _max_stat returns min (most negative).
+        # More extreme = more negative = smaller value.
+        # We want: p = P(null <= obs) = P(-null >= -obs).
+        obs_abs = -obs_vals  # flip to positive
+        null_abs = -null_max_stats  # flip to positive
     else:
         raise ValueError(f"Unknown tails: {tails!r}")
 
@@ -710,11 +713,12 @@ def permutation_test_trf(
         Response, shape (n_samples, n_chans) or list of segments.
     n_perm : int, default 1000
         Number of permutations.
-    stat : {"zscore", "t", "coef", "perm_norm", "jackknife"}
+    stat : {"zscore", "t", "coef", "perm_norm"}
         Statistic to use. ``"zscore"`` (default) z-scores X and y before
         fitting, producing a scale-standardised coefficient clean for any
         solver. ``"t"`` uses parametric t-values (OLS only). ``"coef"``
-        uses raw coefficients.
+        uses raw coefficients. ``"perm_norm"`` normalises by permutation-
+        null dispersion per coordinate.
     tails : {"two-sided", "positive", "negative"}
         Tail of the test.
     family : {"global", "per_channel", "per_feature"} or ndarray
@@ -731,8 +735,8 @@ def permutation_test_trf(
     weights : ndarray or list of ndarray, or None
         Sample weights, (n_samples,) or list per segment.
     lagged : bool, default False
-        If True, X is a pre-lagged design. Rejected for ``stat="zscore"``,
-        ``"perm_norm"``, ``"jackknife"``.
+        If True, X is a pre-lagged design. Rejected for ``stat="zscore"``
+        and ``stat="perm_norm"``.
     fade_edges : bool, default True
         If True, apply a raised-cosine taper at both edges of each segment
         of X before circular shifting, smoothing the wrap-around
@@ -763,7 +767,7 @@ def permutation_test_trf(
     from pyeeg.models import TRFEstimator
 
     # --- validate stat + lagged compatibility ---
-    if stat in ("zscore", "perm_norm", "jackknife") and lagged:
+    if stat in ("zscore", "perm_norm") and lagged:
         raise ValueError(
             f"stat={stat!r} requires raw (pre-lag) X; lagged=True is not "
             f"supported. Use stat='coef' or stat='t' for pre-lagged input."
@@ -1257,49 +1261,50 @@ def _find_clusters(
                 clusters.append((-1, np.array([idx]), stat_map_flat[idx]))
         return clusters
 
-    # Threshold
+    # Threshold: form positive and negative masks SEPARATELY
     if tails == "two-sided":
-        supra = np.abs(stat_map_flat) > threshold
+        pos_supra = stat_map_flat > threshold
+        neg_supra = stat_map_flat < -threshold
     elif tails == "positive":
-        supra = stat_map_flat > threshold
+        pos_supra = stat_map_flat > threshold
+        neg_supra = np.zeros_like(stat_map_flat, dtype=bool)
     elif tails == "negative":
-        supra = stat_map_flat < -threshold
+        pos_supra = np.zeros_like(stat_map_flat, dtype=bool)
+        neg_supra = stat_map_flat < -threshold
     else:
         raise ValueError(f"Unknown tails: {tails!r}")
 
-    if not supra.any():
-        return []
-
-    # Restrict adjacency to supra-threshold nodes
-    supra_idx = np.where(supra)[0]
-    adj_sub = adj[supra_idx][:, supra_idx]
-
-    # Connected components
-    n_comp, labels = connected_components(csgraph=adj_sub, directed=False)
-
     clusters = []
-    for c in range(n_comp):
-        local_idx = np.where(labels == c)[0]
-        global_idx = supra_idx[local_idx]
-        vals = stat_map_flat[global_idx]
 
-        # Determine sign and mass
-        if tails == "positive":
-            sign = 1
-            mass = float(np.sum(vals))
-        elif tails == "negative":
-            sign = -1
-            mass = float(np.sum(vals))  # negative
-        else:  # two-sided
-            # Positive and negative clusters formed separately
-            mean_val = np.mean(vals)
-            if mean_val >= 0:
-                sign = 1
-                mass = float(np.sum(vals))
-            else:
-                sign = -1
-                mass = float(np.sum(vals))  # negative
-        clusters.append((sign, global_idx, mass))
+    # Positive clusters (sign = +1)
+    if pos_supra.any():
+        if adj is None:
+            for idx in np.where(pos_supra)[0]:
+                clusters.append((1, np.array([idx]), float(stat_map_flat[idx])))
+        else:
+            pos_idx = np.where(pos_supra)[0]
+            adj_sub = adj[pos_idx][:, pos_idx]
+            n_comp, labels = connected_components(csgraph=adj_sub, directed=False)
+            for c in range(n_comp):
+                local_idx = np.where(labels == c)[0]
+                global_idx = pos_idx[local_idx]
+                vals = stat_map_flat[global_idx]
+                clusters.append((1, global_idx, float(np.sum(vals))))
+
+    # Negative clusters (sign = -1) — SEPARATE from positive
+    if neg_supra.any():
+        if adj is None:
+            for idx in np.where(neg_supra)[0]:
+                clusters.append((-1, np.array([idx]), float(stat_map_flat[idx])))
+        else:
+            neg_idx = np.where(neg_supra)[0]
+            adj_sub = adj[neg_idx][:, neg_idx]
+            n_comp, labels = connected_components(csgraph=adj_sub, directed=False)
+            for c in range(n_comp):
+                local_idx = np.where(labels == c)[0]
+                global_idx = neg_idx[local_idx]
+                vals = stat_map_flat[global_idx]
+                clusters.append((-1, global_idx, float(np.sum(vals))))
 
     return clusters
 
@@ -1461,8 +1466,11 @@ def cluster_based_permutation_test(
     family_mask = _resolve_family(family, stat_shape)
 
     # --- observed clusters ---
+    # Apply family mask: set non-family nodes to 0 so they never exceed threshold
     obs_flat = obs_stat.ravel()
-    obs_clusters = _find_clusters(obs_flat, resolved_threshold, adj, tails)
+    obs_masked = obs_flat.copy()
+    obs_masked[~family_mask.ravel()] = 0.0
+    obs_clusters = _find_clusters(obs_masked, resolved_threshold, adj, tails)
 
     if len(obs_clusters) == 0:
         # No supra-threshold clusters in observed data
@@ -1559,8 +1567,12 @@ def cluster_based_permutation_test(
             null_maps_flat = [_run_perm_cluster(i) for i in range(n_perm)]
 
     # --- compute null max cluster masses ---
+    # Apply family mask to null maps as well
     null_max_masses = np.array([
-        _max_cluster_mass(nm, resolved_threshold, adj, tails)
+        _max_cluster_mass(
+            np.where(family_mask.ravel(), nm, 0.0),
+            resolved_threshold, adj, tails,
+        )
         for nm in null_maps_flat
     ])
 
@@ -1720,9 +1732,9 @@ def bootstrap_ci_trf(
             else:
                 # Use first feature for estimation
                 bs = _estimate_block_size(Xi[:, 0], trf.srate)
-            # Ensure block is at least window_extent + margin so there's
-            # usable data after boundary dropping
-            bs = max(bs, window_extent + 10)
+            # Ensure block is at least 2*window_extent so the boundary drop
+            # (window_extent rows per join) leaves usable data
+            bs = max(bs, 2 * window_extent + 10)
             block_sizes.append(bs)
     else:
         block_sizes = [int(block_size)] * n_segments
@@ -1744,7 +1756,8 @@ def bootstrap_ci_trf(
 
             # Circular block bootstrap: draw blocks of length bs with replacement
             X_boot, y_boot, w_boot = _circular_block_resample(
-                Xi, yi, wi, bs, n_samp, local_rng, window_extent
+                Xi, yi, wi, bs, n_samp, local_rng,
+                drop_samples=min(window_extent, bs // 2),
             )
             X_boot_list.append(X_boot)
             y_boot_list.append(y_boot)
