@@ -28,6 +28,7 @@ natMEEG is a Python package for the analysis of EEG and MEG data. It focuses on 
    models
    solvers
    simulate
+   stats
    connectivity
    mcca
    features

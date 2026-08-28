@@ -840,7 +840,11 @@ class TRFEstimator(BaseEstimator):
         self.fitted = True
 
         # Compute standardized coefficients (beta * std(X) / std(y))
-        # This gives the change in y (in SDs) for a 1 SD change in X.
+        # This is a POST-HOC SD-rescaled coefficient, NOT equivalent to fitting
+        # standardized predictors under regularization (ridge). It is exact for OLS
+        # (scale-equivariant) but approximate for ridge/banded-ridge. For
+        # inference on regularized models, use pyeeg.stats.permutation_test_trf
+        # with stat="zscore" (which refits on pre-standardized data).
         # Skipped when sample weights are applied: X/y have been row-scaled by
         # sqrt(W) here, so their std no longer reflects the original data.
         if not lagged and self.fitted and weights is None and not robust:

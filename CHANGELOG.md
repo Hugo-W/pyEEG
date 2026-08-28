@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `pyeeg.stats` module: nonparametric statistical inference for TRF analysis
+  (Issue #14). Implements permutation testing with circular-shift null,
+  cluster-based correction (Maris & Oostenveld 2007), bootstrap CIs, jackknife
+  SE, cross-subject consistency, and group-level sign-flip test. Spectral edge
+  fade for autocorrelated stimuli. `stat="zscore"` (default), `"t"`, `"coef"`,
+  `"perm_norm"`. No MNE dependency. 449 tests passing.
+- `TRFEstimator.copy()` now preserves all constructor kwargs (was dropping
+  solver, loss, robust settings, intercept, cache config).
 - `Whitener`, `WaveletTransform`, `MultichanWienerFilter`, `mCCA`, `connectivity`,
   `simulate` (neural-mass models), `features` package, and `vizu` documented in the
   README features overview.

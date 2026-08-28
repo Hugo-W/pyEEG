@@ -107,8 +107,12 @@ feature/channel selection.
   tutorial); close the upstream issue after release verification.
 - Issue #17: weighted and robust TRF estimation is implemented on this branch;
   close the upstream issue after review and release verification.
-- Issue #14: design statistically appropriate permutation, bootstrap, and
-  cross-subject inference for continuous naturalistic data.
+- Issue #14: implemented — `pyeeg.stats` module with permutation testing
+  (circular-shift null, `stat="zscore"/"t"/"coef"/"perm_norm"`), cluster-based
+  correction (Maris & Oostenveld 2007), bootstrap CIs, jackknife SE,
+  cross-subject consistency, and group-level sign-flip test. Spectral edge fade
+  for autocorrelated stimuli. Close the upstream issue after release
+  verification.
 - Issue #12: decide whether a solver-pattern abstraction reduces complexity
   without obscuring the current solver API.
 
