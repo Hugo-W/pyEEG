@@ -16,6 +16,7 @@ from pyeeg.simulate import (
 )
 from pyeeg.stats import (
     permutation_test_trf,
+    cluster_based_permutation_test,
     jackknife_se_trf,
     JackknifeResult,
     _valid_offsets,
@@ -27,6 +28,10 @@ from pyeeg.stats import (
     _plus_one_pvals,
     _max_stat,
     _get_window_samples,
+    _build_adjacency,
+    _find_clusters,
+    _max_cluster_mass,
+    _resolve_threshold,
 )
 
 
@@ -617,6 +622,219 @@ class TestPermutationTest:
         trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=None)
         result = jackknife_se_trf(trf, X, Y)
         assert np.all(result.se >= 0)
+
+
+# ---------------------------------------------------------------------------
+# Cluster engine — adjacency, cluster finding, cluster-based test
+# ---------------------------------------------------------------------------
+
+class TestAdjacency:
+    def test_lag_adjacency_shape(self):
+        """Lag adjacency should produce (n_nodes, n_nodes) block-diagonal."""
+        from scipy.sparse import issparse
+        adj = _build_adjacency("lags", (70, 1, 1))
+        n_nodes = 70
+        assert adj.shape == (n_nodes, n_nodes)
+        assert issparse(adj)
+
+    def test_lag_adjacency_connects_neighbours(self):
+        """Lag i should be connected to lag i+1."""
+        adj = _build_adjacency("lags", (5, 1, 1))
+        assert adj[0, 1] == 1  # lag 0 - lag 1
+        assert adj[1, 0] == 1  # symmetric
+        assert adj[0, 2] == 0  # not 2 apart
+        assert adj.diagonal().max() == 0  # no self-loops
+
+    def test_lag_adjacency_multi_feat_chan(self):
+        """Multi-feat/chan: each (feat, chan) has its own lag block."""
+        adj = _build_adjacency("lags", (3, 2, 2))
+        n_nodes = 3 * 2 * 2  # 12
+        assert adj.shape == (n_nodes, n_nodes)
+        # Node 0 (lag0, feat0, chan0) should connect to node 1 (lag1, feat0, chan0)
+        # Flattening: idx = ((lag * n_feats) + feat) * n_chans + chan
+        # idx(0,0,0) = 0; idx(1,0,0) = ((1*2)+0)*2+0 = 4
+        assert adj[0, 4] == 1
+        # Node 0 should NOT connect to node 1 (different feat/chan)
+        assert adj[0, 1] == 0
+
+    def test_none_adjacency(self):
+        """'none' adjacency should return None (pointwise)."""
+        assert _build_adjacency("none", (10, 1, 1)) is None
+
+    def test_explicit_adjacency(self):
+        """Explicit adjacency matrix should be accepted."""
+        from scipy.sparse import csr_matrix
+        n = 4
+        adj_dense = np.array([
+            [0, 1, 0, 0],
+            [1, 0, 1, 0],
+            [0, 1, 0, 1],
+            [0, 0, 1, 0],
+        ])
+        adj = _build_adjacency(adj_dense, (4, 1, 1))
+        assert adj.shape == (n, n)
+
+    def test_sparse_adjacency(self):
+        """Sparse adjacency matrix should be accepted."""
+        from scipy.sparse import csr_matrix
+        adj_dense = np.eye(4, k=1) + np.eye(4, k=-1)
+        adj_sparse = csr_matrix(adj_dense)
+        adj = _build_adjacency(adj_sparse, (4, 1, 1))
+        assert adj.shape == (4, 4)
+
+    def test_adjacency_wrong_shape_raises(self):
+        """Adjacency with wrong shape should raise."""
+        with pytest.raises(ValueError, match="shape"):
+            _build_adjacency(np.eye(5), (4, 1, 1))
+
+    def test_adjacency_non_symmetric_raises(self):
+        """Non-symmetric adjacency should raise."""
+        bad = np.array([
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1],
+            [0, 0, 0, 0],
+        ], dtype=float)
+        with pytest.raises(ValueError, match="symmetric"):
+            _build_adjacency(bad, (4, 1, 1))
+
+
+class TestFindClusters:
+    def test_simple_positive_cluster(self):
+        """A run of positive values above threshold should form one cluster."""
+        adj = _build_adjacency("lags", (5, 1, 1))
+        stat = np.array([0.1, 2.0, 3.0, 0.1, 0.1])
+        clusters = _find_clusters(stat, threshold=1.0, adj=adj, tails="two-sided")
+        assert len(clusters) == 1
+        sign, idx, mass = clusters[0]
+        assert sign == 1
+        assert len(idx) == 2  # indices 1 and 2
+        assert mass == 5.0  # 2+3
+
+    def test_two_sided_separate_signs(self):
+        """Positive and negative clusters must be formed separately."""
+        adj = _build_adjacency("lags", (5, 1, 1))
+        stat = np.array([2.0, 3.0, 0.0, -3.0, -2.0])
+        clusters = _find_clusters(stat, threshold=1.0, adj=adj, tails="two-sided")
+        assert len(clusters) == 2
+        pos = [c for c in clusters if c[0] > 0]
+        neg = [c for c in clusters if c[0] < 0]
+        assert len(pos) == 1
+        assert len(neg) == 1
+        assert pos[0][2] == 5.0  # 2+3
+        assert neg[0][2] == -5.0  # -3-2
+
+    def test_no_clusters_below_threshold(self):
+        """Values below threshold should produce no clusters."""
+        adj = _build_adjacency("lags", (5, 1, 1))
+        stat = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+        clusters = _find_clusters(stat, threshold=1.0, adj=adj, tails="two-sided")
+        assert len(clusters) == 0
+
+    def test_pointwise_no_adjacency(self):
+        """With adj=None, each supra-threshold point is its own cluster."""
+        stat = np.array([2.0, 0.1, 3.0])
+        clusters = _find_clusters(stat, threshold=1.0, adj=None, tails="two-sided")
+        assert len(clusters) == 2  # two separate points
+
+    def test_max_cluster_mass_two_sided(self):
+        """Max cluster mass for two-sided should be max(|pos|, |neg|)."""
+        adj = _build_adjacency("lags", (5, 1, 1))
+        stat = np.array([2.0, 3.0, 0.0, -1.0, -1.0])
+        m = _max_cluster_mass(stat, threshold=1.0, adj=adj, tails="two-sided")
+        assert m == 5.0  # max(5, 2) = 5
+
+    def test_max_cluster_mass_positive_only(self):
+        """Positive tail: only positive clusters counted."""
+        adj = _build_adjacency("lags", (5, 1, 1))
+        stat = np.array([2.0, 3.0, 0.0, -5.0, -5.0])
+        m = _max_cluster_mass(stat, threshold=1.0, adj=adj, tails="positive")
+        assert m == 5.0  # only positive cluster
+
+    def test_max_cluster_mass_negative_only(self):
+        """Negative tail: only negative clusters counted (as absolute)."""
+        adj = _build_adjacency("lags", (5, 1, 1))
+        stat = np.array([1.0, 1.0, 0.0, -5.0, -5.0])
+        m = _max_cluster_mass(stat, threshold=1.0, adj=adj, tails="negative")
+        assert m == 10.0  # |(-5) + (-5)| = 10
+
+    def test_empty_map_max_cluster_mass(self):
+        """No supra-threshold → max cluster mass = 0."""
+        adj = _build_adjacency("lags", (5, 1, 1))
+        stat = np.zeros(5)
+        m = _max_cluster_mass(stat, threshold=0.5, adj=adj, tails="two-sided")
+        assert m == 0.0
+
+
+class TestClusterBasedTest:
+    def test_shape(self):
+        """Cluster test should produce coef_-shaped mask."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        result = cluster_based_permutation_test(
+            trf, x, y, n_perm=10, seed=42, stat="zscore", threshold=0.5,
+        )
+        assert result.mask_significant.shape == (len(trf.lags), 1, 1)
+        assert result.threshold == 0.5
+        assert result.n_perm == 10
+        assert result.adjacency_layout == "lags"
+
+    def test_threshold_required_for_non_t(self):
+        """stat='zscore' with threshold=None should raise."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        with pytest.raises(ValueError, match="threshold must be supplied"):
+            cluster_based_permutation_test(
+                trf, x, y, n_perm=5, seed=42, stat="zscore", threshold=None,
+            )
+
+    def test_threshold_t_default(self):
+        """stat='t' with threshold=None should default to 0.05 (p-value)."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=None)
+        result = cluster_based_permutation_test(
+            trf, x, y, n_perm=5, seed=42, stat="t", threshold=None,
+        )
+        # Should resolve to a critical t value, not 0.05
+        assert result.threshold > 1.0  # t critical at p=0.05
+
+    def test_reproducibility(self):
+        """Same seed → identical clusters and pvals."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        r1 = cluster_based_permutation_test(
+            trf, x, y, n_perm=5, seed=42, stat="zscore", threshold=0.5,
+        )
+        r2 = cluster_based_permutation_test(
+            trf, x, y, n_perm=5, seed=42, stat="zscore", threshold=0.5,
+        )
+        assert len(r1.clusters) == len(r2.clusters)
+        if len(r1.clusters) > 0:
+            np.testing.assert_array_equal(r1.pvals, r2.pvals)
+            np.testing.assert_array_equal(
+                r1.mask_significant, r2.mask_significant
+            )
+
+    def test_none_adjacency_pointwise(self):
+        """adjacency='none' should work (pointwise, no clustering)."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        result = cluster_based_permutation_test(
+            trf, x, y, n_perm=5, seed=42, stat="zscore", threshold=0.5,
+            adjacency="none",
+        )
+        assert result.adjacency_layout == "none"
+
+    def test_power_detects_signal(self):
+        """With a true TRF and sufficient data, cluster test should find clusters."""
+        x, y, _, _ = _make_trf_data(dur=60, noise=0.05)
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=None)
+        result = cluster_based_permutation_test(
+            trf, x, y, n_perm=50, seed=42, stat="t", threshold=0.05,
+        )
+        assert np.any(result.mask_significant), (
+            "Expected significant clusters with a true TRF present."
+        )
 
 
 # ---------------------------------------------------------------------------
