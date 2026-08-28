@@ -584,13 +584,19 @@ class TestPermutationTest:
         with pytest.raises(ValueError, match="N >= 3"):
             jackknife_se_trf(trf, X, Y)
 
-    def test_jackknife_rejects_ridge(self):
-        """jackknife with ridge should raise (v1: OLS only)."""
-        X = [np.random.default_rng(0).standard_normal((100, 1)) for _ in range(5)]
-        Y = [np.random.default_rng(1).standard_normal((100, 1)) for _ in range(5)]
+    def test_jackknife_supports_ridge(self):
+        """jackknife should work with ridge (SE of biased estimator is valid)."""
+        rng = np.random.default_rng(42)
+        X = [rng.standard_normal((200, 1)) for _ in range(10)]
+        Y = [rng.standard_normal((200, 1)) for _ in range(10)]
         trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
-        with pytest.raises(ValueError, match="OLS only"):
-            jackknife_se_trf(trf, X, Y)
+        result = jackknife_se_trf(trf, X, Y)
+        assert result.coef.ndim == 3
+        assert np.all(result.se >= 0)
+        # Ridge SE should generally be smaller than OLS SE (shrinkage reduces variance)
+        trf_ols = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=None)
+        result_ols = jackknife_se_trf(trf_ols, X, Y)
+        assert np.median(result.se) <= np.median(result_ols.se)
 
     def test_jackknife_ci_contains_coef(self):
         """For OLS with no signal (null), coef should be within CI."""

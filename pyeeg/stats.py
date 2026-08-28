@@ -1053,9 +1053,12 @@ def jackknife_se_trf(
 
     Notes
     -----
-    Requires N >= 3 epochs.  OLS only in v1 (alpha=None on the TRF); ridge
-    jackknife is deferred because the SE of a biased (shrinkage) estimator
-    has a different interpretation.
+    Requires N >= 3 epochs.  Works with any fitted TRF configuration (OLS,
+    ridge, banded ridge, robust) — the jackknife SE measures the sampling
+    variability of the specific estimator, which is a valid uncertainty
+    measure regardless of whether the estimator is biased (ridge) or
+    iterative (robust).  For robust loss with few epochs the jackknife may
+    be less stable.
     """
     from scipy.stats import norm
 
@@ -1076,17 +1079,6 @@ def jackknife_se_trf(
     if weights is not None:
         raise ValueError(
             "weights are not supported for jackknife_se_trf in v1."
-        )
-
-    # --- validate OLS ---
-    if trf.alpha is not None and np.isscalar(trf.alpha) and trf.alpha > 0:
-        raise ValueError(
-            "jackknife_se_trf v1 supports OLS only (alpha=None). "
-            f"Got alpha={trf.alpha}. Ridge jackknife is deferred to v2."
-        )
-    if trf.loss not in ("linear", "none"):
-        raise ValueError(
-            f"jackknife_se_trf v1 supports loss='linear', got {trf.loss!r}."
         )
 
     # --- standardisation (if zscore) ---
