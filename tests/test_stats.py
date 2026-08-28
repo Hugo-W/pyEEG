@@ -19,6 +19,8 @@ from pyeeg.stats import (
     PermutationResult,
     _valid_offsets,
     _circular_shift,
+    _fade_edges,
+    _estimate_fade_samples,
     _zscore_array,
     _zscore_segments,
     _plus_one_pvals,
@@ -110,6 +112,64 @@ class TestCircularShift:
         assert np.array_equal(
             _circular_shift(_circular_shift(x, 7), -7), x
         )
+
+
+# ---------------------------------------------------------------------------
+# _fade_edges / _estimate_fade_samples
+# ---------------------------------------------------------------------------
+
+class TestFadeEdges:
+    def test_fade_zeros_edges(self):
+        """Fade should taper both edges to zero."""
+        x = np.ones((100, 1))
+        faded = _fade_edges(x, fade_samples=10)
+        assert faded[0, 0] == 0.0
+        assert faded[-1, 0] == 0.0
+        # Middle should be ~1
+        assert abs(faded[50, 0] - 1.0) < 1e-10
+
+    def test_fade_preserves_shape(self):
+        x = np.random.default_rng(0).standard_normal((50, 3))
+        faded = _fade_edges(x, fade_samples=5)
+        assert faded.shape == x.shape
+
+    def test_fade_zero_is_copy(self):
+        x = np.random.default_rng(0).standard_normal((20, 1))
+        faded = _fade_edges(x, fade_samples=0)
+        assert np.array_equal(faded, x)
+        # Must be a copy, not the same array
+        assert faded is not x
+
+    def test_circular_shift_with_fade(self):
+        """Circular shift with fade should produce smooth wrap-around."""
+        x = np.ones((100, 1))
+        shifted = _circular_shift(x, offset=50, fade_samples=10)
+        # The wrap-around point (index 50) should be smooth (both sides near 0)
+        assert abs(shifted[50, 0]) < 0.1  # faded edge meets faded edge
+
+    def test_estimate_fade_white_noise(self):
+        """White noise (flat spectrum, full bandwidth) → minimal fade."""
+        rng = np.random.default_rng(0)
+        x = rng.standard_normal((2000, 1))
+        fs = _estimate_fade_samples(x, srate=100)
+        # White noise has full bandwidth → fade ≈ 1-2 samples
+        assert fs <= 5, f"White noise fade should be minimal, got {fs}"
+
+    def test_estimate_fade_smooth(self):
+        """Smooth (low-pass) input → larger fade."""
+        _, x = simulate_smooth_input(dur=20.0, srate=100, seed=42, fmax=10)
+        x = x[:, None]
+        fs = _estimate_fade_samples(x, srate=100)
+        # Low-pass signal with ~10 Hz cutoff → fade should be several samples
+        assert fs >= 5, f"Smooth input fade should be > 5, got {fs}"
+        assert fs <= 500  # but not absurdly large
+
+    def test_estimate_fade_capped(self):
+        """Fade should be capped at max_fade_frac * n_samples."""
+        _, x = simulate_smooth_input(dur=2.0, srate=100, seed=42, fmax=5)
+        x = x[:, None]
+        fs = _estimate_fade_samples(x, srate=100, max_fade_frac=0.1)
+        assert fs <= 20  # 200 samples * 0.1 = 20
 
 
 # ---------------------------------------------------------------------------

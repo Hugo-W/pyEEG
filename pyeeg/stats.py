@@ -374,9 +374,132 @@ def _valid_offsets(
     return valid
 
 
-def _circular_shift(X: np.ndarray, offset: int, axis: int = 0) -> np.ndarray:
-    """Circularly shift X along axis by offset samples."""
+def _circular_shift(
+    X: np.ndarray, offset: int, axis: int = 0, fade_samples: int = 0
+) -> np.ndarray:
+    """Circularly shift X along axis by offset samples.
+
+    If ``fade_samples > 0``, apply a raised-cosine (Tukey) taper at both
+    edges of X *before* shifting so the wrap-around point is smooth.
+    The taper ramps from 0 to 1 over ``fade_samples`` at each edge.
+    """
+    if fade_samples > 0:
+        X = _fade_edges(X, fade_samples, axis=axis)
     return np.roll(X, offset, axis=axis)
+
+
+def _fade_edges(
+    X: np.ndarray, fade_samples: int, axis: int = 0
+) -> np.ndarray:
+    """Apply a raised-cosine taper at both edges of X along ``axis``.
+
+    The taper ramps from 0 to 1 over ``fade_samples`` at the start and
+    from 1 to 0 over ``fade_samples`` at the end, so that when the array
+    is circularly shifted the wrap-around point is continuous.
+
+    Parameters
+    ----------
+    X : ndarray
+    fade_samples : int
+        Number of samples to taper at each edge.
+    axis : int
+        Axis along which to apply the taper.
+
+    Returns
+    -------
+    ndarray
+        Tapered copy of X.
+    """
+    n = X.shape[axis]
+    fade = min(fade_samples, n // 2)
+    if fade <= 0:
+        return X.copy()
+
+    # Raised cosine: 0.5 * (1 - cos(pi * t / fade)) for t in [0, fade)
+    t = np.arange(fade)
+    ramp = 0.5 * (1.0 - np.cos(np.pi * t / fade))
+
+    # Build the full window (1.0 in the middle, ramps at both ends)
+    window = np.ones(n)
+    window[:fade] = ramp
+    window[-fade:] = ramp[::-1]
+
+    # Broadcast window along the non-taper axes
+    shape = [1] * X.ndim
+    shape[axis] = n
+    window = window.reshape(shape)
+
+    return X * window
+
+
+def _estimate_fade_samples(
+    X: np.ndarray, srate: float, min_fade: int = 1, max_fade_frac: float = 0.25
+) -> int:
+    """Estimate the edge-fade length (in samples) from the stimulus spectrum.
+
+    The fade must be long enough to smooth the wrap-around discontinuity for
+    autocorrelated signals.  We use the signal's effective bandwidth: the
+    -3 dB bandwidth (the range of frequencies within 3 dB of the peak power)
+    gives a characteristic time scale ``1 / bandwidth`` over which the signal
+    remains correlated.  The fade is set to this value, capped at
+    ``max_fade_frac * n_samples``.
+
+    For white noise (flat spectrum, full bandwidth) the fade will be
+    minimal (~1 sample), which is correct since white noise has no
+    autocorrelation to preserve.
+
+    Parameters
+    ----------
+    X : ndarray, shape (n_samples,) or (n_samples, n_feats)
+        Stimulus signal (one or more features).
+    srate : float
+        Sampling rate in Hz.
+    min_fade : int
+        Minimum fade length in samples.
+    max_fade_frac : float
+        Maximum fade length as a fraction of n_samples.
+
+    Returns
+    -------
+    fade_samples : int
+    """
+    n = X.shape[0]
+    max_fade = max(min_fade, int(n * max_fade_frac))
+
+    if X.ndim == 1:
+        X_2d = X[:, None]
+    else:
+        X_2d = X
+
+    # Average periodogram across features
+    psd = np.zeros(n // 2 + 1)
+    for j in range(X_2d.shape[1]):
+        xj = X_2d[:, j] - X_2d[:, j].mean()
+        power = np.abs(np.fft.rfft(xj)) ** 2
+        psd += power
+    psd /= X_2d.shape[1]
+
+    if psd.max() <= 0:
+        return min_fade
+
+    # -3 dB level: half the peak power (not the mean)
+    peak_power = psd.max()
+    threshold = peak_power / 2.0
+
+    # Bandwidth: range of frequencies above -3 dB of peak
+    above_3db = np.where(psd >= threshold)[0]
+    if len(above_3db) <= 1:
+        return min_fade
+
+    freqs = np.fft.rfftfreq(n, d=1.0 / srate)
+    bandwidth = freqs[above_3db[-1]] - freqs[above_3db[0]]
+
+    if bandwidth <= 0:
+        return min_fade
+
+    # Characteristic time = 1 / bandwidth (time scale of amplitude changes)
+    fade = int(np.ceil(srate / bandwidth))
+    return max(min_fade, min(fade, max_fade))
 
 
 def _clone_trf(trf, **overrides):
@@ -529,6 +652,8 @@ def permutation_test_trf(
     allow_robust: bool = False,
     weights=None,
     lagged: bool = False,
+    fade_edges: bool = True,
+    fade_time: Union[str, int] = "auto",
     verbose: bool = False,
 ) -> PermutationResult:
     """Permutation test for TRF coefficients using circular-shift null.
@@ -574,6 +699,19 @@ def permutation_test_trf(
     lagged : bool, default False
         If True, X is a pre-lagged design. Rejected for ``stat="zscore"``,
         ``"perm_norm"``, ``"jackknife"``.
+    fade_edges : bool, default True
+        If True, apply a raised-cosine taper at both edges of each segment
+        of X before circular shifting, smoothing the wrap-around
+        discontinuity.  This is recommended for autocorrelated (smooth)
+        stimuli, where a raw circular shift creates a spectral
+        discontinuity that makes null coefficients artificially small.
+        For white-noise stimuli the fade has minimal effect.
+    fade_time : {"auto"} or int, default "auto"
+        Number of samples to taper at each edge.  ``"auto"`` estimates the
+        fade length from the stimulus spectrum: the highest frequency at
+        -3 dB below mean power gives a characteristic time, and the fade
+        is set to half a period of that frequency.  An explicit int
+        overrides the automatic estimate.
     verbose : bool, default False
 
     Returns
@@ -649,6 +787,26 @@ def permutation_test_trf(
     for i, Xi in enumerate(X_list):
         _valid_offsets(len(Xi), tmin_samp, tmax_samp)  # raises if too short
 
+    # --- estimate edge fade per segment ---
+    fade_per_seg = [0] * n_segments
+    if fade_edges:
+        srate = trf.srate
+        for i, Xi in enumerate(X_list):
+            if isinstance(fade_time, str) and fade_time == "auto":
+                fs = _estimate_fade_samples(Xi, srate)
+            elif isinstance(fade_time, int):
+                fs = fade_time
+            else:
+                raise ValueError(
+                    f"fade_time must be 'auto' or an int, got {fade_time!r}"
+                )
+            fade_per_seg[i] = fs
+            if verbose and fs > 0:
+                LOGGER.info(
+                    "Segment %d: fade_samples=%d (%.3f s)",
+                    i, fs, fs / srate,
+                )
+
     # --- standardisation (if zscore) ---
     zscored = stat == "zscore"
     zero_var_feats = None
@@ -703,7 +861,9 @@ def permutation_test_trf(
         for i, Xi in enumerate(X_list):
             offsets = valid_offsets_per_seg[i]
             offset = int(local_rng.choice(offsets))
-            X_perm_list.append(_circular_shift(Xi, offset))
+            X_perm_list.append(
+                _circular_shift(Xi, offset, fade_samples=fade_per_seg[i])
+            )
 
         if n_segments == 1:
             X_p, y_p = X_perm_list[0], y_list[0]
@@ -741,7 +901,11 @@ def permutation_test_trf(
     hypothesis = (
         "H0: no stimulus→response predictive relationship at any modeled lag"
     )
-    resampling_scheme = "circular-shift surrogate (per-segment, valid offsets)"
+    fade_str = (
+        f"with edge fade ({fade_per_seg[0]} samples)" if fade_per_seg[0] > 0
+        else "no edge fade"
+    )
+    resampling_scheme = f"circular-shift surrogate (per-segment, valid offsets, {fade_str})"
 
     return PermutationResult(
         observed=obs_stat,
