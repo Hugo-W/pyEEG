@@ -4,17 +4,35 @@ All notable changes to **natMEEG** (formerly `pyEEG`) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.2.0] — 2025-08-28
 
 ### Added
 - `pyeeg.stats` module: nonparametric statistical inference for TRF analysis
-  (Issue #14). Implements permutation testing with circular-shift null,
-  cluster-based correction (Maris & Oostenveld 2007), bootstrap CIs, jackknife
-  SE, cross-subject consistency, and group-level sign-flip test. Spectral edge
-  fade for autocorrelated stimuli. `stat="zscore"` (default), `"t"`, `"coef"`,
-  `"perm_norm"`. No MNE dependency. 449 tests passing.
+  (Issue #14). Implements:
+  - `permutation_test_trf`: circular-shift surrogate test with FWE via
+    max-statistic (plus-one p-values). Stats: `zscore` (default, internal
+    pre-lag z-scoring + refit, clean for any solver), `t` (OLS only),
+    `coef`, `perm_norm` (permutation-null normalized).
+  - `cluster_based_permutation_test`: Maris & Oostenveld (2007) cluster
+    correction. Positive/negative clusters formed separately; adjacency
+    (lag 1-D, explicit dense/sparse, none); threshold semantics by stat type.
+  - `bootstrap_ci_trf`: paired circular block bootstrap with boundary drop,
+    auto block-size estimation, percentile CIs, SE as byproduct.
+  - `jackknife_se_trf`: leave-one-epoch-out SE/CI estimator (any solver:
+    OLS, ridge, banded ridge, robust).
+  - `cross_subject_consistency`: descriptive pairwise/LOO reliability
+    (Pearson or cosine, no inferential test).
+  - `group_level_test`: sign-flip group inference (H0: population mean = 0).
+  - Spectral edge fade (`fade_edges=True`) for autocorrelated stimuli,
+    estimated from -3dB bandwidth of the stimulus spectrum.
+  - No MNE dependency in stats module (spatial adjacency user-supplied).
+  - 451 tests passing (107 new stats tests + 4 copy regression tests).
 - `TRFEstimator.copy()` now preserves all constructor kwargs (was dropping
   solver, loss, robust settings, intercept, cache config).
+
+## [Unreleased]
+
+### Added
 - `Whitener`, `WaveletTransform`, `MultichanWienerFilter`, `mCCA`, `connectivity`,
   `simulate` (neural-mass models), `features` package, and `vizu` documented in the
   README features overview.
