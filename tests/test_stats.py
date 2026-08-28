@@ -16,7 +16,8 @@ from pyeeg.simulate import (
 )
 from pyeeg.stats import (
     permutation_test_trf,
-    PermutationResult,
+    jackknife_se_trf,
+    JackknifeResult,
     _valid_offsets,
     _circular_shift,
     _fade_edges,
@@ -58,6 +59,29 @@ def _make_null_data(srate=SRATE, dur=30.0, seed=42):
     x = rng.standard_normal((n, 1))
     y = rng.standard_normal((n, 1))
     return x, y
+
+
+def _make_epoch_data(n_epochs=5, dur_per_epoch=6.0, seed=42, noise=0.1, null=False):
+    """Build multi-epoch TRF data (list of segments)."""
+    X, Y = [], []
+    for i in range(n_epochs):
+        ep_seed = seed + i * 1000
+        if null:
+            rng = np.random.default_rng(ep_seed)
+            n = int(dur_per_epoch * SRATE)
+            X.append(rng.standard_normal((n, 1)))
+            Y.append(np.random.default_rng(ep_seed + 1).standard_normal((n, 1)))
+        else:
+            tker, ker = dummy_trf_kernel(
+                tmin=TMIN, tmax=TMAX, srate=SRATE, tloc=0.1, sigma=0.1,
+            )
+            _, x = simulate_smooth_input(dur=dur_per_epoch, srate=SRATE, seed=ep_seed)
+            y_clean = simulate_trf_output(tker, ker, x, srate=SRATE)
+            rng = np.random.default_rng(ep_seed + 1)
+            y = y_clean[:, None] + noise * rng.standard_normal((len(y_clean), 1))
+            X.append(x[:, None])
+            Y.append(y)
+    return X, Y
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +498,119 @@ class TestPermutationTest:
         assert result.zero_var_features[0]  # detected
         # The observed coef for the zero-var feature should be 0
         assert np.all(result.observed[:, 0, :] == 0)
+
+    # --- perm_norm stat ---
+
+    def test_perm_norm_shape(self):
+        """perm_norm should produce same-shaped output as zscore."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        result = permutation_test_trf(trf, x, y, n_perm=10, seed=42, stat="perm_norm")
+        assert result.observed.shape == (len(trf.lags), 1, 1)
+        assert result.pvals_corrected.shape == result.observed.shape
+        assert result.null_distribution.shape == (10,)
+        assert result.zero_var_stat is not None
+
+    def test_perm_norm_pvals_in_range(self):
+        """perm_norm p-values must be in (0, 1]."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        result = permutation_test_trf(trf, x, y, n_perm=10, seed=42, stat="perm_norm")
+        assert np.all(result.pvals_corrected > 0)
+        assert np.all(result.pvals_corrected <= 1)
+
+    def test_perm_norm_reproducibility(self):
+        """perm_norm same seed → identical results."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        r1 = permutation_test_trf(trf, x, y, n_perm=10, seed=42, stat="perm_norm")
+        r2 = permutation_test_trf(trf, x, y, n_perm=10, seed=42, stat="perm_norm")
+        np.testing.assert_array_equal(r1.null_distribution, r2.null_distribution)
+
+    def test_perm_norm_lagged_rejected(self):
+        """perm_norm with lagged=True should raise."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        with pytest.raises(ValueError, match="raw.*pre-lag"):
+            permutation_test_trf(trf, x, y, n_perm=5, seed=42, stat="perm_norm", lagged=True)
+
+    def test_perm_norm_uses_zscore_base(self):
+        """perm_norm observed should differ from zscore observed (normalized)."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        r_z = permutation_test_trf(trf, x, y, n_perm=10, seed=42, stat="zscore")
+        r_pn = permutation_test_trf(trf, x, y, n_perm=10, seed=42, stat="perm_norm")
+        # The normalized stat should differ from the raw zscore stat
+        # (unless all SDs are 1, which is unlikely)
+        assert not np.allclose(r_pn.observed, r_z.observed)
+
+    def test_perm_norm_zero_var_stat_mask(self):
+        """perm_norm should surface zero-variance stat coordinates."""
+        # Use data where one coef is always 0 (zero-variance feature)
+        x, y, _, _ = _make_trf_data()
+        x_zero = x.copy()
+        x_zero[:, 0] = 1.0  # constant feature → coef always 0 → sd=0
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=0.001)
+        result = permutation_test_trf(trf, x_zero, y, n_perm=10, seed=42, stat="perm_norm")
+        assert result.zero_var_stat is not None
+        # The zero-variance feature's coefs should have zero_var_stat = True
+        assert np.any(result.zero_var_stat[:, 0, :])
+
+    # --- jackknife_se_trf ---
+
+    def test_jackknife_shape(self):
+        """jackknife should produce coef_-shaped outputs."""
+        X, Y = _make_epoch_data(n_epochs=5, seed=42)
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=None)
+        result = jackknife_se_trf(trf, X, Y)
+        assert result.coef.ndim == 3
+        assert result.se.shape == result.coef.shape
+        assert result.ci_low.shape == result.coef.shape
+        assert result.ci_high.shape == result.coef.shape
+        assert result.n_epochs == 5
+
+    def test_jackknife_requires_multi_epoch(self):
+        """jackknife with single 2-D array should raise."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=None)
+        with pytest.raises(ValueError, match="multi-epoch"):
+            jackknife_se_trf(trf, x, y)
+
+    def test_jackknife_min_epochs(self):
+        """jackknife with N < 3 should raise."""
+        X = [np.random.default_rng(0).standard_normal((100, 1))]
+        Y = [np.random.default_rng(1).standard_normal((100, 1))]
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=None)
+        with pytest.raises(ValueError, match="N >= 3"):
+            jackknife_se_trf(trf, X, Y)
+
+    def test_jackknife_rejects_ridge(self):
+        """jackknife with ridge should raise (v1: OLS only)."""
+        X = [np.random.default_rng(0).standard_normal((100, 1)) for _ in range(5)]
+        Y = [np.random.default_rng(1).standard_normal((100, 1)) for _ in range(5)]
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        with pytest.raises(ValueError, match="OLS only"):
+            jackknife_se_trf(trf, X, Y)
+
+    def test_jackknife_ci_contains_coef(self):
+        """For OLS with no signal (null), coef should be within CI."""
+        rng = np.random.default_rng(42)
+        X = [rng.standard_normal((200, 1)) for _ in range(10)]
+        Y = [rng.standard_normal((200, 1)) for _ in range(10)]
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=None)
+        result = jackknife_se_trf(trf, X, Y, alpha=0.05)
+        # CI should contain the coefficient
+        assert np.all(result.ci_low <= result.coef)
+        assert np.all(result.ci_high >= result.coef)
+
+    def test_jackknife_se_positive(self):
+        """Jackknife SE should be non-negative."""
+        rng = np.random.default_rng(42)
+        X = [rng.standard_normal((200, 1)) for _ in range(10)]
+        Y = [rng.standard_normal((200, 1)) for _ in range(10)]
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=None)
+        result = jackknife_se_trf(trf, X, Y)
+        assert np.all(result.se >= 0)
 
 
 # ---------------------------------------------------------------------------

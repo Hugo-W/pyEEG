@@ -42,12 +42,14 @@ __all__ = [
     "bootstrap_ci_trf",
     "cross_subject_consistency",
     "group_level_test",
+    "jackknife_se_trf",
     "TRFAnalyzer",
     "PermutationResult",
     "ClusterResult",
     "BootstrapResult",
     "ConsistencyResult",
     "GroupTestResult",
+    "JackknifeResult",
 ]
 
 
@@ -219,6 +221,38 @@ class GroupTestResult:
     family: str
     n_perm: int
     hypothesis: str
+
+
+@dataclass
+class JackknifeResult:
+    """Result of a leave-one-epoch-out jackknife SE/CI estimation.
+
+    This is a standalone uncertainty estimator (not a permutation test).
+    It estimates the sampling variability of TRF coefficients by leaving
+    one epoch out at a time and computing the jackknife standard error.
+
+    Attributes
+    ----------
+    coef : ndarray, shape (n_lags, n_feats, n_chans)
+        Full-data coefficient (from fitting all epochs).
+    se : ndarray, shape (n_lags, n_feats, n_chans)
+        Jackknife standard error.
+    ci_low : ndarray, shape (n_lags, n_feats, n_chans)
+        Lower CI bound (coef - z * se, z = 1.96 for 95%).
+    ci_high : ndarray, shape (n_lags, n_feats, n_chans)
+        Upper CI bound (coef + z * se).
+    n_epochs : int
+        Number of epochs used.
+    alpha : float
+        CI confidence level (1 - alpha).
+    """
+
+    coef: np.ndarray
+    se: np.ndarray
+    ci_low: np.ndarray
+    ci_high: np.ndarray
+    n_epochs: int
+    alpha: float
 
 
 # ===========================================================================
@@ -759,11 +793,11 @@ def permutation_test_trf(
             )
 
     # --- validate stat="jackknife" requires multi-epoch ---
-    # (handled in the jackknife path; for now only zscore/t/coef are implemented)
+    # (jackknife is a standalone SE estimator, not a permutation stat — see jackknife_se_trf)
 
-    if stat not in ("zscore", "t", "coef"):
+    if stat not in ("zscore", "t", "coef", "perm_norm"):
         raise NotImplementedError(
-            f"stat={stat!r} is not yet implemented. Use 'zscore', 't', or 'coef'."
+            f"stat={stat!r} is not yet implemented. Use 'zscore', 't', 'coef', or 'perm_norm'."
         )
 
     # --- normalise segments ---
@@ -807,8 +841,8 @@ def permutation_test_trf(
                     i, fs, fs / srate,
                 )
 
-    # --- standardisation (if zscore) ---
-    zscored = stat == "zscore"
+    # --- standardisation (if zscore or perm_norm — perm_norm uses zscore as base) ---
+    zscored = stat in ("zscore", "perm_norm")
     zero_var_feats = None
     zero_var_chans = None
 
@@ -826,6 +860,8 @@ def permutation_test_trf(
                 )
 
     # --- observed statistic ---
+    # perm_norm uses zscore coef as its base statistic, then normalizes by null dispersion
+    base_stat = "zscore" if stat == "perm_norm" else stat
     if n_segments == 1:
         X_obs, y_obs = X_list[0], y_list[0]
         w_obs = weights_list[0] if weights_list else None
@@ -834,7 +870,7 @@ def permutation_test_trf(
         w_obs = weights_list
 
     obs_stat = _fit_and_get_stat(
-        trf, X_obs, y_obs, stat, weights=w_obs, lagged=lagged, zscored=zscored
+        trf, X_obs, y_obs, base_stat, weights=w_obs, lagged=lagged, zscored=zscored
     )
 
     # --- family mask ---
@@ -855,7 +891,7 @@ def permutation_test_trf(
     perm_seeds = rng.integers(0, 2**63 - 1, size=n_perm)
 
     def _run_permutation(perm_idx):
-        """Run a single permutation and return the max-stat."""
+        """Run a single permutation and return the null stat map."""
         local_rng = np.random.default_rng(perm_seeds[perm_idx])
         X_perm_list = []
         for i, Xi in enumerate(X_list):
@@ -873,30 +909,52 @@ def permutation_test_trf(
             w_p = weights_list
 
         null_stat = _fit_and_get_stat(
-            trf, X_p, y_p, stat, weights=w_p, lagged=lagged, zscored=zscored
+            trf, X_p, y_p, base_stat, weights=w_p, lagged=lagged, zscored=zscored
         )
-        return _max_stat(null_stat, tails, family_mask)
+        return null_stat
 
     if n_jobs == 1:
-        null_max_stats = np.array([
-            _run_permutation(i) for i in range(n_perm)
-        ])
+        null_maps = [_run_permutation(i) for i in range(n_perm)]
     else:
         try:
             from joblib import Parallel, delayed
-            null_max_stats = np.array(
+            null_maps = list(
                 Parallel(n_jobs=n_jobs)(
                     delayed(_run_permutation)(i) for i in range(n_perm)
                 )
             )
         except ImportError:
             LOGGER.warning("joblib not available, running serially.")
-            null_max_stats = np.array([
-                _run_permutation(i) for i in range(n_perm)
-            ])
+            null_maps = [_run_permutation(i) for i in range(n_perm)]
 
-    # --- p-values ---
-    pvals = _plus_one_pvals(obs_stat, null_max_stats, tails, family_mask)
+    # --- compute p-values ---
+    zero_var_stat = None
+
+    if stat == "perm_norm":
+        # Two-pass normalization: collect all maps (observed + nulls),
+        # compute per-coordinate SD, normalize, then FWE on max|Z|.
+        all_maps = np.array([obs_stat] + null_maps)  # (n_perm+1, n_lags, n_feats, n_chans)
+        sd_j = np.std(all_maps, axis=0, ddof=1)
+        eps = _EPS
+        zero_var_stat = sd_j < eps
+        sd_safe = np.where(zero_var_stat, 1.0, sd_j)
+        Z = all_maps / sd_safe[None, ...]
+        Z[:, zero_var_stat] = 0.0
+
+        # FWE: max|Z| per map
+        z_max = np.max(np.abs(Z.reshape(Z.shape[0], -1)), axis=1)
+        null_max_stats = z_max[1:]  # null max-stats
+
+        # Plus-one p-values from normalized ensemble
+        obs_z = Z[0]
+        pvals = _plus_one_pvals(obs_z, null_max_stats, tails, family_mask)
+        obs_stat = obs_z  # report normalized observed stat
+    else:
+        # Standard max-stat FWE
+        null_max_stats = np.array([
+            _max_stat(nm, tails, family_mask) for nm in null_maps
+        ])
+        pvals = _plus_one_pvals(obs_stat, null_max_stats, tails, family_mask)
 
     hypothesis = (
         "H0: no stimulus→response predictive relationship at any modeled lag"
@@ -920,6 +978,7 @@ def permutation_test_trf(
         resampling_scheme=resampling_scheme,
         zero_var_features=zero_var_feats,
         zero_var_channels=zero_var_chans,
+        zero_var_stat=zero_var_stat,
     )
 
 
@@ -942,6 +1001,142 @@ def _resolve_family(family, shape):
         return family.astype(bool)
     else:
         raise TypeError(f"family must be str or ndarray, got {type(family)}")
+
+
+# ===========================================================================
+# Public API — jackknife SE estimator (standalone, not a permutation stat)
+# ===========================================================================
+
+
+def jackknife_se_trf(
+    trf,
+    X,
+    y,
+    alpha: float = 0.05,
+    stat: str = "zscore",
+    weights=None,
+) -> JackknifeResult:
+    """Leave-one-epoch-out jackknife standard error and confidence intervals.
+
+    Estimates the sampling variability of TRF coefficients by leaving one
+    epoch (segment) out at a time, refitting on the remaining N-1 epochs,
+    and computing the jackknife standard error.
+
+    This is a standalone uncertainty estimator, **not** a permutation test.
+    The spike validation showed that using jackknife studentization as a
+    permutation statistic has low power (the SE captures both signal and
+    noise variability, shrinking the t-statistic).  Instead, the jackknife
+    is offered as a lightweight SE/CI estimator alongside the bootstrap.
+
+    Parameters
+    ----------
+    trf : TRFEstimator
+        Configured TRF estimator (cloned and frozen for all refits).
+    X : list of ndarray
+        Multi-epoch stimulus features (list of segments, each
+        (n_samples_i, n_feats)).  Single 2-D arrays are rejected —
+        jackknife requires multiple epochs.
+    y : list of ndarray
+        Multi-epoch response (list of segments, each (n_samples_i, n_chans)).
+    alpha : float, default 0.05
+        CI confidence level (1 - alpha).  Uses normal approximation
+        (z = 1.96 for 95%).
+    stat : {"zscore", "coef"}
+        If ``"zscore"``, z-score each epoch independently before fitting
+        (scale-standardised coefficient).  If ``"coef"``, use raw coefficients.
+    weights : list of ndarray or None
+        Per-epoch sample weights (not supported for jackknife; raises).
+
+    Returns
+    -------
+    result : JackknifeResult
+
+    Notes
+    -----
+    Requires N >= 3 epochs.  OLS only in v1 (alpha=None on the TRF); ridge
+    jackknife is deferred because the SE of a biased (shrinkage) estimator
+    has a different interpretation.
+    """
+    from scipy.stats import norm
+
+    # --- validate multi-epoch ---
+    if isinstance(X, np.ndarray) and X.ndim == 2:
+        raise ValueError(
+            "jackknife_se_trf requires multi-epoch data (list of segments). "
+            "A single 2-D array was provided."
+        )
+
+    X_list, y_list = _as_segment_list(X, y)
+    N = len(X_list)
+    if N < 3:
+        raise ValueError(
+            f"jackknife_se_trf requires N >= 3 epochs, got {N}."
+        )
+
+    if weights is not None:
+        raise ValueError(
+            "weights are not supported for jackknife_se_trf in v1."
+        )
+
+    # --- validate OLS ---
+    if trf.alpha is not None and np.isscalar(trf.alpha) and trf.alpha > 0:
+        raise ValueError(
+            "jackknife_se_trf v1 supports OLS only (alpha=None). "
+            f"Got alpha={trf.alpha}. Ridge jackknife is deferred to v2."
+        )
+    if trf.loss not in ("linear", "none"):
+        raise ValueError(
+            f"jackknife_se_trf v1 supports loss='linear', got {trf.loss!r}."
+        )
+
+    # --- standardisation (if zscore) ---
+    zscored = stat == "zscore"
+    if stat not in ("zscore", "coef"):
+        raise ValueError(f"stat must be 'zscore' or 'coef', got {stat!r}.")
+
+    if zscored:
+        X_list, y_list, _, _ = _zscore_segments(X_list, y_list)
+
+    # --- full-data fit ---
+    clone_full = _clone_trf(trf, fit_intercept=False if zscored else None)
+    clone_full.fit(X_list, y_list)
+    coef_full = clone_full.coef_.copy()
+
+    # --- leave-one-epoch-out ---
+    thetas_loo = []
+    for i in range(N):
+        X_loo = [X_list[j] for j in range(N) if j != i]
+        y_loo = [y_list[j] for j in range(N) if j != i]
+        clone_loo = _clone_trf(trf, fit_intercept=False if zscored else None)
+        clone_loo.fit(X_loo, y_loo)
+        thetas_loo.append(clone_loo.coef_.copy())
+
+    thetas_loo = np.array(thetas_loo)  # (N, n_lags, n_feats, n_chans)
+    theta_bar = thetas_loo.mean(axis=0)
+
+    # Jackknife SE
+    se = np.sqrt((N - 1) / N * np.sum((thetas_loo - theta_bar[None, ...]) ** 2, axis=0))
+
+    # Handle zero SE
+    eps = _EPS
+    se_safe = np.where(se < eps, np.inf, se)
+
+    # Normal-approximation CI
+    z_crit = norm.ppf(1 - alpha / 2)
+    ci_low = coef_full - z_crit * se_safe
+    ci_high = coef_full + z_crit * se_safe
+    # Where SE is zero, CI = coef (no variability)
+    ci_low[se < eps] = coef_full[se < eps]
+    ci_high[se < eps] = coef_full[se < eps]
+
+    return JackknifeResult(
+        coef=coef_full,
+        se=se,
+        ci_low=ci_low,
+        ci_high=ci_high,
+        n_epochs=N,
+        alpha=alpha,
+    )
 
 
 # ===========================================================================
