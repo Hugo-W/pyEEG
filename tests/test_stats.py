@@ -17,6 +17,9 @@ from pyeeg.simulate import (
 from pyeeg.stats import (
     permutation_test_trf,
     cluster_based_permutation_test,
+    bootstrap_ci_trf,
+    cross_subject_consistency,
+    group_level_test,
     jackknife_se_trf,
     JackknifeResult,
     _valid_offsets,
@@ -32,6 +35,7 @@ from pyeeg.stats import (
     _find_clusters,
     _max_cluster_mass,
     _resolve_threshold,
+    _estimate_block_size,
 )
 
 
@@ -834,6 +838,200 @@ class TestClusterBasedTest:
         )
         assert np.any(result.mask_significant), (
             "Expected significant clusters with a true TRF present."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap CI
+# ---------------------------------------------------------------------------
+
+class TestBootstrap:
+    def test_shape(self):
+        """Bootstrap CI should produce coef_-shaped outputs."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        result = bootstrap_ci_trf(trf, x, y, n_boot=10, seed=42, stat="zscore")
+        n_lags = len(trf.lags)
+        assert result.ci_low.shape == (n_lags, 1, 1)
+        assert result.ci_high.shape == (n_lags, 1, 1)
+        assert result.se.shape == (n_lags, 1, 1)
+        assert result.n_boot == 10
+        assert result.block_size_ > 0
+
+    def test_ci_ordering(self):
+        """ci_low <= ci_high."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        result = bootstrap_ci_trf(trf, x, y, n_boot=20, seed=42, stat="zscore")
+        assert np.all(result.ci_low <= result.ci_high)
+
+    def test_reproducibility(self):
+        """Same seed → identical CIs."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        r1 = bootstrap_ci_trf(trf, x, y, n_boot=10, seed=42, stat="zscore")
+        r2 = bootstrap_ci_trf(trf, x, y, n_boot=10, seed=42, stat="zscore")
+        np.testing.assert_allclose(r1.ci_low, r2.ci_low)
+        np.testing.assert_allclose(r1.ci_high, r2.ci_high)
+
+    def test_lagged_rejected(self):
+        """Bootstrap rejects lagged=True."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        with pytest.raises(ValueError, match="raw.*pre-lag"):
+            bootstrap_ci_trf(trf, x, y, n_boot=5, seed=42, lagged=True)
+
+    def test_return_distribution(self):
+        """return_distribution=True should return the full distribution."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        result = bootstrap_ci_trf(
+            trf, x, y, n_boot=10, seed=42, stat="zscore",
+            return_distribution=True,
+        )
+        assert result.distribution is not None
+        assert result.distribution.shape[0] == 10
+
+    def test_block_size_auto(self):
+        """Auto block size should estimate from autocorrelation."""
+        _, x = simulate_smooth_input(dur=20.0, srate=SRATE, seed=42)
+        bs = _estimate_block_size(x, SRATE)
+        assert bs >= 1
+        assert bs <= len(x) // 4
+
+    def test_block_size_white_noise(self):
+        """White noise should have small block size."""
+        rng = np.random.default_rng(0)
+        x = rng.standard_normal(2000)
+        bs = _estimate_block_size(x, SRATE)
+        assert bs <= 10  # white noise → minimal block size
+
+
+# ---------------------------------------------------------------------------
+# Cross-subject consistency
+# ---------------------------------------------------------------------------
+
+class TestCrossSubject:
+    def test_identical_trfs_high_consistency(self):
+        """Identical TRFs should have consistency ≈ 1 (corr, multi-channel)."""
+        # Need multiple channels for corr across channel axis
+        rng = np.random.default_rng(42)
+        x, y, _, _ = _make_trf_data()
+        y_multi = np.hstack([y, rng.standard_normal((len(y), 2))])
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        trf.fit(x, y_multi)
+        trfs = [trf.copy() for _ in range(3)]
+        result = cross_subject_consistency(trfs, metric="corr")
+        # Identical coefs → corr = 1 (for non-constant channels)
+        assert np.all(result.consistency >= 0.99)
+
+    def test_loo_mode(self):
+        """LOO mode should produce per_subject array."""
+        rng = np.random.default_rng(42)
+        x, y, _, _ = _make_trf_data()
+        y_multi = np.hstack([y, rng.standard_normal((len(y), 2))])
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        trf.fit(x, y_multi)
+        trfs = [trf.copy() for _ in range(4)]
+        result = cross_subject_consistency(trfs, metric="corr", leave_one_out=True)
+        assert result.per_subject is not None
+        assert result.per_subject.shape[0] == 4
+
+    def test_cosine_metric(self):
+        """Cosine metric should work."""
+        rng = np.random.default_rng(42)
+        x, y, _, _ = _make_trf_data()
+        y_multi = np.hstack([y, rng.standard_normal((len(y), 2))])
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        trf.fit(x, y_multi)
+        trfs = [trf.copy() for _ in range(3)]
+        result = cross_subject_consistency(trfs, metric="cosine")
+        assert np.all(result.consistency >= 0.99)
+
+    def test_shape_mismatch_raises(self):
+        """Different coef_ shapes should raise."""
+        x, y, _, _ = _make_trf_data()
+        trf1 = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        trf1.fit(x, y)
+        trf2 = TRFEstimator(tmin=-0.1, tmax=0.3, srate=SRATE, alpha=5.0)
+        trf2.fit(x, y)
+        with pytest.raises(ValueError, match="shapes must match"):
+            cross_subject_consistency([trf1, trf2])
+
+    def test_descriptive_only(self):
+        """Result should be marked descriptive_only=True."""
+        x, y, _, _ = _make_trf_data()
+        trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+        trf.fit(x, y)
+        result = cross_subject_consistency([trf.copy(), trf.copy()])
+        assert result.descriptive_only
+
+
+# ---------------------------------------------------------------------------
+# Group-level test
+# ---------------------------------------------------------------------------
+
+class TestGroupLevel:
+    def test_shape(self):
+        """Group test should produce coef_-shaped outputs."""
+        x, y, _, _ = _make_trf_data()
+        trfs = []
+        for _ in range(5):
+            trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+            trf.fit(x, y)
+            trfs.append(trf)
+        result = group_level_test(trfs, n_perm=10, seed=42)
+        assert result.mean_coef.ndim == 3
+        assert result.pvals_corrected.shape == result.mean_coef.shape
+        assert result.mask_significant.shape == result.mean_coef.shape
+
+    def test_pvals_in_range(self):
+        """P-values must be in (0, 1]."""
+        x, y, _, _ = _make_trf_data()
+        trfs = []
+        for _ in range(5):
+            trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+            trf.fit(x, y)
+            trfs.append(trf)
+        result = group_level_test(trfs, n_perm=10, seed=42)
+        assert np.all(result.pvals_corrected > 0)
+        assert np.all(result.pvals_corrected <= 1)
+
+    def test_reproducibility(self):
+        """Same seed → identical results."""
+        x, y, _, _ = _make_trf_data()
+        trfs = []
+        for _ in range(5):
+            trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+            trf.fit(x, y)
+            trfs.append(trf)
+        r1 = group_level_test(trfs, n_perm=10, seed=42)
+        r2 = group_level_test(trfs, n_perm=10, seed=42)
+        np.testing.assert_array_equal(r1.pvals_corrected, r2.pvals_corrected)
+
+    def test_all_zero_coefs_not_significant(self):
+        """If all subjects have zero coef, nothing should be significant."""
+        x, y, _, _ = _make_trf_data()
+        trfs = []
+        for _ in range(5):
+            trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+            trf.fit(x, y)
+            trf.coef_[:] = 0.0  # zero out
+            trfs.append(trf)
+        result = group_level_test(trfs, n_perm=20, seed=42)
+        assert not np.any(result.mask_significant)
+
+    def test_consistent_signal_significant(self):
+        """If all subjects have the same non-zero signal, should be significant."""
+        x, y, _, _ = _make_trf_data()
+        trfs = []
+        for _ in range(10):
+            trf = TRFEstimator(tmin=TMIN, tmax=TMAX, srate=SRATE, alpha=5.0)
+            trf.fit(x, y)
+            trfs.append(trf)
+        result = group_level_test(trfs, n_perm=100, seed=42)
+        assert np.any(result.mask_significant), (
+            "Expected significant group-level coefficients with consistent signal."
         )
 
 

@@ -1593,6 +1593,35 @@ def cluster_based_permutation_test(
     )
 
 
+def _estimate_block_size(x, srate):
+    """Estimate block size from integrated autocorrelation time.
+
+    Returns the block size in samples, capped at n//4, floored at 1.
+    """
+    n = len(x)
+    if n < 4:
+        return 1
+    # Compute autocorrelation (normalized)
+    x_centered = x - x.mean()
+    var = np.var(x_centered)
+    if var < _EPS:
+        return 1
+    # FFT-based autocorrelation
+    nfft = 1 << int(np.ceil(np.log2(2 * n)))
+    f = np.fft.rfft(x_centered, n=nfft)
+    acf = np.fft.irfft(f * np.conj(f), n=nfft)[:n]
+    acf /= (var * n)
+    # Integrated autocorrelation time: sum of ACF until it drops below 0
+    # or becomes negative
+    tau = 1.0
+    for k in range(1, n):
+        if acf[k] <= 0:
+            break
+        tau += 2 * acf[k]
+    block = int(np.ceil(tau))
+    return max(1, min(block, n // 4))
+
+
 def bootstrap_ci_trf(
     trf,
     X,
@@ -1611,9 +1640,226 @@ def bootstrap_ci_trf(
 ) -> BootstrapResult:
     """Paired block-bootstrap confidence intervals on TRF coefficients.
 
-    Not yet implemented — see plan v6 §2.3.
+    Estimates the sampling distribution of the (penalised) coefficient
+    estimate under the fitted model by resampling paired (X, y) blocks
+    with replacement (circular block bootstrap), then refitting.
+
+    CIs describe the chosen penalised estimator — not nominal coverage
+    for an unpenalised population coefficient.
+
+    Parameters
+    ----------
+    trf : TRFEstimator
+        Configured TRF estimator (cloned and frozen for all refits).
+    X : ndarray or list of ndarray
+        Stimulus features (raw, pre-lag). ``lagged=True`` is rejected for
+        bootstrap (block-resampling a pre-lagged design is incoherent).
+    y : ndarray or list of ndarray
+        Response.
+    n_boot : int, default 1000
+        Number of bootstrap replications.
+    block_size : {"auto"} or int
+        Block size in samples. ``"auto"`` estimates from integrated
+        autocorrelation time, capped at n//4, floored at 1.
+    method : {"circular"}
+        Bootstrap method. ``"circular"`` (default) wraps the time series
+        and draws contiguous blocks with replacement.
+    interval : {"percentile"}
+        CI method. ``"percentile"`` (default).
+    alpha : float, default 0.05
+        CI confidence level (1 - alpha).
+    stat : {"zscore", "coef"}
+        If ``"zscore"``, z-score each reconstructed bootstrap segment
+        before refit. If ``"coef"``, use raw coefficients.
+    n_jobs : int, default 1
+        Number of parallel jobs.
+    seed : int or None
+        Random seed.
+    return_distribution : bool, default False
+        If True, return the full bootstrap distribution (can be large).
+    weights : ndarray or list of ndarray, or None
+        Sample weights (threaded to refits).
+    lagged : bool, default False
+        Must be False for bootstrap (raises if True).
+
+    Returns
+    -------
+    result : BootstrapResult
     """
-    raise NotImplementedError("bootstrap_ci_trf not yet implemented.")
+    if lagged:
+        raise ValueError(
+            "bootstrap_ci_trf requires raw (pre-lag) X; lagged=True is "
+            "rejected (block-resampling a pre-lagged design is incoherent)."
+        )
+    if stat not in ("zscore", "coef"):
+        raise ValueError(f"stat must be 'zscore' or 'coef' for bootstrap, got {stat!r}.")
+    if trf.loss == "cauchy":
+        raise ValueError(
+            "Robust loss (Cauchy) bootstrap refits are expensive. Use OLS or ridge."
+        )
+
+    X_list, y_list = _as_segment_list(X, y)
+    n_segments = len(X_list)
+
+    # Weights to list
+    if weights is not None and not isinstance(weights, (list, tuple)):
+        weights_list = [weights] * n_segments if n_segments > 1 else [weights]
+    else:
+        weights_list = list(weights) if weights is not None else None
+
+    # Window extent for boundary drop
+    tmin_samp, tmax_samp = _get_window_samples(trf)
+    window_extent = tmax_samp - tmin_samp
+
+    # Block size estimation
+    if block_size == "auto":
+        block_sizes = []
+        for i, Xi in enumerate(X_list):
+            if Xi.ndim == 1:
+                bs = _estimate_block_size(Xi, trf.srate)
+            else:
+                # Use first feature for estimation
+                bs = _estimate_block_size(Xi[:, 0], trf.srate)
+            # Ensure block is at least window_extent + margin so there's
+            # usable data after boundary dropping
+            bs = max(bs, window_extent + 10)
+            block_sizes.append(bs)
+    else:
+        block_sizes = [int(block_size)] * n_segments
+
+    zscored = stat == "zscore"
+
+    rng = np.random.default_rng(seed)
+    boot_seeds = rng.integers(0, 2**63 - 1, size=n_boot)
+
+    def _run_bootstrap(boot_idx):
+        local_rng = np.random.default_rng(boot_seeds[boot_idx])
+        X_boot_list = []
+        y_boot_list = []
+        w_boot_list = []
+        for i, (Xi, yi) in enumerate(zip(X_list, y_list)):
+            n_samp = len(Xi)
+            bs = min(block_sizes[i], n_samp)
+            wi = weights_list[i] if weights_list else None
+
+            # Circular block bootstrap: draw blocks of length bs with replacement
+            X_boot, y_boot, w_boot = _circular_block_resample(
+                Xi, yi, wi, bs, n_samp, local_rng, window_extent
+            )
+            X_boot_list.append(X_boot)
+            y_boot_list.append(y_boot)
+            if w_boot is not None:
+                w_boot_list.append(w_boot)
+
+        # Standardize per reconstructed segment (after block concat, before lag)
+        if zscored:
+            X_boot_list, y_boot_list, _, _ = _zscore_segments(
+                X_boot_list, y_boot_list,
+                w_boot_list if w_boot_list else None,
+            )
+
+        # Fit
+        clone = _clone_trf(trf, fit_intercept=False if zscored else None)
+        if n_segments == 1:
+            clone.fit(X_boot_list[0], y_boot_list[0],
+                      weights=w_boot_list[0] if w_boot_list else None)
+        else:
+            clone.fit(X_boot_list, y_boot_list,
+                      weights=w_boot_list if w_boot_list else None)
+        return clone.coef_.copy()
+
+    if n_jobs == 1:
+        boot_coefs = [_run_bootstrap(i) for i in range(n_boot)]
+    else:
+        try:
+            from joblib import Parallel, delayed
+            boot_coefs = list(
+                Parallel(n_jobs=n_jobs)(
+                    delayed(_run_bootstrap)(i) for i in range(n_boot)
+                )
+            )
+        except ImportError:
+            boot_coefs = [_run_bootstrap(i) for i in range(n_boot)]
+
+    boot_coefs = np.array(boot_coefs)  # (n_boot, n_lags, n_feats, n_chans)
+
+    # Percentile CI
+    ci_low = np.percentile(boot_coefs, 100 * alpha / 2, axis=0)
+    ci_high = np.percentile(boot_coefs, 100 * (1 - alpha / 2), axis=0)
+    se = boot_coefs.std(axis=0, ddof=1)
+
+    return BootstrapResult(
+        ci_low=ci_low,
+        ci_high=ci_high,
+        distribution=boot_coefs if return_distribution else None,
+        se=se,
+        block_size_=block_sizes[0],
+        method=method,
+        n_boot=n_boot,
+        estimand="sampling distribution of the (penalised) coefficient estimate",
+    )
+
+
+def _circular_block_resample(X, y, weights, block_size, n_target, rng, drop_samples=0):
+    """Circular block bootstrap: draw blocks of length block_size with replacement.
+
+    After concatenating blocks, drop `drop_samples` rows following each block
+    boundary to prevent artificial lag histories.
+
+    Returns (X_resampled, y_resampled, weights_resampled or None).
+    """
+    n = len(X)
+    bs = min(block_size, n)
+
+    # Build resampled series by drawing blocks
+    X_parts = []
+    y_parts = []
+    w_parts = []
+    pos = 0
+    while pos < n_target:
+        # Draw a random start position (circular)
+        start = int(rng.integers(0, n))
+        end = min(start + bs, start + (n_target - pos))
+        # Circular wrap
+        indices = [(start + k) % n for k in range(end - start)]
+        X_parts.append(X[indices])
+        y_parts.append(y[indices])
+        if weights is not None:
+            w_parts.append(weights[indices])
+        pos += len(indices)
+
+    X_res = np.concatenate(X_parts[:1])  # start with first block
+    y_res = np.concatenate(y_parts[:1])
+    w_res = np.concatenate(w_parts[:1]) if weights is not None else None
+    for i in range(1, len(X_parts)):
+        X_res = np.concatenate([X_res, X_parts[i]])
+        y_res = np.concatenate([y_res, y_parts[i]])
+        if weights is not None:
+            w_res = np.concatenate([w_res, w_parts[i]])
+
+    # Trim to n_target
+    X_res = X_res[:n_target]
+    y_res = y_res[:n_target]
+    if weights is not None:
+        w_res = w_res[:n_target]
+
+    # Drop boundary rows: mark the first `drop_samples` rows after each block join
+    # as invalid, then keep only valid rows
+    if drop_samples > 0:
+        valid = np.ones(n_target, dtype=bool)
+        pos = 0
+        for part in X_parts:
+            pos += len(part)
+            if pos < n_target:
+                drop_end = min(pos + drop_samples, n_target)
+                valid[pos:drop_end] = False
+        if not valid.all():
+            X_res = X_res[valid]
+            y_res = y_res[valid]
+            if weights is not None:
+                w_res = w_res[valid]
+
+    return X_res, y_res, w_res
 
 
 def cross_subject_consistency(
@@ -1623,9 +1869,87 @@ def cross_subject_consistency(
 ) -> ConsistencyResult:
     """Descriptive cross-subject consistency of TRF coefficients.
 
-    Not yet implemented — see plan v6 §2.4.
+    Computes pairwise or leave-one-out similarity across subjects,
+    measuring the reliability of the TRF coefficient map across the
+    channel axis.  **Descriptive only — no inferential test.**
+
+    Parameters
+    ----------
+    trfs : list of TRFEstimator
+        Fitted TRF estimators (one per subject).  All must have the same
+        coef_ shape.
+    metric : {"corr", "cosine"}
+        Similarity metric across the channel axis.
+    leave_one_out : bool, default False
+        If True, compute LOO reliability: average N-1 subjects, correlate
+        with the held-out subject, repeat for each subject.
+
+    Returns
+    -------
+    result : ConsistencyResult
     """
-    raise NotImplementedError("cross_subject_consistency not yet implemented.")
+    if len(trfs) < 2:
+        raise ValueError("Need at least 2 subjects for consistency.")
+
+    coefs = [trf.coef_ for trf in trfs]
+    shapes = set(c.shape for c in coefs)
+    if len(shapes) > 1:
+        raise ValueError(
+            f"All TRF coef_ shapes must match, got {shapes}."
+        )
+
+    coefs = np.array(coefs)  # (n_subjects, n_lags, n_feats, n_chans)
+    n_subj = len(coefs)
+
+    if leave_one_out:
+        # LOO: average N-1, correlate with held-out (across channels)
+        per_subject = np.zeros((n_subj, coefs.shape[1], coefs.shape[2]))
+        for i in range(n_subj):
+            mean_rest = np.delete(coefs, i, axis=0).mean(axis=0)
+            for lag in range(coefs.shape[1]):
+                for feat in range(coefs.shape[2]):
+                    a = coefs[i, lag, feat, :]
+                    b = mean_rest[lag, feat, :]
+                    per_subject[i, lag, feat] = _similarity(a, b, metric)
+        consistency = per_subject.mean(axis=0)  # (n_lags, n_feats)
+        return ConsistencyResult(
+            consistency=consistency,
+            per_subject=per_subject,
+            descriptive_only=True,
+        )
+    else:
+        # Pairwise: average pairwise similarity across subjects
+        n_pairs = n_subj * (n_subj - 1) // 2
+        consistency = np.zeros((coefs.shape[1], coefs.shape[2]))
+        for lag in range(coefs.shape[1]):
+            for feat in range(coefs.shape[2]):
+                sims = []
+                for i in range(n_subj):
+                    for j in range(i + 1, n_subj):
+                        a = coefs[i, lag, feat, :]
+                        b = coefs[j, lag, feat, :]
+                        sims.append(_similarity(a, b, metric))
+                consistency[lag, feat] = np.mean(sims)
+        return ConsistencyResult(
+            consistency=consistency,
+            per_subject=None,
+            descriptive_only=True,
+        )
+
+
+def _similarity(a, b, metric):
+    """Compute similarity between two 1-D vectors."""
+    if metric == "corr":
+        if a.std() < _EPS or b.std() < _EPS:
+            return 0.0
+        return float(np.corrcoef(a, b)[0, 1])
+    elif metric == "cosine":
+        norm = np.linalg.norm(a) * np.linalg.norm(b)
+        if norm < _EPS:
+            return 0.0
+        return float(np.dot(a, b) / norm)
+    else:
+        raise ValueError(f"Unknown metric: {metric!r}")
 
 
 def group_level_test(
@@ -1638,9 +1962,87 @@ def group_level_test(
 ) -> GroupTestResult:
     """Group-level sign-flip test on subject coefficient maps.
 
-    Not yet implemented — see plan v6 §2.4.
+    Tests H0: population mean coefficient = 0, using sign-flip permutation
+    on subject coefficient maps with max-stat FWE correction.
+
+    Parameters
+    ----------
+    trfs : list of TRFEstimator
+        Fitted TRF estimators (one per subject).  All must have the same
+        coef_ shape.
+    n_perm : int, default 1000
+        Number of permutations (sign flips).
+    family : str or ndarray
+        Multiplicity family (same as ``permutation_test_trf``).
+    tails : {"two-sided", "positive", "negative"}
+        Tail of the test.
+    n_jobs : int, default 1
+        Number of parallel jobs.
+    seed : int or None
+        Random seed.
+
+    Returns
+    -------
+    result : GroupTestResult
     """
-    raise NotImplementedError("group_level_test not yet implemented.")
+    if len(trfs) < 2:
+        raise ValueError("Need at least 2 subjects for group_level_test.")
+
+    coefs = np.array([trf.coef_ for trf in trfs])
+    shapes = set(c.shape for c in coefs)
+    if len(shapes) > 1:
+        raise ValueError(f"All TRF coef_ shapes must match, got {shapes}.")
+
+    n_subj = len(coefs)
+    stat_shape = coefs.shape[1:]  # (n_lags, n_feats, n_chans)
+
+    # Observed: mean coefficient (one-sample t against 0)
+    mean_coef = coefs.mean(axis=0)
+    # Statistic: mean (sign-flip test on mean)
+    obs_stat = mean_coef
+
+    # Family mask
+    family_mask = _resolve_family(family, stat_shape)
+
+    # Observed max-stat
+    obs_max = _max_stat(obs_stat, tails, family_mask)
+
+    # Permutation: sign-flip each subject's coef
+    rng = np.random.default_rng(seed)
+    perm_seeds = rng.integers(0, 2**63 - 1, size=n_perm)
+
+    def _run_signflip(perm_idx):
+        local_rng = np.random.default_rng(perm_seeds[perm_idx])
+        signs = local_rng.choice([-1, 1], size=n_subj)
+        flipped = coefs * signs[:, None, None, None]
+        null_mean = flipped.mean(axis=0)
+        return _max_stat(null_mean, tails, family_mask)
+
+    if n_jobs == 1:
+        null_max_stats = np.array([_run_signflip(i) for i in range(n_perm)])
+    else:
+        try:
+            from joblib import Parallel, delayed
+            null_max_stats = np.array(
+                Parallel(n_jobs=n_jobs)(
+                    delayed(_run_signflip)(i) for i in range(n_perm)
+                )
+            )
+        except ImportError:
+            null_max_stats = np.array([_run_signflip(i) for i in range(n_perm)])
+
+    # Plus-one p-values
+    pvals = _plus_one_pvals(obs_stat, null_max_stats, tails, family_mask)
+    mask_significant = pvals < 0.05
+
+    return GroupTestResult(
+        mean_coef=mean_coef,
+        pvals_corrected=pvals,
+        mask_significant=mask_significant,
+        family=family if isinstance(family, str) else "custom",
+        n_perm=n_perm,
+        hypothesis="H0: population mean coefficient = 0",
+    )
 
 
 class TRFAnalyzer:
