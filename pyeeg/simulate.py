@@ -1083,7 +1083,7 @@ class CTRNN(NeuralMassNetwork):
     The state :math:`x` of the network evolves according to
 
     .. math::
-        \\tau \\dot{x} = -x + W o + I + \\theta
+        \\tau \\dot{x} = -x + W o + I
 
     where :math:`o = f(x + \\theta)` is the output of the network through
     the nonlinearity :math:`f`, :math:`I` is the external input projected
@@ -1114,6 +1114,26 @@ class CTRNN(NeuralMassNetwork):
         sigmoid (e.g. can use :func:`np.tanh`).
     theta : array_like, optional
         The bias term. Shape (N,). If ``None``, a zero bias is used.
+    tau : float or array_like
+        The leaky-integrator time constant :math:`\\tau` in seconds. A
+        scalar applies to all neurons, an array must have shape (N,).
+        Defaults to 1.
+    solver : str or callable
+        Integration scheme used by :meth:`step`: ``"euler"`` (explicit
+        Euler, the default), ``"euler-maruyama"`` or ``"em"`` (aliases of
+        ``"euler"``: with noise the scheme is Euler-Maruyama), ``"rk4"``
+        (classical fourth-order Runge-Kutta), or a custom callable stepper
+        ``f(derivative, x, dt, *args) -> x_new``.
+    x0 : array_like, optional
+        The initial state. Shape (N,). If ``None``, the state starts at
+        zero. The output ``o`` is initialised consistently with the state.
+
+    Raises
+    ------
+    ValueError
+        If ``tau`` is not positive or does not have shape ``()`` or ``(N,)``,
+        if ``solver`` is not a supported name, or if ``x0`` does not have
+        shape (N,).
     """
 
     def __init__(
@@ -1126,6 +1146,9 @@ class CTRNN(NeuralMassNetwork):
         seed=42,
         nonlinearity=sigmoid,
         theta=None,
+        tau=1.0,
+        solver="euler",
+        x0=None,
     ):
         super().__init__(N=N, W=W, dt=dt, seed=seed)
         self.nonlinearity = nonlinearity  # nonlinearity function
@@ -1133,12 +1156,31 @@ class CTRNN(NeuralMassNetwork):
         self.readout_W = np.zeros((output_dim, N))  # readout matrix
         self.input_W = np.zeros((N, input_dim))  # input matrix
         self.theta = theta if theta is not None else np.zeros((N,))
-        self.x = np.zeros((N,))  # state of the network
-        self.o = np.zeros((N,))  # output of the network
+        tau = np.asarray(tau, dtype=float)
+        if tau.shape not in ((), (N,)) or np.any(tau <= 0):
+            raise ValueError(
+                "tau must be a positive scalar or an array of shape (N,)"
+            )
+        self.tau = tau  # leaky-integrator time constant (scalar or (N,))
+        self.solver = solver
+        self.solver_function = _resolve_solver(solver)
+        if x0 is None:
+            self.x = np.zeros((N,))  # state of the network
+        else:
+            self.x = np.asarray(x0, dtype=float).copy()
+            if self.x.shape != (N,):
+                raise ValueError(f"x0 must have shape ({N},)")
+        # output of the network, initialised consistently with the state
+        self.o = self.nonlinearity(self.x + self.theta)
+
+    def _derivative(self, state, I):
+        """Vector field of the CTRNN evaluated at ``state``."""
+        output = self.nonlinearity(state + self.theta)
+        return (-state + self.W @ output + self.input_W @ I) / self.tau
 
     def step(self, I=None, noise=0.0):
         """
-        Compute one step of the CTRNN model.
+        Compute one step of the CTRNN model (the configured solver).
 
         Parameters
         ----------
@@ -1155,9 +1197,8 @@ class CTRNN(NeuralMassNetwork):
             I = np.zeros((self.input_W.shape[1],))
         elif np.isscalar(I):
             I = np.ones((self.input_W.shape[1],)) * I
-        self.x = (
-            self.x + self.dt * (-self.x + self.W @ self.o + self.input_W @ I) + noise
-        )
+        self.x = self.solver_function(self._derivative, self.x, self.dt, I)
+        self.x = self.x + noise
         self.o = self.nonlinearity(self.x + self.theta)
 
     def read_out(self):
