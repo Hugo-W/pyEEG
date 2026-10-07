@@ -69,7 +69,7 @@ def gammatone_filter(x, fs, cf, hrect=0):
     instf : ndarray
         Instantaneous frequency (Hz).
     """
-    x = np.asarray(x, dtype=np.float64)
+    x = np.ascontiguousarray(x, dtype=np.float64)
     nsamples = len(x)
 
     # Prepare output placeholders
@@ -77,6 +77,11 @@ def gammatone_filter(x, fs, cf, hrect=0):
     env = np.zeros(nsamples, dtype=np.float64)
     instp = np.zeros(nsamples, dtype=np.float64)
     instf = np.zeros(nsamples, dtype=np.float64)
+
+    # Silence: the C extension would return instf = cf (zero phase derivative
+    # evaluated as cf + 0), which is meaningless. Bail out early with zeros.
+    if not np.any(x):
+        return bm, env, instp, instf
 
     if "gammatone_c" in globals():
         # Use the Python extension module

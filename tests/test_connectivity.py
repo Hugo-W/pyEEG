@@ -13,12 +13,6 @@ import pytest
 from numpy.testing import assert_array_equal, assert_allclose
 from scipy.signal import hilbert
 
-# Compatibility shim: np.complex was removed in NumPy >= 2.0.
-# pyeeg.connectivity.csd_ndarray uses np.complex; without this shim the
-# import-time attribute access inside csd_ndarray would raise AttributeError.
-if not hasattr(np, 'complex'):
-    np.complex = complex
-
 from pyeeg.connectivity import (
     granger_causality,
     phase_transfer_entropy,
@@ -203,6 +197,18 @@ class TestWPLI:
         x = rng.standard_normal((500, 3))
         C = wPLI(x, fs=1.0, fbands=(0.05, 0.4))
         assert_allclose(C, C.T)
+
+    def test_full_spectrum_has_no_nan(self, sinusoid_pair):
+        """Full-spectrum wPLI must not contain NaN.
+
+        At DC the imaginary CSD is exactly zero, so num/denom is 0/0; zero
+        imaginary CSD means no phase-lag information, so wPLI is defined as 0.
+        """
+        data, fs = sinusoid_pair
+        C = wPLI(data, fs=fs)
+        assert np.all(np.isfinite(C))
+        # DC bin: zero imaginary CSD -> wPLI defined as 0, not NaN.
+        assert np.all(C[..., 0] == 0.0)
 
 
 # ===========================================================================
@@ -472,3 +478,39 @@ class TestPhaseTransferEntropy:
         dPTE2, PTE2 = phase_transfer_entropy(data, delay=1)
         assert_array_equal(dPTE1, dPTE2)
         assert_array_equal(PTE1, PTE2)
+
+    def test_no_runtime_warnings(self):
+        """Entropy and dPTE computations must not emit RuntimeWarnings.
+
+        0*log2(0) in the entropy terms and 0/0 in the dPTE normalisation are
+        expected and must be handled silently (regression test: these used to
+        raise RuntimeWarnings before nansum/errstate handled them).
+        """
+        coef = np.array([[[0.5, 0.5], [0.0, 0.5]]])
+        data = simulate_var(1, coef, nobs=300, ndim=2, seed=42)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            dPTE, PTE = phase_transfer_entropy(data, delay=1)
+        assert np.all(np.isfinite(dPTE))
+        assert np.all(np.isfinite(PTE))
+
+    def test_identical_channels_stay_finite(self, rng):
+        """Identical channels give (near-)zero coupling; dPTE must stay finite
+        even when a channel pair has exactly zero PTE (0/0 normalisation)."""
+        x = rng.standard_normal(300)
+        data = np.column_stack([x, x])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            dPTE, PTE = phase_transfer_entropy(data, delay=1)
+        assert np.all(np.isfinite(dPTE))
+        assert np.all(np.isfinite(PTE))
+        assert_array_equal(np.diag(dPTE), [0.0, 0.0])
+
+    def test_auto_delay_keeps_stdout_clean(self, capsys):
+        """Delay auto-estimation must log via the project logger, not print."""
+        coef = np.array([[[0.5, 0.5], [0.0, 0.5]]])
+        data = simulate_var(1, coef, nobs=300, ndim=2, seed=42)
+        dPTE, PTE = phase_transfer_entropy(data)  # delay=None -> auto-estimate
+        assert dPTE.shape == (2, 2)
+        assert PTE.shape == (2, 2)
+        assert capsys.readouterr().out == ""

@@ -149,7 +149,7 @@ def phase_transfer_entropy(data, delay=None, binsize='scott'):
                 count1 += 1
                 if (phi[i-1, j] * phi[i+1, j]) < 0:
                     count2 += 1
-        print(f"Chosing delay of {np.round(count1/count2)} samples")
+        LOGGER.info(f"Choosing delay of {np.round(count1/count2)} samples")
         delay = int(np.round(count1/count2))
 
     phi += np.pi # get it between 0 and 2pi
@@ -192,20 +192,23 @@ def phase_transfer_entropy(data, delay=None, binsize='scott'):
             Pypr_y /= N - delay
             Pypr_yx /= N - delay
 
-            # Compute entropies
-            Hy = -np.nansum(Py*np.log2(Py))
-            Hy_x = -np.nansum(Py_x*np.log2(Py_x))
-            Hypr_y = -np.nansum(Pypr_y*np.log2(Pypr_y))
-            Hypr_yx = -np.nansum(Pypr_yx*np.log2(Pypr_yx))
+            # Compute entropies (suppress expected 0*log2(0) warnings)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                Hy = -np.nansum(Py*np.log2(Py))
+                Hy_x = -np.nansum(Py_x*np.log2(Py_x))
+                Hypr_y = -np.nansum(Pypr_y*np.log2(Pypr_y))
+                Hypr_yx = -np.nansum(Pypr_yx*np.log2(Pypr_yx))
 
             # Compute PTE
             PTE[i, j] = (Hy - Hy_x - Hypr_y + Hypr_yx)/np.log2(Nbins) # normalising by log2(Nbins) as in Brainwave (C.J. Stam) ?
             # matlab version as its opposite:
             # PTE[i, j] = Hypr_y + Hy_x - Hy - Hypr_yx # and no normalisation
 
-    # Compute dPTE
-    tmp = np.triu(PTE) + np.tril(PTE).T
-    dPTE = np.tril(PTE/tmp.T, -1) + np.triu(PTE/tmp, 1)
+    # Compute dPTE (suppress expected divide-by-zero warnings for uncoupled pairs)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        tmp = np.triu(PTE) + np.tril(PTE).T
+        dPTE = np.tril(PTE/tmp.T, -1) + np.triu(PTE/tmp, 1)
+        dPTE = np.nan_to_num(dPTE, nan=0.0, posinf=0.0, neginf=0.0)
     return dPTE, PTE
 
 
@@ -259,7 +262,7 @@ def csd_ndarray(x, fs=1, nfft=None):
     N, nchans = x.shape
     if nfft is None: nfft = N
 
-    S = np.zeros((nchans, nchans, nfft//2+1), dtype=np.complex)
+    S = np.zeros((nchans, nchans, nfft//2+1), dtype=np.complex128)
     for i in range(nchans):
         for j in range(i, nchans):
             c = csd(x[:, i], x[:, j], fs=fs, nfft=nfft, nperseg=N)[1]
@@ -332,6 +335,8 @@ def wPLI(x, fs=1, nfft=None, fbands=None):
         denom += np.abs(S.imag) # denominator (normalisation)
     # wPLI:
     C = num/denom
+    # Zero imaginary CSD (e.g. at DC) means no phase-lag information: map NaN to 0
+    C = np.nan_to_num(C, nan=0.0)
 
     if fbands is not None:
         # Average over frequency range

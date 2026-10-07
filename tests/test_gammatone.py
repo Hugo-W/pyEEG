@@ -224,6 +224,30 @@ class TestInputHandling:
         assert np.all(np.isfinite(instp))
         assert np.all(np.isfinite(instf))
 
+    def test_non_contiguous_input_matches_contiguous(self):
+        """A strided (non-contiguous) input must give the same output as its
+        contiguous copy: the C backend reads nsamples contiguous doubles
+        from the input pointer."""
+        x = sine(CF)[::2]
+        assert not x.flags["C_CONTIGUOUS"]
+        expected = gammatone_filter(x.copy(), FS, CF)
+        actual = gammatone_filter(x, FS, CF)
+        for name, exp, act in zip(OUTPUT_NAMES, expected, actual, strict=True):
+            np.testing.assert_array_equal(act, exp, err_msg=name)
+
+    def test_silence_gives_all_zero_outputs(self):
+        """Silence carries no phase information: instf must be 0, not cf.
+
+        Without the early-return guard the C code reports a constant phase
+        (zero derivative) as instf = cf for silent input.
+        """
+        n = 1000
+        bm, env, instp, instf = gammatone_filter(np.zeros(n), FS, CF)
+        np.testing.assert_array_equal(bm, np.zeros(n))
+        np.testing.assert_array_equal(env, np.zeros(n))
+        np.testing.assert_array_equal(instp, np.zeros(n))
+        np.testing.assert_array_equal(instf, np.zeros(n))
+
 
 @requires_c_extension
 class TestCExtensionParity:
