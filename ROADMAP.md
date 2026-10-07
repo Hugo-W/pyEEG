@@ -48,31 +48,48 @@ against `main`.
   testing, cluster-based correction, bootstrap CIs, jackknife SE,
   cross-subject consistency, and group-level sign-flip test.
 
-## Current verification (as of 2.2.0, 2026-08-28)
+## Current verification (as of 2026-10-07)
 
 The fast test suite passes:
 
 ```text
-432 passed, 28 deselected (slow/llm)
+508 passed, 2 skipped, 28 deselected (slow/llm)
 ```
 
-460 tests collected total. Known gaps:
+538 tests collected total. Known gaps:
 
-- `tests/test_connectivity.py::test_plm` is still a placeholder (`pass`); the
-  connectivity metrics (Granger, PTE, wPLI, PLM) lack deterministic coverage.
-- `tests/test_gammatone.py` is doctest-style and needs assertions; its
-  C-extension behavior remains insufficiently covered.
 - `pyeeg/features/llm_features.py` requires optional Torch; excluded from
   default collection via pytest markers (`-m "not llm"`).
+- `pyeeg.simulate` neural-mass models have basic shape/finiteness tests but
+  lack behavioral/regression tests for network coupling, `read_out`, and the
+  `_simulate_node` shared engine.
+
+## Recently completed (2026-10-07)
+
+- **Connectivity tests** (`tests/test_connectivity.py`): replaced the `pass`
+  placeholder with 48 deterministic tests covering all 6 exported functions
+  (`granger_causality`, `wPLI`, `plm`, `csd_ndarray`, `jackknife_resample`,
+  `phase_transfer_entropy`).
+- **Gammatone tests** (`tests/test_gammatone.py`): rewrote doctest-style
+  checks into 27 assertion-based pytest tests covering output contract,
+  frequency selectivity, envelope, phase/frequency, half-wave rectification,
+  reproducibility, input handling, and C-extension parity.
+- **Bug fixes from test workers** (`pyeeg/connectivity.py`,
+  `pyeeg/gammatone.py`):
+  - `csd_ndarray`: `np.complex` → `np.complex128` (NumPy 2.x compat)
+  - `gammatone_filter`: `np.asarray` → `np.ascontiguousarray` (strided input
+    safety)
+  - `gammatone_filter`: early return for silent input (instf no longer = cf)
+  - `phase_transfer_entropy`: `print()` → `LOGGER.info` (stdout cleanup, typo
+    fix)
+  - `phase_transfer_entropy`: `np.errstate` + `nan_to_num` for 0/0 and
+    0*log2(0) warnings
+  - `wPLI`: `nan_to_num` after `num/denom` (DC NaN → 0)
 
 ## Next priorities
 
-### 1. Repair test coverage gaps
+### 1. Simulation behavioral tests
 
-- Replace the connectivity placeholder with deterministic metric tests
-  (Granger, PTE, wPLI, PLM against analytic or FieldTrip/MNE references).
-- Convert the gammatone checks into real assertions and document required
-  native-library build conditions.
 - Add behavioral/regression tests for `pyeeg.simulate` neural-mass models
   (network coupling, `read_out`, `_simulate_node` shared engine).
 
