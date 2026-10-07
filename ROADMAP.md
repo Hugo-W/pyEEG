@@ -53,52 +53,56 @@ against `main`.
 The fast test suite passes:
 
 ```text
-508 passed, 2 skipped, 28 deselected (slow/llm)
+586 passed, 2 skipped, 28 deselected (slow/llm)
 ```
 
-538 tests collected total. Known gaps:
+616 tests collected total. Known gaps:
 
 - `pyeeg/features/llm_features.py` requires optional Torch; excluded from
   default collection via pytest markers (`-m "not llm"`).
-- `pyeeg.simulate` neural-mass models have basic shape/finiteness tests but
-  lack behavioral/regression tests for network coupling, `read_out`, and the
-  `_simulate_node` shared engine.
+- Known unfixed issues (flagged by tutorial implementer):
+  - `plot_multialpha_scores` crashes for single-subject data
+  - `family='per_feature'` raises `NotImplementedError` in
+    `permutation_test_trf` despite being documented
 
 ## Recently completed (2026-10-07)
 
 - **Connectivity tests** (`tests/test_connectivity.py`): replaced the `pass`
-  placeholder with 48 deterministic tests covering all 6 exported functions
-  (`granger_causality`, `wPLI`, `plm`, `csd_ndarray`, `jackknife_resample`,
-  `phase_transfer_entropy`).
+  placeholder with 48 deterministic tests covering all 6 exported functions.
 - **Gammatone tests** (`tests/test_gammatone.py`): rewrote doctest-style
-  checks into 27 assertion-based pytest tests covering output contract,
-  frequency selectivity, envelope, phase/frequency, half-wave rectification,
-  reproducibility, input handling, and C-extension parity.
+  checks into 27 assertion-based pytest tests.
 - **Bug fixes from test workers** (`pyeeg/connectivity.py`,
-  `pyeeg/gammatone.py`):
-  - `csd_ndarray`: `np.complex` → `np.complex128` (NumPy 2.x compat)
-  - `gammatone_filter`: `np.asarray` → `np.ascontiguousarray` (strided input
-    safety)
-  - `gammatone_filter`: early return for silent input (instf no longer = cf)
-  - `phase_transfer_entropy`: `print()` → `LOGGER.info` (stdout cleanup, typo
-    fix)
-  - `phase_transfer_entropy`: `np.errstate` + `nan_to_num` for 0/0 and
-    0*log2(0) warnings
-  - `wPLI`: `nan_to_num` after `num/denom` (DC NaN → 0)
+  `pyeeg/gammatone.py`): NumPy 2.x compat, contiguity safety, NaN/warning
+  cleanup, stdout cleanup (7 bugs total).
+- **Simulation behavioral tests + features** (`tests/test_simulate.py`,
+  `pyeeg/simulate.py`): 78 new tests covering coupling functions, Hopf/Phasor/
+  WilsonCowan/Kuramoto/CTRNN/JansenRit dynamics, network coupling, read_out,
+  and `_simulate_node`. Found and fixed 5 bugs (CTRNN first-row-zero,
+  tmax<dt validation, ignored noise parameter, JRNetwork list-W crash,
+  zero-std-dev guard). Added optional integration solvers (Euler/RK4/
+  Euler-Maruyama) for all neural-mass nodes, CTRNN `tau`/`x0`/`solver=`
+  parameters.
+- **TRF tutorial rework** (`scripts/tutorials/trf.ipynb`): expanded from 6
+  to 21 cells per advisor review. Added statistical inference (permutation
+  test + bootstrap CI), banded regularization, xfit cross-validation,
+  robust fitting, solver comparison, multi-channel extension, seeded
+  reproducibility, quantitative evaluation. Old version saved as
+  `trf_old.ipynb`.
 
 ## Next priorities
 
-### 1. Simulation behavioral tests
-
-- Add behavioral/regression tests for `pyeeg.simulate` neural-mass models
-  (network coupling, `read_out`, `_simulate_node` shared engine).
-
-### 2. Issue #33 — Acoustic embeddings via deep models (wav2vec2, HuBERT)
+### 1. Issue #33 — Acoustic embeddings via deep models (wav2vec2, HuBERT)
 
 - Add `DeepAcousticFeatureExtractor` to `pyeeg/features/acoustic.py`.
 - Support wav2vec2 and HuBERT via HuggingFace transformers.
 - Integrate into `FeaturePipeline` and add tests.
 - Priority: medium.
+
+### 2. Fix known unfixed issues
+
+- `plot_multialpha_scores` crashes for single-subject data
+- `family='per_feature'` raises `NotImplementedError` in
+  `permutation_test_trf` despite being documented
 
 ### 3. Maintain the TRF Explorer
 
