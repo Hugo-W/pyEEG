@@ -4,6 +4,50 @@ All notable changes to **natMEEG** (formerly `pyEEG`) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.1] — 2026-10-07
+
+### Added
+- **Simulation integration solvers**: optional Euler/RK4/Euler-Maruyama
+  integration schemes for all neural-mass nodes (`HopfOscillator`, `Phasor`,
+  `WilsonCowan`, `JansenRit`, `JansenRitExtended`, `CTRNN`). RK4 removes
+  explicit-Euler artifacts (limit-cycle radius inflation, spurious oscillations
+  for damped systems). Default Euler path is bit-identical to previous behavior.
+- **CTRNN enhancements**: `tau` (leaky-integrator time constant, scalar or
+  per-neuron), `x0` (initial state), and `solver=` integration scheme support.
+- **TRF tutorial rework** (`scripts/tutorials/trf.ipynb`): expanded from 6 to
+  21 cells. Added statistical inference (permutation test + bootstrap CI from
+  `pyeeg.stats`), banded regularization (`feature_alphas`), xfit
+  cross-validation, robust fitting (Cauchy loss), solver comparison,
+  multi-channel extension, seeded reproducibility, and quantitative evaluation.
+  Old version preserved as `trf_old.ipynb`.
+- **Connectivity tests**: 48 deterministic tests covering all 6 exported
+  functions (`granger_causality`, `wPLI`, `plm`, `csd_ndarray`,
+  `jackknife_resample`, `phase_transfer_entropy`).
+- **Gammatone tests**: 27 assertion-based tests replacing doctest-style checks.
+- **Simulation behavioral tests**: 78 tests covering coupling functions,
+  Hopf/Phasor/WilsonCowan/Kuramoto/CTRNN/JansenRit dynamics, network coupling,
+  `read_out`, and `_simulate_node` shared engine.
+
+### Fixed
+- `csd_ndarray`: `np.complex` → `np.complex128` (NumPy 2.x compatibility).
+- `gammatone_filter`: `np.asarray` → `np.ascontiguousarray` (strided input safety).
+- `gammatone_filter`: early return for silent input (instf no longer reports cf).
+- `phase_transfer_entropy`: `print()` → `LOGGER.info` (stdout cleanup, typo fix).
+- `phase_transfer_entropy`: `np.errstate` + `nan_to_num` for 0/0 and 0*log2(0).
+- `wPLI`: `nan_to_num` after `num/denom` (DC NaN → 0).
+- `CTRNN.simulate`: first row of output was always zero (now records `o[0]`).
+- `CTRNN`/`JansenRit`/`JansenRitExtended.simulate`: raise `ValueError` for
+  `tmax < dt` (previously crashed with `IndexError`).
+- `JansenRit`/`JansenRitExtended.simulate`: apply the documented `noise`
+  parameter (was silently ignored).
+- `JRNetwork`: store `W` as float array (list input crashed in `step()`).
+- `JRNetwork.update_connectivity`: guard against zero rate-history std-dev.
+
+### Changed
+- Test count: 432 → 586 passed (+154 tests).
+
+---
+
 ## [2.2.0] — 2026-08-28
 
 ### Added
@@ -316,7 +360,8 @@ Initial release of `pyEEG`.
 ---
 
 <!-- Link references -->
-[Unreleased]: https://github.com/Hugo-W/pyEEG/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/Hugo-W/pyEEG/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/Hugo-W/pyEEG/releases/tag/2.2.1
 [2.2.0]: https://github.com/Hugo-W/pyEEG/releases/tag/2.2.0
 [2.1.3]: https://github.com/Hugo-W/pyEEG/releases/tag/2.1.3
 [2.1.2]: https://github.com/Hugo-W/pyEEG/releases/tag/2.1.2
