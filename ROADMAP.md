@@ -44,47 +44,63 @@ against `main`.
   `TRFEstimator`, feature-block ordering, per-feature alphas, solver support,
   and the `scripts/tutorials/feature_alphas_banded_ridge.ipynb` tutorial) —
   closes Issue #18.
+- Added `pyeeg.stats` module (Issue #14, released in 2.2.0): permutation
+  testing, cluster-based correction, bootstrap CIs, jackknife SE,
+  cross-subject consistency, and group-level sign-flip test.
 
-## Current verification
+## Current verification (as of 2.2.0, 2026-08-28)
 
-Focused regression and solver tests pass. The current full suite passes:
+The fast test suite passes:
 
 ```text
-214 passed
+432 passed, 28 deselected (slow/llm)
 ```
 
-The full test suite currently has collection blockers:
+460 tests collected total. Known gaps:
 
-- `pyeeg/features/llm_features.py` requires optional Torch when collected
-  directly.
 - `tests/test_connectivity.py::test_plm` is still a placeholder (`pass`); the
   connectivity metrics (Granger, PTE, wPLI, PLM) lack deterministic coverage.
-- `tests/test_gammatone.py` is script/doctest-style and needs assertions; its
+- `tests/test_gammatone.py` is doctest-style and needs assertions; its
   C-extension behavior remains insufficiently covered.
+- `pyeeg/features/llm_features.py` requires optional Torch; excluded from
+  default collection via pytest markers (`-m "not llm"`).
 
 ## Next priorities
 
-### 1. Repair package and test collection
+### 1. Repair test coverage gaps
 
-- Make optional feature dependencies safe for normal test collection, or
-  explicitly exclude optional modules from collection.
-- Replace the connectivity placeholder with deterministic metric tests.
+- Replace the connectivity placeholder with deterministic metric tests
+  (Granger, PTE, wPLI, PLM against analytic or FieldTrip/MNE references).
 - Convert the gammatone checks into real assertions and document required
   native-library build conditions.
+- Add behavioral/regression tests for `pyeeg.simulate` neural-mass models
+  (network coupling, `read_out`, `_simulate_node` shared engine).
 
-### 2. Finish feature-extraction integration
+### 2. Issue #33 — Acoustic embeddings via deep models (wav2vec2, HuBERT)
 
-Issue #15 is implemented in broad form, but the integration still needs:
+- Add `DeepAcousticFeatureExtractor` to `pyeeg/features/acoustic.py`.
+- Support wav2vec2 and HuBERT via HuggingFace transformers.
+- Integrate into `FeaturePipeline` and add tests.
+- Priority: medium.
 
-- user-facing documentation and examples;
-- tests for alignment, syntactic features, reduction, and pipeline behavior;
-- a clear optional-dependency policy for LLM features;
-- verification of backward-compatible TRF usage alongside feature-dictionary
-  inputs.
+### 3. Maintain the TRF Explorer
 
-### 3. Modularize large modules
+The dashboard's feature-level roadmap is maintained in
+[`pyeeg/dashboard/TODO.md`](pyeeg/dashboard/TODO.md). Near-term work includes
+endpoint/browser tests, progress handling for long fits, result export, and
+feature/channel selection.
 
-Issue #13 remains open. Candidate boundaries are:
+### 4. Issue #34 — Array API pilot (low priority)
+
+Backend dispatch (`array-api-compat`) for clean numerical kernels:
+`pyeeg/models/var.py`, materialized lag-matrix prototype, and dense TRF
+solver paths. NumPy-only boundaries: SciPy sparse/optimize, sklearn, RNG,
+I/O, viz, dashboard, C extensions. See issue for full scope and acceptance
+criteria.
+
+### 5. Modularize large modules (housekeeping)
+
+Candidate boundaries for future refactoring (no open issue):
 
 - shared regression and validation helpers from `pyeeg/models/`;
 - lag and design-matrix utilities from `pyeeg/utils.py`;
@@ -92,38 +108,6 @@ Issue #13 remains open. Candidate boundaries are:
 - connectivity algorithms and their shared numerical helpers.
 
 Keep the existing public module paths while moving implementation details.
-
-### 4. Maintain the TRF Explorer
-
-The dashboard's feature-level roadmap is maintained in
-[`pyeeg/dashboard/TODO.md`](pyeeg/dashboard/TODO.md). Near-term work includes
-endpoint/browser tests, progress handling for long fits, result export, and
-feature/channel selection.
-
-### 5. Add planned modeling features
-
-- Issue #18: banded ridge regularization is implemented (`feature_alphas`,
-  feature-block ordering, per-feature alphas, solver support, tests, and a
-  tutorial); close the upstream issue after release verification.
-- Issue #17: weighted and robust TRF estimation is implemented on this branch;
-  close the upstream issue after review and release verification.
-- Issue #14: implemented — `pyeeg.stats` module with permutation testing
-  (circular-shift null, `stat="zscore"/"t"/"coef"/"perm_norm"`), cluster-based
-  correction (Maris & Oostenveld 2007), bootstrap CIs, jackknife SE,
-  cross-subject consistency, and group-level sign-flip test. Spectral edge fade
-  for autocorrelated stimuli. Close the upstream issue after release
-  verification.
-- Issue #12: decide whether a solver-pattern abstraction reduces complexity
-  without obscuring the current solver API.
-
-### 6. Connectivity and simulation coverage
-
-- `pyeeg.connectivity` (Granger, PTE, wPLI, PLM, CSD) is documented but
-  undertested — replace the `test_plm` placeholder with deterministic metric
-  tests (against analytic or FieldTrip/MNE references).
-- `pyeeg.simulate` neural-mass models (Hopf, WilsonCowan, Kuramoto, CTRNN,
-  JansenRit family) are now documented; add behavioral/regression tests for
-  network coupling, `read_out`, and the `_simulate_node` shared engine.
 
 ## Documentation maintenance
 

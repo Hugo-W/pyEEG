@@ -4,7 +4,7 @@ All notable changes to **natMEEG** (formerly `pyEEG`) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [2.2.0] — 2025-08-28
+## [2.2.0] — 2026-08-28
 
 ### Added
 - `pyeeg.stats` module: nonparametric statistical inference for TRF analysis
@@ -26,19 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - Spectral edge fade (`fade_edges=True`) for autocorrelated stimuli,
     estimated from -3dB bandwidth of the stimulus spectrum.
   - No MNE dependency in stats module (spatial adjacency user-supplied).
-  - 451 tests passing (107 new stats tests + 4 copy regression tests).
+  - 107 new stats tests + 4 copy regression tests.
 - `TRFEstimator.copy()` now preserves all constructor kwargs (was dropping
   solver, loss, robust settings, intercept, cache config).
-
-## [Unreleased]
-
-### Added
-- `Whitener`, `WaveletTransform`, `MultichanWienerFilter`, `mCCA`, `connectivity`,
-  `simulate` (neural-mass models), `features` package, and `vizu` documented in the
-  README features overview.
-- Sphinx API pages for `connectivity`, `mcca`, `solvers`, and `features` modules;
-  `simulate.rst` fixed (was broken) and populated with all neural-mass classes and
-  simulation functions.
+- README features overview documents `Whitener`, `WaveletTransform`,
+  `MultichanWienerFilter`, `mCCA`, `connectivity`, `simulate` (neural-mass
+  models), `features` package, and `vizu`.
+- Sphinx API pages for `connectivity`, `mcca`, `solvers`, `stats`, and
+  `features` modules; `simulate.rst` fixed (was broken) and populated with
+  all neural-mass classes and simulation functions.
 - `install.rst` now documents the `[features]` extra (`torch`, `transformers`).
 - `usage.rst` examples for CCA, mCCA, connectivity, simulation, and whitening.
 - `intersphinx` mapping to Python, NumPy, SciPy, Matplotlib, and pandas.
@@ -61,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `release = version`.
 
 ---
+
+## [Unreleased]
+
+---
+
 
 ## [2.1.3] - 2026-08-26
 
@@ -315,7 +316,8 @@ Initial release of `pyEEG`.
 ---
 
 <!-- Link references -->
-[Unreleased]: https://github.com/Hugo-W/pyEEG/compare/v2.1.3...HEAD
+[Unreleased]: https://github.com/Hugo-W/pyEEG/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/Hugo-W/pyEEG/releases/tag/2.2.0
 [2.1.3]: https://github.com/Hugo-W/pyEEG/releases/tag/2.1.3
 [2.1.2]: https://github.com/Hugo-W/pyEEG/releases/tag/2.1.2
 [2.1.1]: https://github.com/Hugo-W/pyEEG/releases/tag/2.1.1
