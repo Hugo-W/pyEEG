@@ -1084,6 +1084,8 @@ class CTRNN(NeuralMassNetwork):
         """
         rng = np.random.default_rng(self.seed)
         n = int(tmax / self.dt)
+        if n < 1:
+            raise ValueError("tmax must be at least dt")
         x = np.zeros((n, self.N))
         o = np.zeros((n, self.N))
         O = np.zeros((n, self.output_dim))
@@ -1095,6 +1097,7 @@ class CTRNN(NeuralMassNetwork):
         x[0] = x0
         self.x = x0.copy()
         self.o = self.nonlinearity(self.x + self.theta)
+        o[0] = self.o
         O[0] = self.read_out()
         dt_noise = np.sqrt(self.dt) * noise
         for i in range(1, n):
@@ -1263,6 +1266,8 @@ class JansenRit(NeuralMassNode):
         """
         rng = np.random.default_rng(self.seed)
         n = int(tmax / self.dt)
+        if n < 1:
+            raise ValueError("tmax must be at least dt")
         x = np.zeros((n, 6))
         o = np.zeros((n, 1))
         if x0 is None:
@@ -1276,7 +1281,8 @@ class JansenRit(NeuralMassNode):
         for i in range(1, n):
             current_P = self.P if P is None else (P if np.ndim(P) == 0 else P[i])
             self.step(I=current_P)
-            # noise = rng.standard_normal(size=self.x.shape) * dt_noise
+            if noise:
+                self.x = self.x + rng.standard_normal(size=self.x.shape) * dt_noise
             x[i] = self.x
             o[i] = self.read_out()
         return x, o
@@ -1492,6 +1498,8 @@ class JansenRitExtended(NeuralMassNode):
         """
         rng = np.random.default_rng(self.seed)
         n = int(tmax / self.dt)
+        if n < 1:
+            raise ValueError("tmax must be at least dt")
         x = np.zeros((n, 12))
         o = np.zeros((n, 1))
         if x0 is None:
@@ -1505,7 +1513,8 @@ class JansenRitExtended(NeuralMassNode):
         for i in range(1, n):
             current_P = self.P if P is None else (P if np.ndim(P) == 0 else P[i])
             self.step(I=current_P)
-            # noise = rng.standard_normal(size=self.x.shape) * dt_noise
+            if noise:
+                self.x = self.x + rng.standard_normal(size=self.x.shape) * dt_noise
             x[i] = self.x
             o[i] = self.read_out()
         return x, o
@@ -1579,9 +1588,11 @@ class JRNetwork(NeuralMassNetwork):
         """
         self.rng = np.random.default_rng(seed)
         self.N = N  # number of neurons/nodes
-        self.W = W  # connectivity matrix (W_ij is the connection from i to j, between 0 and 1, relative contribution)
+        self.W = np.asarray(
+            W, dtype=float
+        )  # connectivity matrix (W_ij is the connection from i to j, between 0 and 1, relative contribution)
         self.K = (
-            W.copy()
+            self.W.copy()
         )  # updated connectivity in case of normalisation by activity std
         self.delay = delay  # delay (10ms)
         self.dt = dt  # sampling rate
@@ -1625,6 +1636,10 @@ class JRNetwork(NeuralMassNetwork):
             sigma_rate = np.ones((self.N,))
         else:
             sigma_rate = np.std(x, axis=1)
+            # A node with a constant rate history has no fluctuations to
+            # normalise by; fall back to the un-normalised coupling strength
+            # instead of dividing by zero.
+            sigma_rate = np.where(sigma_rate > 0, sigma_rate, 1.0)
         for i in range(self.N):
             for j in range(self.N):
                 if i != j:
