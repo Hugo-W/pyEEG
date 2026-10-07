@@ -14,7 +14,10 @@ from pyeeg.simulate import (
     NeuralMassNode,
     Phasor,
     WilsonCowan,
+    _euler_step,
     _resolve_coupling,
+    _resolve_solver,
+    _rk4_step,
     _simulate_node,
     diffusive_coupling,
     dummy_trf_kernel,
@@ -827,3 +830,206 @@ def test_zero_input_edge_cases():
     )
     _, outputs = model.simulate(tmax=1.0)
     assert outputs[900:, 0].mean() == pytest.approx(0.0, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Integration solvers (optional solver= parameter)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_solver_names_aliases_and_errors():
+    assert _resolve_solver("euler") is _euler_step
+    # Euler-Maruyama is Euler + sqrt(dt)-scaled Gaussian noise: merged names
+    assert _resolve_solver("euler-maruyama") is _euler_step
+    assert _resolve_solver("em") is _euler_step
+    assert _resolve_solver("rk4") is _rk4_step
+    custom = lambda derivative, x, dt, *args: x + dt * derivative(x, *args)
+    assert _resolve_solver(custom) is custom
+    with pytest.raises(ValueError):
+        _resolve_solver("rk45")
+    with pytest.raises(TypeError):
+        _resolve_solver(42)
+
+
+def test_nodes_reject_unknown_solver():
+    with pytest.raises(ValueError):
+        HopfOscillator(solver="rk45")
+    with pytest.raises(ValueError):
+        Phasor(solver="rk45")
+    with pytest.raises(ValueError):
+        WilsonCowan(solver="rk45")
+    with pytest.raises(ValueError):
+        JansenRit(solver="rk45")
+    with pytest.raises(ValueError):
+        JansenRitExtended(solver="rk45")
+    with pytest.raises(ValueError):
+        JRNetwork(solver="rk45")
+
+
+def test_hopf_oscillator_default_solver_is_explicit_euler():
+    # regression: the default must remain the historical explicit Euler
+    model = HopfOscillator(a=0.01, frequency=10.0, dt=0.001, seed=1)
+    states, _ = model.simulate(x0=[0.1, 0.0], tmax=0.05)
+    explicit = HopfOscillator(a=0.01, frequency=10.0, dt=0.001, seed=1, solver="euler")
+    states_explicit, _ = explicit.simulate(x0=[0.1, 0.0], tmax=0.05)
+    np.testing.assert_array_equal(states, states_explicit)
+    # inline explicit Euler reference (I enters the x equation only)
+    a, omega, dt = 0.01, 2 * np.pi * 10.0, 0.001
+    x = np.array([0.1, 0.0])
+    reference = [x.copy()]
+    for _ in range(49):
+        r2 = x[0] * x[0] + x[1] * x[1]
+        x = x + dt * np.array(
+            [(a - r2) * x[0] - omega * x[1], (a - r2) * x[1] + omega * x[0]]
+        )
+        reference.append(x.copy())
+    np.testing.assert_array_equal(states, np.asarray(reference))
+
+
+def test_hopf_oscillator_rk4_limit_cycle_radius_matches_sqrt_a():
+    # explicit Euler inflates the discrete limit cycle (~1.1 instead of 0.1
+    # at dt=0.001); RK4 recovers the true radius sqrt(a)
+    model = HopfOscillator(a=0.01, frequency=10.0, dt=0.001, seed=1, solver="rk4")
+    states, _ = model.simulate(x0=[0.1, 0.0], tmax=2.0)
+    radius = np.hypot(states[1000:, 0], states[1000:, 1])
+    assert radius.mean() == pytest.approx(np.sqrt(0.01), rel=1e-4)
+
+
+def test_hopf_oscillator_rk4_oscillates_at_configured_frequency():
+    model = HopfOscillator(a=0.01, frequency=10.0, dt=0.001, seed=1, solver="rk4")
+    _, outputs = model.simulate(x0=[0.1, 0.0], tmax=2.0)
+    steady = outputs[1000:, 0]
+    crossings = np.sum(np.signbit(steady[1:]) != np.signbit(steady[:-1]))
+    assert crossings / 2 == pytest.approx(10.0, abs=0.5)
+
+
+def test_hopf_oscillator_rk4_damps_for_moderate_negative_a():
+    # with explicit Euler the origin is spuriously unstable at dt=0.001 (even
+    # a=-1 oscillates); RK4 correctly damps the oscillator
+    model = HopfOscillator(a=-1.0, frequency=10.0, dt=0.001, seed=1, solver="rk4")
+    states, _ = model.simulate(x0=[0.5, 0.0], tmax=2.0)
+    radius = np.hypot(states[:, 0], states[:, 1])
+    assert radius[-1] < 0.2 * radius[0]
+    # sanity: the same parameters with the default Euler do not damp
+    model = HopfOscillator(a=-1.0, frequency=10.0, dt=0.001, seed=1)
+    states_e, _ = model.simulate(x0=[0.5, 0.0], tmax=2.0)
+    radius_e = np.hypot(states_e[:, 0], states_e[:, 1])
+    assert radius_e[-1] > 0.5 * radius_e[0]
+
+
+def test_hopf_oscillator_rk4_stable_at_larger_dt():
+    # dt=0.01 (10x the default): Euler inflates the limit cycle to ~4.7 and
+    # diverges at dt=0.05; RK4 stays close to the true limit cycle
+    model = HopfOscillator(a=0.01, frequency=10.0, dt=0.01, seed=1, solver="rk4")
+    states, _ = model.simulate(x0=[0.1, 0.0], tmax=1.0)
+    assert np.isfinite(states).all()
+    radius = np.hypot(states[50:, 0], states[50:, 1])
+    assert radius.mean() == pytest.approx(np.sqrt(0.01), rel=0.05)
+
+
+def test_hopf_oscillator_euler_maruyama_alias_matches_euler():
+    # "euler-maruyama" is the Euler stepper with node-applied noise: the
+    # merged schemes give identical trajectories for the same seed
+    kwargs = dict(a=0.01, frequency=10.0, dt=0.001, seed=7)
+    em = HopfOscillator(solver="euler-maruyama", **kwargs).simulate(
+        x0=[0.1, 0.0], tmax=0.2, noise=0.3
+    )
+    euler = HopfOscillator(solver="euler", **kwargs).simulate(
+        x0=[0.1, 0.0], tmax=0.2, noise=0.3
+    )
+    for a, b in zip(em, euler, strict=True):
+        np.testing.assert_array_equal(a, b)
+
+
+def test_hopf_oscillator_rk4_reproducible_with_noise():
+    kwargs = dict(a=0.01, frequency=10.0, dt=0.001, seed=7, solver="rk4")
+    first = HopfOscillator(**kwargs).simulate(x0=[0.1, 0.0], tmax=0.2, noise=0.3)
+    second = HopfOscillator(**kwargs).simulate(x0=[0.1, 0.0], tmax=0.2, noise=0.3)
+    for a, b in zip(first, second, strict=True):
+        np.testing.assert_array_equal(a, b)
+
+
+def test_phasor_rk4_matches_euler_for_constant_frequency():
+    # the phase velocity is constant, so RK4 and Euler agree to rounding
+    kwargs = dict(frequency=10.0, dt=0.001, seed=1)
+    states_rk4, _ = Phasor(solver="rk4", **kwargs).simulate(x0=[0.3], tmax=0.5)
+    states_euler, _ = Phasor(solver="euler", **kwargs).simulate(x0=[0.3], tmax=0.5)
+    np.testing.assert_allclose(states_rk4, states_euler, rtol=1e-12, atol=1e-12)
+    # and the phase still advances at the configured frequency
+    phase = np.unwrap(states_rk4[:, 0])
+    duration = (len(states_rk4) - 1) * 0.001
+    freq = (phase[-1] - phase[0]) / (2 * np.pi * duration)
+    assert freq == pytest.approx(10.0, rel=1e-6)
+
+
+def test_wilson_cowan_rk4_converges_to_same_fixed_point():
+    # the fixed point is solver-independent: RK4 and Euler agree in steady state
+    kwargs = dict(dt=0.001, seed=1)
+    states_rk4, _ = WilsonCowan(solver="rk4", **kwargs).simulate(tmax=1.0)
+    states_euler, _ = WilsonCowan(solver="euler", **kwargs).simulate(tmax=1.0)
+    np.testing.assert_allclose(states_rk4[900:], states_euler[900:], atol=1e-9)
+
+
+def test_wilson_cowan_default_solver_is_euler():
+    kwargs = dict(dt=0.001, seed=1)
+    default, _ = WilsonCowan(**kwargs).simulate(tmax=0.2)
+    explicit, _ = WilsonCowan(solver="euler", **kwargs).simulate(tmax=0.2)
+    np.testing.assert_array_equal(default, explicit)
+
+
+def test_jansen_rit_rk4_keeps_alpha_oscillation():
+    model = JansenRit(dt=0.0001, seed=1, solver="rk4")
+    states, outputs = model.simulate(tmax=1.0, P=220)
+    assert np.isfinite(states).all()
+    steady = outputs[5000:, 0]
+    assert steady.std() > 0.1
+    freqs = np.fft.rfftfreq(len(steady), d=model.dt)
+    peak = freqs[np.argmax(np.abs(np.fft.rfft(steady - steady.mean())))]
+    assert peak == pytest.approx(10.0, abs=1.0)
+    # a lower input amplitude still settles to a fixed point
+    _, outputs_low = JansenRit(dt=0.0001, seed=1, solver="rk4").simulate(
+        tmax=0.8, P=100
+    )
+    assert outputs_low[4000:, 0].std() < 0.01
+
+
+def test_jansen_rit_extended_rk4_preserves_subpopulation_identity():
+    # the w=1 slow subpopulation matches the plain model bit-for-bit, with
+    # both running RK4
+    extended = JansenRitExtended(w=1.0, dt=0.0001, seed=1, solver="rk4")
+    states_ext, _ = extended.simulate(tmax=0.5, P=150)
+    plain = JansenRit(dt=0.0001, seed=1, solver="rk4")
+    states_plain, _ = plain.simulate(tmax=0.5, P=150)
+    np.testing.assert_array_equal(states_ext[:, :6], states_plain)
+
+
+def test_jr_network_solver_parameter():
+    kwargs = dict(N=2, W=np.array([[0, 1], [0, 0]]), dt=0.001, delay=0.01, seed=42)
+    output = JRNetwork(solver="rk4", **kwargs).simulate(tmax=0.02, P=220, sigma_p=22)
+    assert output.shape == (20, 2)
+    assert np.isfinite(output).all()
+    # the solver actually changes the integration
+    euler_output = JRNetwork(**kwargs).simulate(tmax=0.02, P=220, sigma_p=22)
+    assert not np.allclose(output, euler_output)
+
+
+def test_network_with_rk4_hopf_nodes():
+    # the solver flows through NeuralMassNetwork node_kwargs
+    network = NeuralMassNetwork(
+        N=2,
+        W=np.array([[0.0, 1.0], [1.0, 0.0]]),
+        node_dynamics=HopfOscillator,
+        node_kwargs={"a": 0.01, "frequency": 10.0, "solver": "rk4"},
+        dt=0.001,
+        seed=42,
+        coupling="linear",
+    )
+    network.nodes[0].x = np.array([0.1, 0.0])
+    network.nodes[1].x = np.array([0.0, 0.1])
+    for _ in range(100):
+        network.step()
+    assert all(np.isfinite(node.x).all() for node in network.nodes)
+    # the radii stay near sqrt(a) (Euler would inflate them to ~1.1)
+    for node in network.nodes:
+        radius = np.hypot(node.x[0], node.x[1])
+        assert radius == pytest.approx(0.1, rel=0.05)
