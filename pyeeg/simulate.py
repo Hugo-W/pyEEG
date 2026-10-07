@@ -296,6 +296,80 @@ def _resolve_coupling(coupling):
     return coupling
 
 
+def _euler_step(derivative, x, dt, *args):
+    """
+    One explicit Euler step, ``x + dt * f(x)``.
+
+    The nodes add ``sqrt(dt)``-scaled Gaussian noise after the deterministic
+    update, so with ``noise > 0`` this scheme is Euler-Maruyama.
+    """
+    return x + dt * derivative(x, *args)
+
+
+def _rk4_step(derivative, x, dt, *args):
+    """
+    One classical fourth-order Runge-Kutta step (fixed step size).
+
+    The extra arguments ``*args`` (e.g. the external input ``I``) are held
+    constant across the four stages: the input is assumed constant during
+    the step.
+    """
+    k1 = derivative(x, *args)
+    k2 = derivative(x + 0.5 * dt * k1, *args)
+    k3 = derivative(x + 0.5 * dt * k2, *args)
+    k4 = derivative(x + dt * k3, *args)
+    return x + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+
+
+# Integration schemes for the neural-mass ODE nodes (distinct from the TRF
+# solvers in :mod:`pyeeg.solvers`). "euler-maruyama" and "em" are aliases of
+# "euler": the nodes add sqrt(dt)-scaled Gaussian noise after the deterministic
+# update, so the Euler scheme with noise > 0 *is* Euler-Maruyama — the names
+# are merged, not separate code paths.
+_ODE_SOLVERS = {
+    "euler": _euler_step,
+    "euler-maruyama": _euler_step,
+    "em": _euler_step,
+    "rk4": _rk4_step,
+}
+
+
+def _resolve_solver(solver):
+    """
+    Resolve an integration-scheme specification into a stepper function.
+
+    Parameters
+    ----------
+    solver : str or callable
+        Either a supported scheme name (``"euler"``, ``"euler-maruyama"``,
+        ``"em"``, ``"rk4"``) or a callable stepper with signature
+        ``f(derivative, x, dt, *args) -> x_new``, where ``derivative`` is the
+        node's vector field ``f(state, *args)`` and ``*args`` are the extra
+        per-step arguments (e.g. the external input ``I``), held constant
+        across the stages of multi-stage schemes.
+
+    Returns
+    -------
+    stepper : callable
+        The resolved stepper function.
+
+    Raises
+    ------
+    ValueError
+        If ``solver`` is a string that is not a supported scheme name.
+    TypeError
+        If ``solver`` is neither a supported name nor callable.
+    """
+    if isinstance(solver, str):
+        try:
+            return _ODE_SOLVERS[solver]
+        except KeyError as error:
+            raise ValueError(f"Unknown integration scheme: {solver!r}") from error
+    if not callable(solver):
+        raise TypeError("solver must be a supported name or callable")
+    return solver
+
+
 class NeuralMassNode:
     """
     Abstract base class for a single neural-mass node.
@@ -482,11 +556,13 @@ class HopfOscillator(NeuralMassNode):
 
     .. math::
         \\dot{x} = (a - r^2) x - \\omega y + I, \\quad
-        \\dot{y} = (a - r^2) y + \\omega x + I
+        \\dot{y} = (a - r^2) y + \\omega x
 
-    with :math:`r^2 = x^2 + y^2` and :math:`\\omega = 2 \\pi f`. For
-    :math:`a > 0` the origin is unstable and the oscillator converges to a
-    limit cycle of radius :math:`\\sqrt{a}` at frequency :math:`f`.
+    with :math:`r^2 = x^2 + y^2` and :math:`\\omega = 2 \\pi f`. The input
+    ``I`` enters the :math:`x` equation only. For :math:`a > 0` the origin is
+    unstable and the oscillator converges to a limit cycle of radius
+    :math:`\\sqrt{a}` at frequency :math:`f` (in continuous time; the radius
+    of the discrete limit cycle depends on the integration scheme and ``dt``).
 
     Parameters
     ----------
@@ -499,25 +575,42 @@ class HopfOscillator(NeuralMassNode):
         The integration time step in seconds.
     seed : int
         The random seed used to initialise the node's random number generator.
+    solver : str or callable
+        Integration scheme used by :meth:`step`: ``"euler"`` (explicit
+        Euler, the default and historical behaviour), ``"euler-maruyama"`` or
+        ``"em"`` (aliases of ``"euler"``: with noise the scheme is
+        Euler-Maruyama), ``"rk4"`` (classical fourth-order Runge-Kutta, far
+        more accurate for the same ``dt``), or a custom callable stepper
+        ``f(derivative, x, dt, *args) -> x_new``.
 
     Raises
     ------
     ValueError
-        If ``frequency`` is negative.
+        If ``frequency`` is negative or ``solver`` is not a supported name.
     """
 
-    def __init__(self, a=0.01, frequency=10.0, dt=0.001, seed=42):
+    def __init__(self, a=0.01, frequency=10.0, dt=0.001, seed=42, solver="euler"):
         super().__init__(dt=dt, seed=seed)
         if frequency < 0:
             raise ValueError("frequency must be non-negative")
         self.a, self.frequency = float(a), float(frequency)
         self.omega = 2 * np.pi * self.frequency
+        self.solver = solver
+        self.solver_function = _resolve_solver(solver)
         self.nstates, self.x = 2, np.zeros(2)
         self.rng = np.random.default_rng(seed)
 
+    def _derivative(self, state, I):
+        """Vector field of the Stuart-Landau system evaluated at ``state``."""
+        x, y = state
+        r2 = x * x + y * y
+        return np.array(
+            [(self.a - r2) * x - self.omega * y + I, (self.a - r2) * y + self.omega * x]
+        )
+
     def step(self, I=0.0, noise=0.0):
         """
-        Advance the oscillator by one integration step (Euler method).
+        Advance the oscillator by one integration step (the configured solver).
 
         Parameters
         ----------
@@ -527,11 +620,7 @@ class HopfOscillator(NeuralMassNode):
             The standard deviation of the additive noise, scaled by
             ``sqrt(dt)`` per sample.
         """
-        x, y = self.x
-        r2 = x * x + y * y
-        self.x += self.dt * np.array(
-            [(self.a - r2) * x - self.omega * y + I, (self.a - r2) * y + self.omega * x]
-        )
+        self.x = self.solver_function(self._derivative, self.x, self.dt, I)
         if noise:
             self.x += np.sqrt(self.dt) * noise * self.rng.standard_normal(2)
 
@@ -588,24 +677,36 @@ class Phasor(NeuralMassNode):
         The integration time step in seconds.
     seed : int
         The random seed used to initialise the node's random number generator.
+    solver : str or callable
+        Integration scheme used by :meth:`step`: ``"euler"`` (explicit
+        Euler, the default), ``"euler-maruyama"`` or ``"em"`` (aliases of
+        ``"euler"``: with noise the scheme is Euler-Maruyama), ``"rk4"``
+        (classical fourth-order Runge-Kutta), or a custom callable stepper
+        ``f(derivative, x, dt, *args) -> x_new``.
 
     Raises
     ------
     ValueError
-        If ``frequency`` is negative.
+        If ``frequency`` is negative or ``solver`` is not a supported name.
     """
 
-    def __init__(self, frequency=10.0, dt=0.001, seed=42):
+    def __init__(self, frequency=10.0, dt=0.001, seed=42, solver="euler"):
         super().__init__(dt=dt, seed=seed)
         if frequency < 0:
             raise ValueError("frequency must be non-negative")
         self.frequency, self.omega = float(frequency), 2 * np.pi * float(frequency)
+        self.solver = solver
+        self.solver_function = _resolve_solver(solver)
         self.nstates, self.x = 1, np.zeros(1)
         self.rng = np.random.default_rng(seed)
 
+    def _derivative(self, state, I):
+        """Phase velocity: constant, equal to ``omega + I``."""
+        return np.array([self.omega + I])
+
     def step(self, I=0.0, noise=0.0):
         """
-        Advance the phase by one integration step (Euler method).
+        Advance the phase by one integration step (the configured solver).
 
         Parameters
         ----------
@@ -615,7 +716,7 @@ class Phasor(NeuralMassNode):
             The standard deviation of the additive noise, scaled by
             ``sqrt(dt)`` per sample.
         """
-        self.x[0] += self.dt * (self.omega + I)
+        self.x = self.solver_function(self._derivative, self.x, self.dt, I)
         if noise:
             self.x[0] += np.sqrt(self.dt) * noise * self.rng.standard_normal()
         self.x[0] %= 2 * np.pi
@@ -750,11 +851,18 @@ class WilsonCowan(NeuralMassNode):
     nonlinearity : callable
         The activation function applied to the population drives. Default is
         :func:`~pyeeg.utils.sigmoid`.
+    solver : str or callable
+        Integration scheme used by :meth:`step`: ``"euler"`` (explicit
+        Euler, the default), ``"euler-maruyama"`` or ``"em"`` (aliases of
+        ``"euler"``: with noise the scheme is Euler-Maruyama), ``"rk4"``
+        (classical fourth-order Runge-Kutta), or a custom callable stepper
+        ``f(derivative, x, dt, *args) -> x_new``.
 
     Raises
     ------
     ValueError
-        If ``tau_e`` or ``tau_i`` is not positive.
+        If ``tau_e`` or ``tau_i`` is not positive, or ``solver`` is not a
+        supported name.
     """
 
     def __init__(
@@ -769,6 +877,7 @@ class WilsonCowan(NeuralMassNode):
         dt=0.001,
         seed=42,
         nonlinearity=sigmoid,
+        solver="euler",
     ):
         super().__init__(dt=dt, seed=seed)
         if tau_e <= 0 or tau_i <= 0:
@@ -778,12 +887,24 @@ class WilsonCowan(NeuralMassNode):
             float, (w_ee, w_ei, w_ie, w_ii)
         )
         self.P, self.nonlinearity = P, nonlinearity
+        self.solver = solver
+        self.solver_function = _resolve_solver(solver)
         self.nstates, self.x = 2, np.zeros(2)
         self.rng = np.random.default_rng(seed)
 
+    def _derivative(self, state, I, P=None):
+        """Vector field of the Wilson-Cowan rate model at ``state``."""
+        e, inh = state
+        drive_e = self.w_ee * e - self.w_ie * inh + (self.P if P is None else P) + I
+        drive_i = self.w_ei * e - self.w_ii * inh
+        rates = np.asarray([self.nonlinearity(drive_e), self.nonlinearity(drive_i)])
+        return np.asarray(
+            [(-e + rates[0]) / self.tau_e, (-inh + rates[1]) / self.tau_i]
+        )
+
     def step(self, I=0.0, noise=0.0, P=None):
         """
-        Advance the model by one integration step (Euler method).
+        Advance the model by one integration step (the configured solver).
 
         Parameters
         ----------
@@ -796,13 +917,7 @@ class WilsonCowan(NeuralMassNode):
             The external input to the excitatory population for this step.
             If ``None``, the constant input set at construction is used.
         """
-        e, inh = self.x
-        drive_e = self.w_ee * e - self.w_ie * inh + (self.P if P is None else P) + I
-        drive_i = self.w_ei * e - self.w_ii * inh
-        rates = np.asarray([self.nonlinearity(drive_e), self.nonlinearity(drive_i)])
-        self.x += self.dt * np.asarray(
-            [(-e + rates[0]) / self.tau_e, (-inh + rates[1]) / self.tau_i]
-        )
+        self.x = self.solver_function(self._derivative, self.x, self.dt, I, P)
         if noise:
             self.x += np.sqrt(self.dt) * noise * self.rng.standard_normal(2)
 
@@ -1152,7 +1267,7 @@ class JansenRit(NeuralMassNode):
 
     """
 
-    def __init__(self, dt=0.0001, seed=42, nonlinearity=sigmoid):
+    def __init__(self, dt=0.0001, seed=42, nonlinearity=sigmoid, solver="euler"):
         """
         Parameters
         ----------
@@ -1164,10 +1279,18 @@ class JansenRit(NeuralMassNode):
         nonlinearity : callable
             The nonlinearity function applied to the population drives.
             Default is :func:`~pyeeg.utils.sigmoid`.
+        solver : str or callable
+            Integration scheme used by :meth:`step`: ``"euler"`` (explicit
+            Euler, the default), ``"euler-maruyama"`` or ``"em"`` (aliases
+            of ``"euler"``: with noise the scheme is Euler-Maruyama),
+            ``"rk4"`` (classical fourth-order Runge-Kutta), or a custom
+            callable stepper ``f(derivative, x, dt, *args) -> x_new``.
         """
         super().__init__(
             dt, seed
         )  # this is a single node (cortical column with 3 sub-populations)
+        self.solver = solver
+        self.solver_function = _resolve_solver(solver)
         n_synapses = 135  # number of synapses between populations
         self.C_1 = (
             1.0 * n_synapses
@@ -1192,17 +1315,10 @@ class JansenRit(NeuralMassNode):
             x, rmax=self.rmax, beta=self.beta, x0=self.theta
         )  # nonlinearity function
 
-    def step(self, I=0.0):
-        """
-        Compute one step of the Jansen-Rit model.
-
-        Parameters
-        ----------
-        I : float
-            The external input to the excitatory population.
-        """
+    def _derivative(self, state, I):
+        """Vector field of the Jansen-Rit model evaluated at ``state``."""
         # 0: pyramidal, 1: excitatory, 2: inhibitory
-        x0, x1, x2, xdot0, xdot1, xdot2 = self.x  # unpack the state
+        x0, x1, x2, xdot0, xdot1, xdot2 = state
         # Input received by each population
         # x1 - x2: difference between excitatory and inhibitory activity, which is the input received by the pyramidal population interpreted as the average potential of pyramidal populations
         # self.C_1 * x0: input received by the excitatory population
@@ -1211,30 +1327,42 @@ class JansenRit(NeuralMassNode):
         input_excitatory = (
             self.C_2 * firing_rates[1] + I
         )  # contribution from other nodes will go here
-        xdot0_next = (
-            xdot0
-            + self.dt
-            * (self.G_exc * 1.0 * firing_rates[0] - 2 * xdot0 - x0 / self.tau_exc)
-            / self.tau_exc
-        )  # pyramidal cell
-        xdot1_next = (
-            xdot1
-            + self.dt
-            * (self.G_exc * input_excitatory - 2 * xdot1 - x1 / self.tau_exc)
-            / self.tau_exc
-        )  # excitatory stellate cell
-        xdot2_next = (
-            xdot2
-            + self.dt
-            * (self.G_inh * self.C_4 * firing_rates[2] - 2 * xdot2 - x2 / self.tau_inh)
-            / self.tau_inh
-        )  # inhibitory interneuron
-        x0_next = x0 + xdot0 * self.dt
-        x1_next = x1 + xdot1 * self.dt
-        x2_next = x2 + xdot2 * self.dt
-        self.x = np.array(
-            [x0_next, x1_next, x2_next, xdot0_next, xdot1_next, xdot2_next]
+        return np.array(
+            [
+                xdot0,
+                xdot1,
+                xdot2,
+                (
+                    self.G_exc * 1.0 * firing_rates[0]
+                    - 2 * xdot0
+                    - x0 / self.tau_exc
+                )
+                / self.tau_exc,  # pyramidal cell
+                (
+                    self.G_exc * input_excitatory
+                    - 2 * xdot1
+                    - x1 / self.tau_exc
+                )
+                / self.tau_exc,  # excitatory stellate cell
+                (
+                    self.G_inh * self.C_4 * firing_rates[2]
+                    - 2 * xdot2
+                    - x2 / self.tau_inh
+                )
+                / self.tau_inh,  # inhibitory interneuron
+            ]
         )
+
+    def step(self, I=0.0):
+        """
+        Compute one step of the Jansen-Rit model (the configured solver).
+
+        Parameters
+        ----------
+        I : float
+            The external input to the excitatory population.
+        """
+        self.x = self.solver_function(self._derivative, self.x, self.dt, I)
 
     def read_out(self):
         return self.x[1] - self.x[2]
@@ -1297,7 +1425,7 @@ class JansenRitExtended(NeuralMassNode):
     We model two parallel subpopulations with different kinematics in order to capture multiband or broadband dynamics.
     """
 
-    def __init__(self, w=0.5, dt=0.0001, seed=42, nonlinearity=sigmoid):
+    def __init__(self, w=0.5, dt=0.0001, seed=42, nonlinearity=sigmoid, solver="euler"):
         """
         Parameters
         ----------
@@ -1312,10 +1440,18 @@ class JansenRitExtended(NeuralMassNode):
         nonlinearity : callable
             The nonlinearity function applied to the population drives.
             Default is :func:`~pyeeg.utils.sigmoid`.
+        solver : str or callable
+            Integration scheme used by :meth:`step`: ``"euler"`` (explicit
+            Euler, the default), ``"euler-maruyama"`` or ``"em"`` (aliases
+            of ``"euler"``: with noise the scheme is Euler-Maruyama),
+            ``"rk4"`` (classical fourth-order Runge-Kutta), or a custom
+            callable stepper ``f(derivative, x, dt, *args) -> x_new``.
         """
         super().__init__(
             dt, seed
         )  # this is a single node (cortical column with 3 sub-populations)
+        self.solver = solver
+        self.solver_function = _resolve_solver(solver)
 
         # ~ 10 Hz dynamics
         self.tau_exc_1 = 1 / 100  # time scale for excitatory population ~10ms
@@ -1350,16 +1486,9 @@ class JansenRitExtended(NeuralMassNode):
             x, rmax=self.rmax, beta=self.beta, x0=self.theta
         )  # nonlinearity function
 
-    def step(self, I=0.0):
-        """
-        Compute one step of the extended Jansen-Rit model.
-
-        Parameters
-        ----------
-        I : float
-            The external input to the excitatory population.
-        """
-        # 0: pyramidal, 1: excitatory, 2: inhibitory
+    def _derivative(self, state, I):
+        """Vector field of the extended Jansen-Rit model at ``state``."""
+        # 0: pyramidal, 1: excitatory, 2: inhibitory (per subpopulation)
         (
             x0_1,
             x1_1,
@@ -1373,7 +1502,7 @@ class JansenRitExtended(NeuralMassNode):
             xdot0_2,
             xdot1_2,
             xdot2_2,
-        ) = self.x  # unpack the state
+        ) = state
         # Input received by each population
         # x1 - x2: difference between excitatory and inhibitory activity, which is the input received by the pyramidal population interpreted as the average potential of pyramidal populations
         # self.C_1 * x0: input received by the excitatory population
@@ -1390,82 +1519,63 @@ class JansenRitExtended(NeuralMassNode):
         input_excitatory = (
             self.C_2 * firing_rates[1] + I
         )  # contribution from other nodes will go here
-        # pop 1
-        xdot0_next_1 = (
-            xdot0_1
-            + self.dt
-            * (
-                self.G_exc_1 * 1.0 * firing_rates[0]
-                - 2 * xdot0_1
-                - x0_1 / self.tau_exc_1
-            )
-            / self.tau_exc_1
-        )
-        xdot1_next_1 = (
-            xdot1_1
-            + self.dt
-            * (self.G_exc_1 * input_excitatory - 2 * xdot1_1 - x1_1 / self.tau_exc_1)
-            / self.tau_exc_1
-        )
-        xdot2_next_1 = (
-            xdot2_1
-            + self.dt
-            * (
-                self.G_inh_1 * self.C_4 * firing_rates[2]
-                - 2 * xdot2_1
-                - x2_1 / self.tau_inh_1
-            )
-            / self.tau_inh_1
-        )
-        x0_next_1 = x0_1 + xdot0_1 * self.dt
-        x1_next_1 = x1_1 + xdot1_1 * self.dt
-        x2_next_1 = x2_1 + xdot2_1 * self.dt
-        # Pop 2
-        xdot0_next_2 = (
-            xdot0_2
-            + self.dt
-            * (
-                self.G_exc_2 * 1.0 * firing_rates[0]
-                - 2 * xdot0_2
-                - x0_2 / self.tau_exc_2
-            )
-            / self.tau_exc_2
-        )
-        xdot1_next_2 = (
-            xdot1_2
-            + self.dt
-            * (self.G_exc_2 * input_excitatory - 2 * xdot1_2 - x1_2 / self.tau_exc_2)
-            / self.tau_exc_2
-        )
-        xdot2_next_2 = (
-            xdot2_2
-            + self.dt
-            * (
-                self.G_inh_2 * self.C_4 * firing_rates[2]
-                - 2 * xdot2_2
-                - x2_2 / self.tau_inh_2
-            )
-            / self.tau_inh_2
-        )
-        x0_next_2 = x0_2 + xdot0_2 * self.dt
-        x1_next_2 = x1_2 + xdot1_2 * self.dt
-        x2_next_2 = x2_2 + xdot2_2 * self.dt
-        self.x = np.array(
+        return np.array(
             [
-                x0_next_1,
-                x1_next_1,
-                x2_next_1,
-                xdot0_next_1,
-                xdot1_next_1,
-                xdot2_next_1,
-                x0_next_2,
-                x1_next_2,
-                x2_next_2,
-                xdot0_next_2,
-                xdot1_next_2,
-                xdot2_next_2,
+                xdot0_1,
+                xdot1_1,
+                xdot2_1,
+                (
+                    self.G_exc_1 * 1.0 * firing_rates[0]
+                    - 2 * xdot0_1
+                    - x0_1 / self.tau_exc_1
+                )
+                / self.tau_exc_1,
+                (
+                    self.G_exc_1 * input_excitatory
+                    - 2 * xdot1_1
+                    - x1_1 / self.tau_exc_1
+                )
+                / self.tau_exc_1,
+                (
+                    self.G_inh_1 * self.C_4 * firing_rates[2]
+                    - 2 * xdot2_1
+                    - x2_1 / self.tau_inh_1
+                )
+                / self.tau_inh_1,
+                xdot0_2,
+                xdot1_2,
+                xdot2_2,
+                (
+                    self.G_exc_2 * 1.0 * firing_rates[0]
+                    - 2 * xdot0_2
+                    - x0_2 / self.tau_exc_2
+                )
+                / self.tau_exc_2,
+                (
+                    self.G_exc_2 * input_excitatory
+                    - 2 * xdot1_2
+                    - x1_2 / self.tau_exc_2
+                )
+                / self.tau_exc_2,
+                (
+                    self.G_inh_2 * self.C_4 * firing_rates[2]
+                    - 2 * xdot2_2
+                    - x2_2 / self.tau_inh_2
+                )
+                / self.tau_inh_2,
             ]
         )
+
+    def step(self, I=0.0):
+        """
+        Compute one step of the extended Jansen-Rit model (the configured solver).
+
+        Parameters
+        ----------
+        I : float
+            The external input to the excitatory population.
+        """
+        self.x = self.solver_function(self._derivative, self.x, self.dt, I)
 
     def read_out(self):
         return self.w * (self.x[1] - self.x[2]) + (1 - self.w) * (self.x[7] - self.x[8])
@@ -1562,6 +1672,7 @@ class JRNetwork(NeuralMassNetwork):
         node_dynamics=None,
         dt=0.001,
         seed=42,
+        solver="euler",
     ):
         """
         Parameters
@@ -1585,6 +1696,12 @@ class JRNetwork(NeuralMassNetwork):
         seed : int
             The random seed used to initialise the network's random number
             generator and the per-node seeds.
+        solver : str or callable
+            Integration scheme used by each :class:`JansenRitExtended` node:
+            ``"euler"`` (explicit Euler, the default), ``"euler-maruyama"`` or
+            ``"em"`` (aliases of ``"euler"``: with noise the scheme is
+            Euler-Maruyama), ``"rk4"`` (classical fourth-order Runge-Kutta),
+            or a custom callable stepper.
         """
         self.rng = np.random.default_rng(seed)
         self.N = N  # number of neurons/nodes
@@ -1597,10 +1714,14 @@ class JRNetwork(NeuralMassNetwork):
         self.delay = delay  # delay (10ms)
         self.dt = dt  # sampling rate
         self.seed = seed  # random seed
+        self.solver = solver
+        self.solver_function = _resolve_solver(solver)
         if not np.isscalar(w):  # if w is a scalar, then it is the same for all nodes
             w = w * np.ones((self.N,))
         self.nodes = [
-            JansenRitExtended(w=w, dt=dt, seed=self.rng.integers(k + seed))
+            JansenRitExtended(
+                w=w, dt=dt, seed=self.rng.integers(k + seed), solver=solver
+            )
             for k in range(N)
         ]  # get different systems/rng for each node
         self.S = self.nodes[0].S  # nonlinearity function
