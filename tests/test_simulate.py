@@ -864,6 +864,8 @@ def test_nodes_reject_unknown_solver():
         JansenRitExtended(solver="rk45")
     with pytest.raises(ValueError):
         JRNetwork(solver="rk45")
+    with pytest.raises(ValueError):
+        CTRNN(N=2, W=np.zeros((2, 2)), solver="rk45")
 
 
 def test_hopf_oscillator_default_solver_is_explicit_euler():
@@ -988,9 +990,9 @@ def test_jansen_rit_rk4_keeps_alpha_oscillation():
     assert peak == pytest.approx(10.0, abs=1.0)
     # a lower input amplitude still settles to a fixed point
     _, outputs_low = JansenRit(dt=0.0001, seed=1, solver="rk4").simulate(
-        tmax=0.8, P=100
+        tmax=0.5, P=100
     )
-    assert outputs_low[4000:, 0].std() < 0.01
+    assert outputs_low[2500:, 0].std() < 0.01
 
 
 def test_jansen_rit_extended_rk4_preserves_subpopulation_identity():
@@ -1033,3 +1035,86 @@ def test_network_with_rk4_hopf_nodes():
     for node in network.nodes:
         radius = np.hypot(node.x[0], node.x[1])
         assert radius == pytest.approx(0.1, rel=0.05)
+
+
+# ---------------------------------------------------------------------------
+# CTRNN: tau, initial state and integration solvers
+# ---------------------------------------------------------------------------
+
+
+def test_ctrnn_default_solver_is_explicit_euler():
+    # regression: the default must remain the historical explicit Euler on
+    # tau * x' = -x + W f(x + theta) + input_W I (tau = 1)
+    W = np.array([[0.0, 1.0], [1.0, 0.0]])
+    model = CTRNN(N=2, W=W, dt=0.001, seed=1)
+    _, states, _ = model.simulate(x0=[0.5, -0.5], tmax=0.01)
+    explicit = CTRNN(N=2, W=W, dt=0.001, seed=1, solver="euler")
+    _, states_explicit, _ = explicit.simulate(x0=[0.5, -0.5], tmax=0.01)
+    np.testing.assert_array_equal(states, states_explicit)
+    # inline canonical explicit Euler reference
+    state = np.array([0.5, -0.5])
+    reference = [state.copy()]
+    for _ in range(9):
+        output = sigmoid(state)
+        state = state + 0.001 * (-state + W @ output)
+        reference.append(state.copy())
+    np.testing.assert_array_equal(states, np.asarray(reference))
+
+
+def test_ctrnn_tau_sets_the_time_constant():
+    # tau * x' = -x with W=0 and no input -> x(t) = x0 * exp(-t / tau)
+    model = CTRNN(N=2, W=np.zeros((2, 2)), tau=2.0, dt=0.001, seed=1)
+    _, states, _ = model.simulate(x0=[1.0, -1.0], tmax=1.0)
+    np.testing.assert_allclose(
+        states[-1], np.exp(-0.5) * np.array([1.0, -1.0]), rtol=1e-2
+    )
+    # per-neuron time constants
+    model = CTRNN(
+        N=2, W=np.zeros((2, 2)), tau=np.array([1.0, 2.0]), dt=0.001, seed=1
+    )
+    _, states, _ = model.simulate(x0=[1.0, -1.0], tmax=1.0)
+    np.testing.assert_allclose(
+        states[-1], [np.exp(-1.0), -np.exp(-0.5)], rtol=1e-2
+    )
+
+
+def test_ctrnn_rejects_invalid_tau():
+    W = np.array([[0.0, 1.0], [1.0, 0.0]])
+    for bad_tau in (0.0, -1.0, np.array([1.0, -1.0]), np.array([1.0, 2.0, 3.0])):
+        with pytest.raises(ValueError):
+            CTRNN(N=2, W=W, tau=bad_tau)
+
+
+def test_ctrnn_initial_state_x0_initialises_state_and_output():
+    W = np.array([[0.0, 1.0], [1.0, 0.0]])
+    model = CTRNN(N=2, W=W, dt=0.001, seed=1, x0=[0.5, -0.5])
+    np.testing.assert_allclose(model.x, [0.5, -0.5])
+    # the output is initialised consistently with the state
+    np.testing.assert_allclose(model.o, sigmoid(np.array([0.5, -0.5])))
+    # the first direct step is a canonical explicit Euler step
+    model.step(I=0.0)
+    x0 = np.array([0.5, -0.5])
+    expected = x0 + 0.001 * (-x0 + W @ sigmoid(x0))
+    np.testing.assert_allclose(model.x, expected)
+    with pytest.raises(ValueError):
+        CTRNN(N=2, W=W, x0=[1.0, 2.0, 3.0])
+
+
+def test_ctrnn_rk4_leak_matches_exponential_decay():
+    # RK4 integrates the pure leak (W=0) essentially exactly:
+    # x(t) = x0 * exp(-t / tau) with tau = 1
+    model = CTRNN(N=2, W=np.zeros((2, 2)), dt=0.001, seed=1, solver="rk4")
+    _, states, _ = model.simulate(x0=[1.0, -1.0], tmax=1.0)
+    expected = np.exp(-(len(states) - 1) * 0.001) * np.array([1.0, -1.0])
+    np.testing.assert_allclose(states[-1], expected, rtol=1e-9)
+
+
+def test_ctrnn_rk4_reproducible_with_noise_and_differs_from_euler():
+    kwargs = dict(N=2, W=np.array([[0.0, 1.0], [1.0, 0.0]]), dt=0.001, seed=3)
+    first = CTRNN(solver="rk4", **kwargs).simulate(tmax=0.2, noise=0.5)
+    second = CTRNN(solver="rk4", **kwargs).simulate(tmax=0.2, noise=0.5)
+    for a, b in zip(first, second, strict=True):
+        np.testing.assert_array_equal(a, b)
+    euler = CTRNN(solver="euler", **kwargs).simulate(tmax=0.2, noise=0.5)
+    assert not np.allclose(first[1], euler[1])
+    assert np.isfinite(first[1]).all()
