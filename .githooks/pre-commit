@@ -1,0 +1,20 @@
+#!/bin/sh
+# Warn if the nbstripout git filter is not configured on this clone.
+# NB: the filter lives in .git/config, i.e. per-machine — each new clone
+# needs: uv tool install nbstripout && nbstripout --install
+if ! git config --get filter.nbstripout.clean >/dev/null 2>&1; then
+    cat >&2 <<'WARN'
+
+⚠️  nbstripout git filter is NOT configured on this clone.
+    Notebook metadata (kernelspec, execution counts, ...) will sneak into
+    your commits and cause noisy cross-machine diffs.
+
+    Fix in 2 commands:
+        uv tool install nbstripout
+        nbstripout --install --verify
+
+    Committing anyway this time? Use: git commit --no-verify
+
+WARN
+    exit 1
+fi
