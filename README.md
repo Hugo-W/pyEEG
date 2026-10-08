@@ -99,6 +99,18 @@ Otherwise, for a standard installation, you can run:
 pip install .
 ```
 
+#### Developer setup
+
+If you plan to contribute and commit Jupyter notebooks, a couple of one-time setup steps on each clone keep the repository free of machine-dependent notebook noise (kernelspec, execution counts, ...):
+
+```bash
+pip install nbstripout
+nbstripout --install --verify   # strips notebook metadata on commit (git clean filter)
+git config core.hooksPath .githooks  # enables the pre-commit hook that checks the above
+```
+
+Without this setup, commits containing notebooks are blocked by a pre-commit hook explaining the fix. Bypass a single commit with `git commit --no-verify`.
+
 #### Windows Users
 
 There are C-extensions in the library, so you need to have a C compiler installed on your machine.
