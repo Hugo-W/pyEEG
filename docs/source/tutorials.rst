@@ -5,13 +5,25 @@ The notebooks below are self-contained and use simulated signals, so they can
 be run without an EEG recording or private stimulus files. Figures generated
 by the notebook cells are rendered directly in the HTML documentation.
 
-A complete TRF walkthrough
---------------------------
+TRF tutorials
+-------------
+
+Two complementary tutorials cover Temporal Response Function (TRF) estimation.
+Both are self-contained and use simulated signals.
 
 .. toctree::
     :maxdepth: 1
 
     examples/TRF_simulation_tutorial
+    examples/TRF_advanced_tutorial
+
+- **A gentle introduction to TRFs** (`TRF_simulation_tutorial`) — a minimal
+  walkthrough: simulate two stimulus features, fit the simplest TRF, and
+  visualise the result. Best starting point.
+- **TRF estimation: inference, regularisation, and solvers**
+  (`TRF_advanced_tutorial`) — an in-depth tutorial covering statistical
+  inference (permutation tests, bootstrap CIs), banded regularisation,
+  cross-validation, robust fitting, solver comparison, and multi-channel TRFs.
 
 Loading Word-level features
 ---------------------------
