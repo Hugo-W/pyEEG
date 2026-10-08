@@ -19,7 +19,7 @@ Initial contributors to the former ``pyEEG`` project:
 Github
 ~~~~~~
 
-You can find the source code of the project at https://github.com/Hugo-W/natMEEG.
+You can find the source code of the project at https://github.com/Hugo-W/pyEEG.
 
 Contributing
 ''''''''''''
@@ -31,4 +31,4 @@ that other contributors can review the code.
 If there are issues with some part of the code, or a feature you wish
 to be present in the library, or simply a suggestion about anything, please `open an issue`_.
 
-.. _open an issue : https://github.com/Hugo-W/natMEEG/issues
+.. _open an issue : https://github.com/Hugo-W/pyEEG/issues

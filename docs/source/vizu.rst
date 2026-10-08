@@ -1,7 +1,7 @@
 .. role:: hidden
     :class: hidden-section
 
-Vizualisaton
+Vizualisation
 ============
 
 .. automodule:: pyeeg.vizu
