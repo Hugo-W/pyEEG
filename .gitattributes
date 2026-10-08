@@ -1,0 +1,9 @@
+# Exclude Jupyter Notebooks from language statistics
+*.ipynb  linguist-detectable=false
+
+# Files used only on Windows stay as CRLF
+*.bat eol=crlf
+*.ps1 eol=crlf
+
+# Shell scripts must always be LF
+*.sh eol=lf
